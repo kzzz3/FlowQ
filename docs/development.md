@@ -139,3 +139,25 @@ deterministic value-type layer and still does not own sockets, ASIO timers, TLS 
 
 M3b intentionally defers congestion control, persistent congestion, pacing, stream retransmission policy, actual timer
 arming, probe packet construction, TLS, packet protection, key discard, migration, ECN, and ACK-frequency behavior.
+
+## QUIC packet-pipeline scope
+
+The M4a packet-pipeline stage connects the existing long-header codec and frame codec into a pure packet assembly and
+parsing layer in `flowq::quic::packet_pipeline`. It is the first integrated path from structured frames to packet bytes
+and back.
+
+- `assemble_long_packet` concatenates encoded frame bytes, calls a `packet_protector`, prepends fixed 4-byte packet
+  number metadata, builds Initial or Handshake long-header packets, and enforces a configured datagram size limit.
+- Assembly rejects packet numbers that do not fit the fixed M4a encoding, packet-number spaces that do not match the
+  selected long-header type, and protector levels that do not match the packet type, except for explicit plaintext
+  `protection_level::none` test/dev paths.
+- `parse_long_packet` decodes Initial or Handshake long-header packets, extracts the fixed packet number metadata,
+  calls the same protection seam to unprotect the remaining payload, and decodes structured frames.
+- `packet_protector` is a narrow seam for future TLS/AEAD/header protection integration. `plaintext_packet_protector`
+  is explicit and reports `protection_level::none`; it must not be mistaken for real packet protection.
+- Packet number encoding is fixed-width and structural in M4a. Future packet protection work must replace this with
+  QUIC packet-number-length selection and reconstruction.
+
+M4a intentionally defers real TLS, AEAD, header protection, short headers, key lifecycle, connection state, stream
+state, flow control, congestion control, and public API design. Test-only protectors may transform bytes
+deterministically, but production paths must not label plaintext as protected.
