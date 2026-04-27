@@ -2,8 +2,11 @@
 
 #include <flowq/quic/frame.hpp>
 
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <set>
 #include <utility>
 #include <vector>
@@ -35,6 +38,17 @@ struct loss_detection_result {
 };
 
 namespace detail {
+
+[[nodiscard]] inline std::chrono::steady_clock::duration scale_duration(
+    std::chrono::steady_clock::duration duration,
+    std::int64_t numerator,
+    std::int64_t denominator) {
+    return duration * numerator / denominator;
+}
+
+[[nodiscard]] inline std::chrono::steady_clock::duration abs_duration(std::chrono::steady_clock::duration duration) {
+    return duration < std::chrono::steady_clock::duration::zero() ? -duration : duration;
+}
 
 [[nodiscard]] inline bool append_ack_range(std::set<std::uint64_t>& packets, std::uint64_t low, std::uint64_t high) {
     if (low > high) {
@@ -83,6 +97,202 @@ namespace detail {
 }
 
 } // namespace detail
+
+struct rtt_sample {
+    std::chrono::steady_clock::duration latest_rtt{};
+    std::chrono::steady_clock::duration ack_delay{};
+    std::chrono::steady_clock::duration peer_max_ack_delay{};
+    bool handshake_confirmed{};
+};
+
+class rtt_estimator {
+public:
+    void update(const rtt_sample& sample) {
+        latest_rtt_ = sample.latest_rtt;
+        if (!has_sample_) {
+            has_sample_ = true;
+            min_rtt_ = sample.latest_rtt;
+            smoothed_rtt_ = sample.latest_rtt;
+            rtt_variance_ = sample.latest_rtt / 2;
+            return;
+        }
+
+        min_rtt_ = std::min(min_rtt_, sample.latest_rtt);
+        auto adjusted_rtt = sample.latest_rtt;
+        if (sample.handshake_confirmed) {
+            const auto ack_delay = std::min(sample.ack_delay, sample.peer_max_ack_delay);
+            if (sample.latest_rtt - min_rtt_ > ack_delay) {
+                adjusted_rtt -= ack_delay;
+            }
+        }
+
+        rtt_variance_ = detail::scale_duration(rtt_variance_, 3, 4) + detail::scale_duration(detail::abs_duration(smoothed_rtt_ - adjusted_rtt), 1, 4);
+        smoothed_rtt_ = detail::scale_duration(smoothed_rtt_, 7, 8) + detail::scale_duration(adjusted_rtt, 1, 8);
+    }
+
+    [[nodiscard]] bool has_sample() const noexcept {
+        return has_sample_;
+    }
+
+    [[nodiscard]] std::chrono::steady_clock::duration latest_rtt() const noexcept {
+        return latest_rtt_;
+    }
+
+    [[nodiscard]] std::chrono::steady_clock::duration min_rtt() const noexcept {
+        return min_rtt_;
+    }
+
+    [[nodiscard]] std::chrono::steady_clock::duration smoothed_rtt() const noexcept {
+        return smoothed_rtt_;
+    }
+
+    [[nodiscard]] std::chrono::steady_clock::duration rtt_variance() const noexcept {
+        return rtt_variance_;
+    }
+
+private:
+    bool has_sample_{};
+    std::chrono::steady_clock::duration latest_rtt_{};
+    std::chrono::steady_clock::duration min_rtt_{};
+    std::chrono::steady_clock::duration smoothed_rtt_{};
+    std::chrono::steady_clock::duration rtt_variance_{};
+};
+
+struct recovery_packet {
+    packet_number_space space{};
+    std::uint64_t packet_number{};
+    std::chrono::steady_clock::time_point sent_at{};
+    bool ack_eliciting{};
+    sent_packet_state state{sent_packet_state::outstanding};
+};
+
+struct time_loss_result {
+    std::vector<std::uint64_t> newly_lost;
+    std::optional<std::chrono::steady_clock::time_point> earliest_loss_time;
+};
+
+struct pto_config {
+    std::chrono::steady_clock::duration max_ack_delay{};
+    std::chrono::steady_clock::duration initial_rtt{std::chrono::milliseconds{333}};
+    std::uint32_t pto_count{};
+    bool handshake_confirmed{};
+};
+
+enum class loss_timer_mode {
+    none,
+    loss_time,
+    pto
+};
+
+struct loss_timer_deadline {
+    loss_timer_mode mode{loss_timer_mode::none};
+    std::optional<std::chrono::steady_clock::time_point> deadline;
+};
+
+[[nodiscard]] inline std::chrono::steady_clock::duration recovery_granularity() {
+    return std::chrono::milliseconds{1};
+}
+
+[[nodiscard]] inline std::chrono::steady_clock::duration time_threshold_loss_delay(const rtt_estimator& estimator) {
+    const auto rtt = std::max(estimator.latest_rtt(), estimator.smoothed_rtt());
+    return std::max(detail::scale_duration(rtt, 9, 8), recovery_granularity());
+}
+
+[[nodiscard]] inline time_loss_result detect_time_threshold_losses(
+    std::vector<recovery_packet>& packets,
+    const rtt_estimator& estimator,
+    packet_number_space space,
+    std::uint64_t largest_acknowledged,
+    std::chrono::steady_clock::time_point now) {
+    time_loss_result result;
+    if (!estimator.has_sample()) {
+        return result;
+    }
+
+    const auto loss_delay = time_threshold_loss_delay(estimator);
+    for (auto& packet : packets) {
+        if (packet.space != space || packet.state != sent_packet_state::outstanding || !packet.ack_eliciting || packet.packet_number >= largest_acknowledged) {
+            continue;
+        }
+
+        const auto loss_time = packet.sent_at + loss_delay;
+        if (loss_time <= now) {
+            packet.state = sent_packet_state::lost;
+            result.newly_lost.push_back(packet.packet_number);
+            continue;
+        }
+
+        if (!result.earliest_loss_time.has_value() || loss_time < *result.earliest_loss_time) {
+            result.earliest_loss_time = loss_time;
+        }
+    }
+
+    return result;
+}
+
+[[nodiscard]] inline bool pto_allowed(packet_number_space space, const pto_config& config) {
+    return space != packet_number_space::application || config.handshake_confirmed;
+}
+
+[[nodiscard]] inline std::chrono::steady_clock::duration pto_duration(
+    const rtt_estimator& estimator,
+    packet_number_space space,
+    const pto_config& config) {
+    const auto smoothed_rtt = estimator.has_sample() ? estimator.smoothed_rtt() : config.initial_rtt;
+    const auto rtt_variance = estimator.has_sample() ? estimator.rtt_variance() : config.initial_rtt / 2;
+    const auto ack_delay = (space == packet_number_space::application && config.handshake_confirmed) ? config.max_ack_delay : std::chrono::steady_clock::duration{};
+    auto duration = smoothed_rtt + std::max(rtt_variance * 4, recovery_granularity()) + ack_delay;
+    for (std::uint32_t count = 0; count < config.pto_count; ++count) {
+        duration *= 2;
+    }
+    return std::max(duration, recovery_granularity());
+}
+
+[[nodiscard]] inline std::chrono::steady_clock::time_point pto_deadline(
+    std::chrono::steady_clock::time_point now,
+    const rtt_estimator& estimator,
+    packet_number_space space,
+    const pto_config& config) {
+    return now + pto_duration(estimator, space, config);
+}
+
+[[nodiscard]] inline loss_timer_deadline next_loss_timer(
+    const std::vector<recovery_packet>& packets,
+    const rtt_estimator& estimator,
+    std::chrono::steady_clock::time_point now,
+    packet_number_space space,
+    const pto_config& config) {
+    std::optional<std::chrono::steady_clock::time_point> last_ack_eliciting_sent_at;
+    std::optional<std::chrono::steady_clock::time_point> earliest_loss_time;
+
+    const auto loss_delay = estimator.has_sample() ? time_threshold_loss_delay(estimator) : std::chrono::steady_clock::duration{};
+    for (const auto& packet : packets) {
+        if (packet.space != space || packet.state != sent_packet_state::outstanding || !packet.ack_eliciting) {
+            continue;
+        }
+
+        if (!last_ack_eliciting_sent_at.has_value() || packet.sent_at > *last_ack_eliciting_sent_at) {
+            last_ack_eliciting_sent_at = packet.sent_at;
+        }
+
+        if (estimator.has_sample()) {
+            const auto loss_time = packet.sent_at + loss_delay;
+            if (!earliest_loss_time.has_value() || loss_time < *earliest_loss_time) {
+                earliest_loss_time = loss_time;
+            }
+        }
+    }
+
+    if (earliest_loss_time.has_value()) {
+        return {loss_timer_mode::loss_time, earliest_loss_time};
+    }
+
+    if (last_ack_eliciting_sent_at.has_value() && pto_allowed(space, config)) {
+        return {loss_timer_mode::pto, pto_deadline(*last_ack_eliciting_sent_at, estimator, space, config)};
+    }
+
+    return {};
+}
 
 class received_packet_tracker {
 public:

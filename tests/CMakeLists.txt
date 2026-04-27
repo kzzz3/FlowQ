@@ -11,6 +11,7 @@ add_executable(
     unit/quic_ack_loss_tests.cpp
     unit/quic_frame_tests.cpp
     unit/quic_packet_header_tests.cpp
+    unit/quic_recovery_core_tests.cpp
     unit/quic_varint_tests.cpp
     unit/timer_tests.cpp
     unit/udp_tests.cpp
