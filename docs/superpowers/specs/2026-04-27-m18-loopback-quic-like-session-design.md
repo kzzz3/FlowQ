@@ -25,6 +25,17 @@
 - Lost stream data must be resent as information in a new packet.
 - Loopback uses test protection and must be labeled non-production.
 
+## Implemented Coverage
+
+- The integration harness connects two `connection_loop` instances with an in-memory datagram pump; no sockets or timers are
+  owned by the harness.
+- STREAM data is verified in both directions over structural Application packets.
+- ACK exchange is verified by observing the sender's Application sent-packet state.
+- Deterministic loss is verified by dropping the original STREAM datagram, acknowledging a later Application packet, expiring
+  the recovery seam, and observing retransmitted bytes at the peer.
+- Flow-control prefix/suffix delivery is verified with initial stream credit and a later `MAX_STREAM_DATA` update.
+- Reset observability is verified with Application `RESET_STREAM` and peer receive-stream reset state.
+
 ## Non-Goals
 
 - Real UDP client/server APIs.

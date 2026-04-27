@@ -23,7 +23,7 @@
 - Create: `tests/integration/quic_loopback_tests.cpp`
 - Modify: `tests/CMakeLists.txt`
 
-- [ ] **Step 1: Write failing integration test**
+- [x] **Step 1: Write failing integration test**
 
 Create two connection loops, a helper `pump(client, server)` that moves outbound datagrams to peer inbound processing, and assert a client stream write is delivered to the server.
 
@@ -35,7 +35,7 @@ pump(client, server);
 CHECK(server_delivered_text(server, 0) == "hello");
 ```
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Run:
 
@@ -45,11 +45,11 @@ $env:VCPKG_ROOT='D:/vcpkg'; cmake --build --preset windows-msvc-vcpkg
 
 Expected: integration test does not compile until helpers or CMake registration are added.
 
-- [ ] **Step 3: Implement minimal pump helpers**
+- [x] **Step 3: Implement minimal pump helpers**
 
 Keep helpers in the test file first. Move code into production headers only if multiple tests require the same public seam.
 
-- [ ] **Step 4: Run integration test**
+- [x] **Step 4: Run integration test**
 
 Expected: the loopback stream delivery test passes.
 
@@ -58,19 +58,19 @@ Expected: the loopback stream delivery test passes.
 **Files:**
 - Modify: `tests/integration/quic_loopback_tests.cpp`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Drop the first datagram carrying stream data, deliver later ACK/loss stimuli, and assert the same stream bytes are eventually delivered after retransmission with a new packet number.
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Expected: loss pump behavior is not yet modeled in the harness.
 
-- [ ] **Step 3: Implement deterministic loss pump behavior**
+- [x] **Step 3: Implement deterministic loss pump behavior**
 
 Use M14/M15 hooks to mark loss and reschedule stream ranges. Do not add random timing or sockets.
 
-- [ ] **Step 4: Run integration test**
+- [x] **Step 4: Run integration test**
 
 Expected: retransmission loopback test passes.
 
@@ -79,19 +79,19 @@ Expected: retransmission loopback test passes.
 **Files:**
 - Modify: `tests/integration/quic_loopback_tests.cpp`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add a flow-control scenario where initial credit allows a prefix, a credit update allows the suffix, and final close/reset behavior is observable.
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Expected: loopback harness lacks one or more orchestration helpers.
 
-- [ ] **Step 3: Implement minimal orchestration**
+- [x] **Step 3: Implement minimal orchestration**
 
 Add deterministic helper functions in the test harness to exchange control frames and close/reset events.
 
-- [ ] **Step 4: Run integration tests**
+- [x] **Step 4: Run integration tests**
 
 Expected: loopback flow-control and close tests pass.
 
@@ -100,11 +100,11 @@ Expected: loopback flow-control and close tests pass.
 **Files:**
 - Modify: `docs/development.md`
 
-- [ ] **Step 1: Update docs**
+- [x] **Step 1: Update docs**
 
 Document M18 as a basic usable FlowQ point: deterministic loopback streams, ACK/loss, retransmission, flow control, and close/reset over structural/test protection. Explicitly state it is not production QUIC.
 
-- [ ] **Step 2: Full verification**
+- [x] **Step 2: Full verification**
 
 Run:
 

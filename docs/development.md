@@ -461,3 +461,22 @@ loopback work.
 M17 remains structural. It does not add an application callback policy, automatic RESET_STREAM generation in response to
 STOP_SENDING, a complete stream lifecycle state machine, application CONNECTION_CLOSE (`0x1d`), public async stream APIs,
 sockets, TLS, AEAD, header protection, or production interoperability.
+
+## QUIC in-memory loopback session scope
+
+The M18 loopback stage proves the current structural connection pieces can form a basic usable non-production session in
+deterministic tests. The loopback harness lives in `tests/integration/quic_loopback_tests.cpp` and connects two
+`connection_loop` instances by moving `outbound_datagram` actions directly into the peer `on_datagram()` path.
+
+- Client-to-server and server-to-client STREAM data are exchanged over the M16 structural Application packet envelope and
+  delivered through `received_packet_event::stream_deliveries`.
+- Application ACKs are pumped back through the peer connection and update the sender's Application sent-packet tracker.
+- Deterministic packet loss is modeled by dropping an outbound datagram, delivering a later Application packet/ACK, then
+  expiring the existing recovery timer seam so M15 packet-to-stream loss mapping reschedules the lost stream bytes.
+- Stream flow control is exercised end to end: initial stream credit emits a prefix, an inbound `MAX_STREAM_DATA` frame raises
+  credit, and a later Application packet carries the suffix at the original stream offset.
+- Application `RESET_STREAM` is observable on the peer receive stream state, preserving the M17 structural reset semantics in
+  the loopback path.
+
+M18 is still intentionally local and unsafe. It does not add real UDP sockets, TLS 1.3, AEAD, header protection, real QUIC
+short headers, address validation, congestion control, HTTP/3, public async stream APIs, or production interoperability.
