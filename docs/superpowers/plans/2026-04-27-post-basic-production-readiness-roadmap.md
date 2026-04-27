@@ -24,7 +24,7 @@
 - [x] M27: RFC 9000 packet-number truncation and reconstruction helpers.
 - [x] M28: Crypto provider boundary and fail-closed packet protection contract.
 - [x] M29: RFC 9001 Initial packet-protection vectors through vetted primitives.
-- [ ] M30: Transport parameter codec and config mapping.
+- [x] M30: Transport parameter codec and config mapping.
 - [ ] M31: TLS handshake adapter boundary and CRYPTO byte pump.
 - [ ] M31b: External TLS provider adapter implementation.
 - [ ] M32: RFC-shaped short-header value model and parser shell.
@@ -114,12 +114,12 @@
 - Modify: `docs/development.md`
 
 **TDD steps:**
-- [ ] Write round-trip tests for `initial_max_data`, `initial_max_stream_data_bidi_local`, `initial_max_stream_data_bidi_remote`, `initial_max_stream_data_uni`, `max_idle_timeout`, `max_udp_payload_size`, `active_connection_id_limit`, and `disable_active_migration`.
-- [ ] Write malformed-input tests for duplicate parameters, truncated varints, unknown preserved parameters, and invalid values.
-- [ ] Verify RED.
-- [ ] Implement structural transport parameter value types and codec using existing varint helpers.
-- [ ] Map selected decoded parameters into connection/session config without TLS binding.
-- [ ] Verify GREEN and full CTest.
+- [x] Write round-trip tests for `initial_max_data`, `initial_max_stream_data_bidi_local`, `initial_max_stream_data_bidi_remote`, `initial_max_stream_data_uni`, `max_idle_timeout`, `max_udp_payload_size`, `active_connection_id_limit`, and `disable_active_migration`.
+- [x] Write malformed-input tests for duplicate parameters, truncated varints, unknown preserved parameters, and invalid values.
+- [x] Verify RED.
+- [x] Implement structural transport parameter value types and codec using existing varint helpers.
+- [x] Map selected decoded parameters into connection/session config without TLS binding.
+- [x] Verify GREEN and full CTest.
 
 **Acceptance gate:** Structural codec is deterministic, malformed inputs fail with `protocol_error`, and docs state TLS extension binding remains M31 scope.
 
