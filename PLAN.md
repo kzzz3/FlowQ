@@ -16,7 +16,7 @@ FlowQ is a modern C++ protocol library that builds a deterministic, testable, no
 - [x] Add stream receive, stream send, and flow-control core behavior.
 - [x] Add connection stream integration, aggregate flow control, packet budgeting, recovery timers, and stream ACK/loss mapping.
 - [x] M16: Add a clearly non-production structural Application packet-number space for tests and loopback.
-- [ ] M17: Add minimal close/reset structural codecs and stream effects.
+- [x] M17: Add minimal close/reset structural codecs and stream effects.
 - [ ] M18: Prove a basic in-memory QUIC-like loopback session.
 - [ ] M19: Document and enforce the crypto adapter seam for future real TLS/packet protection.
 
@@ -54,7 +54,7 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 ### Phase 3: Basic Usable Non-Production Loopback
 
 - [x] M16 Application Data structural packet space.
-- [ ] M17 minimal close/reset codec behavior.
+- [x] M17 minimal close/reset codec behavior.
 - [ ] M18 in-memory QUIC-like loopback session.
 
 ### Phase 4: Security Boundary Documentation
@@ -64,6 +64,7 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 ## Risk Assessment
 
 - **Application packet modeling risk**: M16 now has independent Application packet counters and trackers; future changes must preserve this and avoid aliasing Application state into Initial or Handshake.
+- **Reset/stop scope risk**: M17 reset/stop behavior is structural and test-visible only; future work must avoid treating it as a complete stream lifecycle or application cancellation API.
 - **Security claim risk**: plaintext/test protection must stay explicitly non-production and must not be described as secure QUIC.
 - **Scope creep risk**: real short-header packet number reconstruction, TLS, AEAD, header protection, congestion control, and UDP public APIs are deferred beyond M19.
 - **Tooling risk**: local LSP diagnostics currently cannot run because `clangd` is not installed in this environment; MSVC build and CTest are the executable verification gates.

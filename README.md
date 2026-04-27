@@ -83,4 +83,4 @@ ctest --preset windows-msvc-vcpkg --timeout 10
 
 ## Current Status
 
-M16 is complete: FlowQ now has a structural, non-production Application packet-number space for local tests and loopback development. M17 is next: minimal close/reset structural codecs and stream effects.
+M17 is complete: FlowQ now has structural RESET_STREAM and STOP_SENDING codecs plus minimal stream/connection reset-stop effects for deterministic tests. M18 is next: an in-memory QUIC-like loopback session.
