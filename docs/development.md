@@ -639,7 +639,7 @@ evidence.
 - M28 should define a provider boundary for vetted crypto libraries; FlowQ must not implement AES, ChaCha20, Poly1305,
   HKDF, TLS 1.3, certificate validation, or random number generation by hand.
 - M29 should use that provider boundary to pass selected RFC 9001 packet-protection vectors.
-- M30+ should cover transport parameters, TLS handshake adapter state, RFC-shaped short headers, congestion control, and
+- M31+ should cover TLS handshake adapter state, RFC-shaped short headers, congestion control, and
   interoperability harnesses as separate milestones.
 - The complete route from M28 through M39 is documented in
   `docs/superpowers/plans/2026-04-27-post-basic-production-readiness-roadmap.md`.
@@ -694,3 +694,25 @@ packet-protection vectors.
 M29 does not implement TLS 1.3, certificate validation, a key schedule, complete QUIC packet protection, header-protection
 integration, short headers, runtime provider selection, or interoperability. Passing selected Initial vectors is not a
 production security claim.
+
+### M30 transport parameter codec scope
+
+M30 adds structural QUIC transport parameter support in `include/flowq/quic/transport_parameters.hpp` and maps selected
+decoded values into `connection_loop_config` and `session_config`.
+
+- `transport_parameters` models `max_idle_timeout`, `max_udp_payload_size`, `initial_max_data`, the three
+  `initial_max_stream_data_*` parameters, `disable_active_migration`, `active_connection_id_limit`, and preserved unknown
+  parameters.
+- `encode_transport_parameters` and `decode_transport_parameters` use the existing QUIC varint helpers for deterministic
+  TLV encoding and decoding.
+- Decoding rejects duplicate parameters, truncated varints or values, non-empty `disable_active_migration`,
+  `max_udp_payload_size < 1200`, and `active_connection_id_limit < 2` with structured codec errors. Encoding also rejects
+  unencodable varint values, duplicate emitted parameter identifiers, and the same minimum-value violations instead of
+  producing malformed payloads.
+- `apply_transport_parameters` maps selected values into connection/session config, including connection flow-control
+  credit, stream-credit config mirrors, idle timeout, UDP payload size, active CID limit, and active-migration disabling.
+- Unknown parameters are preserved byte-for-byte so future negotiation layers can forward or inspect them without losing
+  structural information.
+
+M30 does not bind these parameters to TLS extensions, authenticate negotiation, validate peer role-specific semantics, add
+real handshake state, or claim production interoperability. M31 owns the TLS handshake adapter and CRYPTO byte pump.
