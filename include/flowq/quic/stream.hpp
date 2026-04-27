@@ -259,4 +259,189 @@ private:
     std::map<std::uint64_t, stream_receive_state> streams_{};
 };
 
+struct stream_operation_result {
+    flowq::error error{};
+
+    [[nodiscard]] bool ok() const noexcept {
+        return error.ok();
+    }
+};
+
+struct stream_send_range {
+    std::uint64_t offset{};
+    std::uint64_t length{};
+    bool fin{};
+};
+
+struct stream_send_result {
+    stream_frame frame{};
+    stream_send_range range{};
+    bool has_frame{};
+    flowq::error error{};
+
+    [[nodiscard]] bool ok() const noexcept {
+        return error.ok();
+    }
+};
+
+class stream_send_state {
+public:
+    explicit stream_send_state(std::uint64_t stream_id) : stream_id_{stream_id} {}
+
+    [[nodiscard]] stream_operation_result append(const flowq::buffer& data) {
+        if (finished_) {
+            return {detail::stream_error("cannot append STREAM data after FIN")};
+        }
+        if (bytes_.size() > static_cast<std::size_t>(UINT64_MAX) - data.size()) {
+            return {detail::stream_error("STREAM send offset overflows")};
+        }
+
+        detail::append_stream_buffer(bytes_, data);
+        return {};
+    }
+
+    [[nodiscard]] stream_operation_result finish() noexcept {
+        finished_ = true;
+        return {};
+    }
+
+    [[nodiscard]] stream_send_result pop_frame(std::size_t max_data_size) {
+        if (!lost_.empty()) {
+            auto range = lost_.front();
+            lost_.erase(lost_.begin());
+            if (is_acked(range)) {
+                return pop_frame(max_data_size);
+            }
+            if (range.length > 0 && max_data_size == 0) {
+                lost_.insert(lost_.begin(), range);
+                return {};
+            }
+            if (range.length > max_data_size && max_data_size > 0) {
+                const auto remaining = stream_send_range{range.offset + max_data_size, range.length - max_data_size, range.fin};
+                range.length = max_data_size;
+                range.fin = false;
+                lost_.insert(lost_.begin(), remaining);
+            }
+            if (range.fin) {
+                fin_sent_ = true;
+            }
+            return make_frame(range);
+        }
+
+        if (next_unsent_offset_ < bytes_.size() && max_data_size > 0) {
+            const auto available = bytes_.size() - static_cast<std::size_t>(next_unsent_offset_);
+            const auto length = std::min(max_data_size, available);
+            const auto range = stream_send_range{
+                next_unsent_offset_,
+                static_cast<std::uint64_t>(length),
+                finished_ && next_unsent_offset_ + length == bytes_.size()
+            };
+            next_unsent_offset_ += length;
+            if (range.fin) {
+                fin_sent_ = true;
+            }
+            return make_frame(range);
+        }
+
+        if (finished_ && !fin_sent_ && !fin_acked_) {
+            fin_sent_ = true;
+            return make_frame(stream_send_range{static_cast<std::uint64_t>(bytes_.size()), 0, true});
+        }
+
+        return {};
+    }
+
+    void on_acked(stream_send_range range) {
+        acked_.push_back(range);
+        lost_.erase(
+            std::remove_if(
+                lost_.begin(),
+                lost_.end(),
+                [range](const stream_send_range& lost) {
+                    return stream_send_state::range_covers(range, lost);
+                }),
+            lost_.end());
+        if (range.fin) {
+            fin_acked_ = true;
+        }
+    }
+
+    void on_lost(stream_send_range range) {
+        if (is_acked(range)) {
+            return;
+        }
+        if (range.fin) {
+            fin_sent_ = false;
+        }
+        lost_.push_back(range);
+    }
+
+private:
+    std::uint64_t stream_id_{};
+    std::vector<std::byte> bytes_{};
+    std::uint64_t next_unsent_offset_{};
+    bool finished_{};
+    bool fin_sent_{};
+    bool fin_acked_{};
+    std::vector<stream_send_range> lost_{};
+    std::vector<stream_send_range> acked_{};
+
+    [[nodiscard]] bool is_acked(stream_send_range range) const noexcept {
+        for (const auto& acked : acked_) {
+            if (range_covers(acked, range)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    [[nodiscard]] static bool range_covers(stream_send_range covering, stream_send_range covered) noexcept {
+        const auto covering_end = covering.offset + covering.length;
+        const auto covered_end = covered.offset + covered.length;
+        const auto bytes_covered = covering.offset <= covered.offset && covering_end >= covered_end;
+        const auto fin_covered = !covered.fin || covering.fin;
+        return bytes_covered && fin_covered;
+    }
+
+    [[nodiscard]] stream_send_result make_frame(stream_send_range range) const {
+        std::vector<std::byte> data;
+        data.reserve(static_cast<std::size_t>(range.length));
+        const auto start = static_cast<std::size_t>(range.offset);
+        for (std::size_t index = 0; index < static_cast<std::size_t>(range.length); ++index) {
+            data.push_back(bytes_[start + index]);
+        }
+
+        return {
+            stream_frame{stream_id_, range.offset, range.offset != 0, true, range.fin, flowq::buffer{data}},
+            range,
+            true,
+            {}
+        };
+    }
+};
+
+class stream_send_set {
+public:
+    [[nodiscard]] stream_operation_result append(std::uint64_t stream_id, const flowq::buffer& data) {
+        return state_for(stream_id).append(data);
+    }
+
+    [[nodiscard]] stream_operation_result finish(std::uint64_t stream_id) {
+        return state_for(stream_id).finish();
+    }
+
+    [[nodiscard]] stream_send_result pop_frame(std::uint64_t stream_id, std::size_t max_data_size) {
+        return state_for(stream_id).pop_frame(max_data_size);
+    }
+
+private:
+    std::map<std::uint64_t, stream_send_state> streams_{};
+
+    [[nodiscard]] stream_send_state& state_for(std::uint64_t stream_id) {
+        auto [iterator, inserted] = streams_.try_emplace(stream_id, stream_id);
+        (void)inserted;
+        return iterator->second;
+    }
+};
+
 } // namespace flowq::quic

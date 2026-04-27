@@ -218,3 +218,239 @@ TEST_CASE("stream receive set routes stream frames independently") {
     CHECK(streams.find(0)->next_offset() == 1);
     CHECK(streams.find(4)->next_offset() == 1);
 }
+
+TEST_CASE("stream send state emits STREAM frames with stable offsets") {
+    flowq::quic::stream_send_state state{4};
+    REQUIRE(state.append(text("hello")).ok());
+
+    auto result = state.pop_frame(16);
+
+    REQUIRE(result.ok());
+    REQUIRE(result.has_frame);
+    CHECK(result.range.offset == 0);
+    CHECK(result.range.length == 5);
+    CHECK_FALSE(result.range.fin);
+    CHECK(result.frame.stream_id == 4);
+    CHECK(result.frame.offset == 0);
+    CHECK_FALSE(result.frame.offset_present);
+    CHECK(result.frame.length_present);
+    CHECK_FALSE(result.frame.fin);
+    CHECK(as_string(result.frame.data) == "hello");
+}
+
+TEST_CASE("stream send state fragments data by payload limit") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.append(text("hello")).ok());
+
+    auto first = state.pop_frame(2);
+    auto second = state.pop_frame(2);
+    auto third = state.pop_frame(2);
+
+    REQUIRE(first.ok());
+    REQUIRE(second.ok());
+    REQUIRE(third.ok());
+    REQUIRE(first.has_frame);
+    REQUIRE(second.has_frame);
+    REQUIRE(third.has_frame);
+    CHECK(first.frame.offset == 0);
+    CHECK_FALSE(first.frame.offset_present);
+    CHECK(as_string(first.frame.data) == "he");
+    CHECK(second.frame.offset == 2);
+    CHECK(second.frame.offset_present);
+    CHECK(as_string(second.frame.data) == "ll");
+    CHECK(third.frame.offset == 4);
+    CHECK(third.frame.offset_present);
+    CHECK(as_string(third.frame.data) == "o");
+}
+
+TEST_CASE("stream send state attaches FIN to the final data frame") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.append(text("done")).ok());
+    REQUIRE(state.finish().ok());
+
+    auto result = state.pop_frame(16);
+
+    REQUIRE(result.ok());
+    REQUIRE(result.has_frame);
+    CHECK(result.range.offset == 0);
+    CHECK(result.range.length == 4);
+    CHECK(result.range.fin);
+    CHECK(result.frame.fin);
+    CHECK(as_string(result.frame.data) == "done");
+}
+
+TEST_CASE("stream send state emits empty FIN frames") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.finish().ok());
+
+    auto result = state.pop_frame(0);
+
+    REQUIRE(result.ok());
+    REQUIRE(result.has_frame);
+    CHECK(result.range.offset == 0);
+    CHECK(result.range.length == 0);
+    CHECK(result.range.fin);
+    CHECK(result.frame.offset == 0);
+    CHECK_FALSE(result.frame.offset_present);
+    CHECK(result.frame.fin);
+    CHECK(result.frame.data.empty());
+}
+
+TEST_CASE("stream send state rejects append after finish") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.finish().ok());
+
+    auto result = state.append(text("late"));
+
+    CHECK_FALSE(result.ok());
+    CHECK(result.error.code() == flowq::error_code::protocol_error);
+}
+
+TEST_CASE("stream send state retransmits lost data with identical bytes") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.append(text("hello")).ok());
+    auto sent = state.pop_frame(5);
+    REQUIRE(sent.ok());
+    REQUIRE(sent.has_frame);
+
+    state.on_lost(sent.range);
+    auto retransmit = state.pop_frame(5);
+
+    REQUIRE(retransmit.ok());
+    REQUIRE(retransmit.has_frame);
+    CHECK(retransmit.frame.offset == 0);
+    CHECK(as_string(retransmit.frame.data) == "hello");
+}
+
+TEST_CASE("stream send state does not emit lost data when payload limit is zero") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.append(text("hello")).ok());
+    auto sent = state.pop_frame(5);
+    REQUIRE(sent.ok());
+    REQUIRE(sent.has_frame);
+
+    state.on_lost(sent.range);
+    auto blocked = state.pop_frame(0);
+    auto retransmit = state.pop_frame(5);
+
+    REQUIRE(blocked.ok());
+    CHECK_FALSE(blocked.has_frame);
+    REQUIRE(retransmit.ok());
+    REQUIRE(retransmit.has_frame);
+    CHECK(as_string(retransmit.frame.data) == "hello");
+}
+
+TEST_CASE("stream send state suppresses retransmission after ACK") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.append(text("hello")).ok());
+    auto sent = state.pop_frame(5);
+    REQUIRE(sent.ok());
+    REQUIRE(sent.has_frame);
+
+    state.on_acked(sent.range);
+    state.on_lost(sent.range);
+    auto result = state.pop_frame(5);
+
+    REQUIRE(result.ok());
+    CHECK_FALSE(result.has_frame);
+}
+
+TEST_CASE("stream send state drops queued lost data after ACK") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.append(text("hello")).ok());
+    auto sent = state.pop_frame(5);
+    REQUIRE(sent.ok());
+    REQUIRE(sent.has_frame);
+
+    state.on_lost(sent.range);
+    state.on_acked(sent.range);
+    auto result = state.pop_frame(5);
+
+    REQUIRE(result.ok());
+    CHECK_FALSE(result.has_frame);
+}
+
+TEST_CASE("stream send state drops queued lost fragments covered by a larger ACK") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.append(text("hello")).ok());
+    auto sent = state.pop_frame(5);
+    REQUIRE(sent.ok());
+    REQUIRE(sent.has_frame);
+
+    state.on_lost(sent.range);
+    auto partial = state.pop_frame(2);
+    REQUIRE(partial.ok());
+    REQUIRE(partial.has_frame);
+    CHECK(as_string(partial.frame.data) == "he");
+
+    state.on_acked(sent.range);
+    auto result = state.pop_frame(5);
+
+    REQUIRE(result.ok());
+    CHECK_FALSE(result.has_frame);
+}
+
+TEST_CASE("stream send state retransmits lost FIN") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.finish().ok());
+    auto fin = state.pop_frame(0);
+    REQUIRE(fin.ok());
+    REQUIRE(fin.has_frame);
+
+    state.on_lost(fin.range);
+    auto retransmit = state.pop_frame(0);
+
+    REQUIRE(retransmit.ok());
+    REQUIRE(retransmit.has_frame);
+    CHECK(retransmit.range.fin);
+    CHECK(retransmit.frame.fin);
+    CHECK(retransmit.frame.data.empty());
+
+    auto after = state.pop_frame(0);
+    REQUIRE(after.ok());
+    CHECK_FALSE(after.has_frame);
+}
+
+TEST_CASE("stream send frames feed receive reassembly") {
+    flowq::quic::stream_send_state sender{0};
+    flowq::quic::stream_receive_state receiver{};
+    REQUIRE(sender.append(text("hello flowq")).ok());
+    REQUIRE(sender.finish().ok());
+
+    auto first = sender.pop_frame(5);
+    auto second = sender.pop_frame(16);
+    REQUIRE(first.ok());
+    REQUIRE(second.ok());
+    REQUIRE(first.has_frame);
+    REQUIRE(second.has_frame);
+
+    auto first_delivery = receiver.receive(first.frame);
+    auto second_delivery = receiver.receive(second.frame);
+
+    REQUIRE(first_delivery.ok());
+    REQUIRE(second_delivery.ok());
+    CHECK(as_string(first_delivery.data) == "hello");
+    CHECK(as_string(second_delivery.data) == " flowq");
+    CHECK(second_delivery.closed);
+    CHECK(receiver.closed());
+}
+
+TEST_CASE("stream send set routes independent stream send states") {
+    flowq::quic::stream_send_set streams{};
+    REQUIRE(streams.append(0, text("alpha")).ok());
+    REQUIRE(streams.append(4, text("beta")).ok());
+
+    auto first = streams.pop_frame(0, 16);
+    auto second = streams.pop_frame(4, 16);
+
+    REQUIRE(first.ok());
+    REQUIRE(second.ok());
+    REQUIRE(first.has_frame);
+    REQUIRE(second.has_frame);
+    CHECK(first.frame.stream_id == 0);
+    CHECK(second.frame.stream_id == 4);
+    CHECK(first.frame.offset == 0);
+    CHECK(second.frame.offset == 0);
+    CHECK(as_string(first.frame.data) == "alpha");
+    CHECK(as_string(second.frame.data) == "beta");
+}
