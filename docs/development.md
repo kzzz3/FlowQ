@@ -224,3 +224,28 @@ It turns immutable application bytes into structural STREAM frames that existing
 M6 remains below packet scheduling and connection policy. It does not implement flow-control credit, packet-to-stream
 range mapping in `connection_loop`, congestion control, prioritization, RESET_STREAM, STOP_SENDING, short headers,
 Application Data packet handling, TLS, or public stream APIs.
+
+## QUIC STREAM flow-control/lifecycle-core scope
+
+The M7 STREAM stage adds minimal pure stream-level flow-control accounting and FIN lifecycle inspection to
+`include/flowq/quic/stream.hpp`. It keeps the M5a/M6 stream cores deterministic and value-oriented while making send and
+receive behavior respect stream byte-credit limits.
+
+- `stream_receive_state` can be constructed with a local stream receive limit. Incoming STREAM data ending at that limit
+  is accepted; data whose end offset exceeds it returns `flow_control_error` without mutating buffered stream bytes.
+- `stream_receive_state::update_max_data()` raises receive credit monotonically, so stale smaller limits do not shrink the
+  allowed byte range.
+- `stream_send_state` can be constructed with peer stream credit. New STREAM data is clipped by both caller payload limit
+  and peer credit; when credit is exhausted, `pop_frame()` returns no frame instead of failing.
+- `stream_send_state::update_max_data()` raises peer stream credit monotonically and lets pending bytes resume at stable
+  offsets.
+- Already-sent lost ranges remain retransmittable even when new unsent bytes are currently blocked by credit.
+- Send lifecycle inspectors expose `finished()`, `fin_sent()`, `fin_acked()`, `closed()`, and `blocked()` without adding a
+  public async stream API.
+- `stream_receive_set` and `stream_send_set` route initial stream credit and credit updates to independent per-stream
+  states.
+
+M7 remains a stream-core milestone, not wire-level QUIC flow-control integration. It does not implement `MAX_DATA`,
+`MAX_STREAM_DATA`, `DATA_BLOCKED`, `STREAM_DATA_BLOCKED`, connection-level flow control, packet-to-stream ACK/loss mapping
+inside `connection_loop`, congestion control, prioritization, RESET_STREAM, STOP_SENDING, short headers, Application Data
+packet handling, TLS, or public stream APIs.
