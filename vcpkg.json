@@ -1,0 +1,10 @@
+{
+  "name": "flowq",
+  "version-string": "0.1.0",
+  "description": "Modern C++ QUIC protocol library built on standalone Asio and sender/receiver execution.",
+  "dependencies": [
+    "asio",
+    "catch2",
+    "stdexec"
+  ]
+}

@@ -1,0 +1,11 @@
+# CMake build outputs
+build*/
+out/
+
+# Local IDE/editor state
+.vs/
+.vscode/
+
+# Local worktree folders, if used later
+.worktrees/
+worktrees/
