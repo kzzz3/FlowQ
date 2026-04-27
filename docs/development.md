@@ -120,3 +120,22 @@ packet protection and connection integration.
 
 M3a intentionally defers RTT estimation, ACK-delay interpretation, time-threshold loss, PTO, persistent congestion,
 congestion control, pacing, stream retransmission queues, flow control, TLS, packet protection, and ACK ECN handling.
+
+## QUIC recovery-core scope
+
+The M3b recovery stage extends `flowq::quic::ack_loss` with pure timing decisions from RFC 9002. It remains a
+deterministic value-type layer and still does not own sockets, ASIO timers, TLS state, or packet protection.
+
+- `rtt_estimator` tracks latest RTT, min RTT, smoothed RTT, and RTT variance from explicit samples. ACK delay is
+  clamped to the peer max ACK delay only after handshake confirmation, and is never subtracted below min RTT.
+- `detect_time_threshold_losses` evaluates explicit `recovery_packet` timestamps inside one packet number space,
+  marks old outstanding ack-eliciting packets lost, and returns the earliest future loss-time deadline.
+- `pto_deadline` computes probe timeout deadlines from smoothed RTT, RTT variance, granularity, peer max ACK delay,
+  initial RTT, and PTO backoff. `next_loss_timer` anchors PTO to the last outstanding ack-eliciting packet's send
+  time so repeated scheduler polling does not move the deadline forward. PTO expiry is reported only as a deadline;
+  M3b does not send probe packets.
+- `next_loss_timer` is a pure selector that prefers loss-time deadlines over PTO and does not arm Application Data PTO
+  before handshake confirmation.
+
+M3b intentionally defers congestion control, persistent congestion, pacing, stream retransmission policy, actual timer
+arming, probe packet construction, TLS, packet protection, key discard, migration, ECN, and ACK-frequency behavior.
