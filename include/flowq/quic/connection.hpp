@@ -302,6 +302,14 @@ public:
         return {};
     }
 
+    [[nodiscard]] const stream_receive_state* receive_stream(std::uint64_t stream_id) const noexcept {
+        return receive_streams_.find(stream_id);
+    }
+
+    [[nodiscard]] const stream_send_state* send_stream(std::uint64_t stream_id) const noexcept {
+        return send_streams_.find(stream_id);
+    }
+
 private:
     connection_loop_config config_;
     std::vector<connection_loop_action> actions_{};
@@ -526,6 +534,23 @@ private:
         }
     }
 
+    [[nodiscard]] flowq::error apply_stream_control_frames(const std::vector<frame>& frames) {
+        for (const auto& item : frames) {
+            if (const auto* reset = std::get_if<reset_stream_frame>(&item)) {
+                auto delivery = receive_streams_.reset(*reset);
+                if (!delivery.result.ok()) {
+                    return delivery.result.error;
+                }
+            } else if (const auto* stop = std::get_if<stop_sending_frame>(&item)) {
+                auto result = send_streams_.stop_sending(*stop);
+                if (!result.ok()) {
+                    return result.error;
+                }
+            }
+        }
+        return {};
+    }
+
     [[nodiscard]] std::vector<stream_delivery> receive_stream_frames(const std::vector<frame>& frames) {
         std::vector<stream_delivery> deliveries;
         for (const auto& item : frames) {
@@ -543,6 +568,10 @@ private:
         }
         apply_ack_frames(parsed.number.space, parsed.frames);
         apply_flow_control_frames(parsed.frames);
+        if (auto error = apply_stream_control_frames(parsed.frames); !error.ok()) {
+            actions_.emplace_back(close_action{error});
+            return;
+        }
         auto stream_deliveries = receive_stream_frames(parsed.frames);
         actions_.emplace_back(received_packet_event{parsed.number, std::move(parsed.frames), std::move(peer), std::move(stream_deliveries)});
     }

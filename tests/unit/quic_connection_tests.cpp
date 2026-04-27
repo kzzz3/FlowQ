@@ -915,6 +915,55 @@ TEST_CASE("connection loop scopes Application ACKs to Application sent packets")
     CHECK(application_packets[0].state == flowq::quic::sent_packet_state::acknowledged);
 }
 
+TEST_CASE("connection loop routes inbound RESET_STREAM to receive stream state") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    client.queue_application({flowq::quic::frame{flowq::quic::reset_stream_frame{0, 0x2a, 5}}});
+    client.flush(at(0ms));
+    auto datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer});
+    auto actions = server.drain_actions();
+
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(actions[0]));
+    const auto& event = std::get<flowq::quic::received_packet_event>(actions[0]);
+    REQUIRE(event.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::reset_stream_frame>(event.frames[0]));
+    const auto* stream = server.receive_stream(0);
+    REQUIRE(stream != nullptr);
+    CHECK(stream->reset_received());
+    CHECK(stream->reset_error_code() == 0x2a);
+    CHECK(stream->reset_final_size() == 5);
+}
+
+TEST_CASE("connection loop routes inbound STOP_SENDING to send stream state") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(server.append_stream_data(0, text("hello")).ok());
+
+    client.queue_application({flowq::quic::frame{flowq::quic::stop_sending_frame{0, 0x2a}}});
+    client.flush(at(0ms));
+    auto datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer});
+    auto actions = server.drain_actions();
+    auto scheduled = server.schedule_stream_frames(order, 1, 16);
+
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(actions[0]));
+    const auto* stream = server.send_stream(0);
+    REQUIRE(stream != nullptr);
+    CHECK(stream->stop_requested());
+    CHECK(stream->stop_error_code() == 0x2a);
+    REQUIRE(scheduled.ok());
+    CHECK(scheduled.frames.empty());
+}
+
 TEST_CASE("connection loop converts invalid inbound datagrams to close actions") {
     flowq::quic::plaintext_packet_protector protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
