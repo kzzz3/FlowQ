@@ -189,6 +189,11 @@ TEST_CASE("packet header reports malformed and unsupported inputs") {
     CHECK_FALSE(flowq::quic::decode_packet_header(bytes({0xd0, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00})).ok());
 }
 
+TEST_CASE("packet header keeps short and structural Application packets out of long-header decoding") {
+    CHECK_FALSE(flowq::quic::decode_packet_header(bytes({0x40, 0x00, 0x00, 0x00, 0x00})).ok());
+    CHECK_FALSE(flowq::quic::decode_packet_header(bytes({0x50, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00})).ok());
+}
+
 TEST_CASE("packet header encode rejects invalid structural values") {
     flowq::quic::version_negotiation_header no_versions{
         std::byte{0x80},

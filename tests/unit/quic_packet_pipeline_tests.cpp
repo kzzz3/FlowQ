@@ -170,6 +170,70 @@ TEST_CASE("packet pipeline round trips Handshake frames") {
     REQUIRE(std::holds_alternative<flowq::quic::crypto_frame>(parsed.frames[0]));
 }
 
+TEST_CASE("packet pipeline round trips structural Application frames") {
+    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::application_packet_build_request request{
+        cid({0xaa}),
+        flowq::quic::packet_number{flowq::quic::packet_number_space::application, 3},
+        {
+            flowq::quic::frame{flowq::quic::ping_frame{}},
+            flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, flowq::buffer{bytes({0x66, 0x77})}}}
+        },
+        &protector,
+        flowq::quic::packet_pipeline_config{1200}
+    };
+
+    auto assembled = flowq::quic::assemble_application_packet(request);
+    REQUIRE(assembled.ok());
+    CHECK(assembled.number.space == flowq::quic::packet_number_space::application);
+    CHECK(assembled.number.value == 3);
+    CHECK(assembled.protection == flowq::quic::protection_level::none);
+
+    auto parsed = flowq::quic::parse_application_packet(assembled.datagram, protector);
+    REQUIRE(parsed.ok());
+    CHECK(parsed.space == flowq::quic::packet_number_space::application);
+    CHECK(parsed.number.value == 3);
+    CHECK(parsed.protection == flowq::quic::protection_level::none);
+    REQUIRE(std::holds_alternative<flowq::quic::structural_application_header>(parsed.header));
+    REQUIRE(parsed.frames.size() == 2);
+    CHECK(std::holds_alternative<flowq::quic::ping_frame>(parsed.frames[0]));
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(parsed.frames[1]));
+    const auto& stream = std::get<flowq::quic::stream_frame>(parsed.frames[1]);
+    CHECK(stream.stream_id == 0);
+    check_buffer(stream.data, {0x66, 0x77});
+}
+
+TEST_CASE("packet pipeline rejects invalid structural Application packet metadata invariants") {
+    flowq::quic::plaintext_packet_protector plaintext{};
+    flowq::quic::application_packet_build_request request{
+        cid({0xaa}),
+        flowq::quic::packet_number{flowq::quic::packet_number_space::application, 0x1'0000'0000ULL},
+        {flowq::quic::frame{flowq::quic::ping_frame{}}},
+        &plaintext,
+        flowq::quic::packet_pipeline_config{1200}
+    };
+
+    CHECK_FALSE(flowq::quic::assemble_application_packet(request).ok());
+
+    request.number = flowq::quic::packet_number{flowq::quic::packet_number_space::initial, 1};
+    CHECK_FALSE(flowq::quic::assemble_application_packet(request).ok());
+
+    request.number = flowq::quic::packet_number{flowq::quic::packet_number_space::application, 1};
+    request.protector = nullptr;
+    CHECK_FALSE(flowq::quic::assemble_application_packet(request).ok());
+
+    xor_packet_protector handshake_protector{flowq::quic::protection_level::handshake};
+    request.protector = &handshake_protector;
+    CHECK_FALSE(flowq::quic::assemble_application_packet(request).ok());
+}
+
+TEST_CASE("packet pipeline rejects malformed structural Application packets") {
+    flowq::quic::plaintext_packet_protector protector{};
+
+    CHECK_FALSE(flowq::quic::parse_application_packet(flowq::buffer{bytes({})}, protector).ok());
+    CHECK_FALSE(flowq::quic::parse_application_packet(flowq::buffer{bytes({0x50, 0x01})}, protector).ok());
+}
+
 TEST_CASE("packet pipeline rejects missing protectors") {
     flowq::quic::packet_build_request request{};
     request.frames.push_back(flowq::quic::frame{flowq::quic::ping_frame{}});

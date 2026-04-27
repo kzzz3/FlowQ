@@ -83,6 +83,14 @@ struct packet_build_request {
     packet_pipeline_config config{};
 };
 
+struct application_packet_build_request {
+    connection_id destination_connection_id;
+    packet_number number{};
+    std::vector<frame> frames;
+    const packet_protector* protector{};
+    packet_pipeline_config config{};
+};
+
 struct assembled_packet {
     flowq::buffer datagram;
     packet_number number{};
@@ -158,6 +166,10 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
 
 [[nodiscard]] inline bool protection_level_matches(long_packet_type type, protection_level level) {
     return level == protection_level::none || level == expected_protection_for(type);
+}
+
+[[nodiscard]] inline bool application_protection_level_matches(protection_level level) {
+    return level == protection_level::none || level == protection_level::application;
 }
 
 [[nodiscard]] inline packet_number_space space_for_header(const packet_header& header) {
@@ -278,6 +290,62 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     return {std::move(encoded.payload), request.number, request.protector->level(), {}};
 }
 
+[[nodiscard]] inline assembled_packet assemble_application_packet(const application_packet_build_request& request) {
+    if (request.protector == nullptr) {
+        return {{}, request.number, protection_level::none, detail::pipeline_error("packet protector is required")};
+    }
+    if (request.number.value > 0xffff'ffffULL) {
+        return {{}, request.number, request.protector->level(), detail::pipeline_error("packet number exceeds fixed M16 encoding")};
+    }
+    if (request.number.space != packet_number_space::application) {
+        return {{}, request.number, request.protector->level(), detail::pipeline_error("packet number space does not match structural Application packet")};
+    }
+    if (!detail::application_protection_level_matches(request.protector->level())) {
+        return {{}, request.number, request.protector->level(), detail::pipeline_error("packet protector level does not match structural Application packet")};
+    }
+
+    std::vector<std::byte> frame_bytes;
+    for (const auto& frame : request.frames) {
+        const auto encoded = std::visit(
+            [](const auto& concrete_frame) {
+                return encode_frame(concrete_frame);
+            },
+            frame);
+        if (!encoded.ok()) {
+            return {{}, request.number, request.protector->level(), encoded.error};
+        }
+        frame_bytes.insert(frame_bytes.end(), encoded.payload.data(), encoded.payload.data() + static_cast<std::ptrdiff_t>(encoded.payload.size()));
+    }
+
+    const auto protected_frames = request.protector->protect(frame_bytes);
+    if (!protected_frames.ok()) {
+        return {{}, request.number, request.protector->level(), protected_frames.error};
+    }
+
+    std::vector<std::byte> protected_payload;
+    protected_payload.reserve(4 + protected_frames.payload.size());
+    detail::append_packet_number(protected_payload, request.number.value);
+    protected_payload.insert(
+        protected_payload.end(),
+        protected_frames.payload.data(),
+        protected_frames.payload.data() + static_cast<std::ptrdiff_t>(protected_frames.payload.size()));
+
+    auto encoded = encode_packet_header(packet_header{structural_application_header{
+        std::byte{0x50},
+        request.destination_connection_id,
+        protected_payload.size(),
+        flowq::buffer{protected_payload}
+    }});
+    if (!encoded.ok()) {
+        return {{}, request.number, request.protector->level(), encoded.error};
+    }
+    if (encoded.payload.size() > request.config.max_datagram_size) {
+        return {{}, request.number, request.protector->level(), detail::pipeline_error("QUIC datagram exceeds maximum size")};
+    }
+
+    return {std::move(encoded.payload), request.number, request.protector->level(), {}};
+}
+
 [[nodiscard]] inline parsed_packet parse_long_packet(std::span<const std::byte> datagram, const packet_protector* protector) {
     if (protector == nullptr) {
         return {{}, {}, {}, protection_level::none, {}, detail::pipeline_error("packet protector is required")};
@@ -312,12 +380,68 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     return {std::move(decoded_header.header), number, number.space, protector->level(), std::move(decoded_frames.frames), {}};
 }
 
+[[nodiscard]] inline parsed_packet parse_application_packet(std::span<const std::byte> datagram, const packet_protector* protector) {
+    if (protector == nullptr) {
+        return {{}, {}, {}, protection_level::none, {}, detail::pipeline_error("packet protector is required")};
+    }
+    if (!detail::application_protection_level_matches(protector->level())) {
+        return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("packet protector level does not match structural Application packet")};
+    }
+    if (datagram.empty()) {
+        return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("empty structural Application packet")};
+    }
+    if (datagram[0] != std::byte{0x50}) {
+        return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("unsupported structural Application packet marker")};
+    }
+
+    std::size_t offset = 1;
+    connection_id destination_connection_id;
+    if (!detail::read_connection_id(datagram, offset, destination_connection_id)) {
+        return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("truncated structural Application connection ID")};
+    }
+
+    std::uint64_t length = 0;
+    if (!detail::read_packet_varint_at(datagram, offset, length)) {
+        return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("truncated structural Application length")};
+    }
+    if (length != datagram.size() - offset) {
+        return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("structural Application protected payload length mismatch")};
+    }
+    if (length < 4) {
+        return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("packet payload is missing fixed packet number")};
+    }
+
+    auto protected_payload = flowq::buffer{datagram.subspan(offset, static_cast<std::size_t>(length))};
+    const std::span<const std::byte> payload{protected_payload.data(), protected_payload.size()};
+    const auto number = packet_number{packet_number_space::application, detail::read_packet_number(std::span<const std::byte, 4>{payload.data(), 4})};
+
+    const auto plaintext = protector->unprotect(payload.subspan(4));
+    if (!plaintext.ok()) {
+        return {structural_application_header{std::byte{0x50}, std::move(destination_connection_id), length, std::move(protected_payload)}, number, number.space, protector->level(), {}, plaintext.error};
+    }
+
+    auto decoded_frames = decode_frames(plaintext.payload);
+    if (!decoded_frames.ok()) {
+        return {structural_application_header{std::byte{0x50}, std::move(destination_connection_id), length, std::move(protected_payload)}, number, number.space, protector->level(), {}, decoded_frames.error};
+    }
+
+    return {structural_application_header{std::byte{0x50}, std::move(destination_connection_id), length, std::move(protected_payload)}, number, number.space, protector->level(), std::move(decoded_frames.frames), {}};
+}
+
 [[nodiscard]] inline parsed_packet parse_long_packet(const flowq::buffer& datagram, const packet_protector& protector) {
     return parse_long_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, &protector);
 }
 
 [[nodiscard]] inline parsed_packet parse_long_packet(const flowq::buffer& datagram, const packet_protector* protector) {
     return parse_long_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, protector);
+}
+
+[[nodiscard]] inline parsed_packet parse_application_packet(const flowq::buffer& datagram, const packet_protector& protector) {
+    return parse_application_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, &protector);
+}
+
+[[nodiscard]] inline parsed_packet parse_application_packet(const flowq::buffer& datagram, const packet_protector* protector) {
+    return parse_application_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, protector);
 }
 
 } // namespace flowq::quic
