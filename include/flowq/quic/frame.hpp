@@ -55,7 +55,35 @@ struct stream_frame {
     flowq::buffer data;
 };
 
-using frame = std::variant<padding_frame, ping_frame, connection_close_frame, ack_frame, crypto_frame, stream_frame>;
+struct max_data_frame {
+    std::uint64_t maximum_data{};
+};
+
+struct max_stream_data_frame {
+    std::uint64_t stream_id{};
+    std::uint64_t maximum_stream_data{};
+};
+
+struct data_blocked_frame {
+    std::uint64_t maximum_data{};
+};
+
+struct stream_data_blocked_frame {
+    std::uint64_t stream_id{};
+    std::uint64_t maximum_stream_data{};
+};
+
+using frame = std::variant<
+    padding_frame,
+    ping_frame,
+    connection_close_frame,
+    ack_frame,
+    crypto_frame,
+    stream_frame,
+    max_data_frame,
+    max_stream_data_frame,
+    data_blocked_frame,
+    stream_data_blocked_frame>;
 
 struct frame_decode_result {
     std::vector<frame> frames;
@@ -154,6 +182,26 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
     return {flowq::buffer{output}, {}};
 }
 
+[[nodiscard]] inline frame_encode_result encode_single_limit_frame(std::uint64_t type, std::uint64_t maximum_data, const char* message) {
+    std::vector<std::byte> output;
+    if (!append_varint(output, type) || !append_varint(output, maximum_data)) {
+        return {{}, codec_error(message)};
+    }
+    return {flowq::buffer{output}, {}};
+}
+
+[[nodiscard]] inline frame_encode_result encode_stream_limit_frame(
+    std::uint64_t type,
+    std::uint64_t stream_id,
+    std::uint64_t maximum_stream_data,
+    const char* message) {
+    std::vector<std::byte> output;
+    if (!append_varint(output, type) || !append_varint(output, stream_id) || !append_varint(output, maximum_stream_data)) {
+        return {{}, codec_error(message)};
+    }
+    return {flowq::buffer{output}, {}};
+}
+
 [[nodiscard]] inline bool read_varint_at(std::span<const std::byte> input, std::size_t& offset, std::uint64_t& value) {
     auto decoded = decode_varint(input.subspan(offset));
     if (!decoded.ok()) {
@@ -191,6 +239,22 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
 
 [[nodiscard]] inline frame_encode_result encode_frame(const stream_frame& frame) {
     return detail::encode_stream(frame);
+}
+
+[[nodiscard]] inline frame_encode_result encode_frame(const max_data_frame& frame) {
+    return detail::encode_single_limit_frame(0x10, frame.maximum_data, "failed to encode MAX_DATA frame");
+}
+
+[[nodiscard]] inline frame_encode_result encode_frame(const max_stream_data_frame& frame) {
+    return detail::encode_stream_limit_frame(0x11, frame.stream_id, frame.maximum_stream_data, "failed to encode MAX_STREAM_DATA frame");
+}
+
+[[nodiscard]] inline frame_encode_result encode_frame(const data_blocked_frame& frame) {
+    return detail::encode_single_limit_frame(0x14, frame.maximum_data, "failed to encode DATA_BLOCKED frame");
+}
+
+[[nodiscard]] inline frame_encode_result encode_frame(const stream_data_blocked_frame& frame) {
+    return detail::encode_stream_limit_frame(0x15, frame.stream_id, frame.maximum_stream_data, "failed to encode STREAM_DATA_BLOCKED frame");
 }
 
 [[nodiscard]] inline frame_decode_result decode_frames(std::span<const std::byte> input) {
@@ -295,6 +359,44 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
             auto data = flowq::buffer{input.subspan(offset, static_cast<std::size_t>(length))};
             offset += static_cast<std::size_t>(length);
             frames.emplace_back(stream_frame{stream_id, stream_offset, offset_present, length_present, fin, std::move(data)});
+            continue;
+        }
+
+        if (type == 0x10) {
+            std::uint64_t maximum_data = 0;
+            if (!detail::read_varint_at(input, offset, maximum_data)) {
+                return {{}, codec_error("truncated MAX_DATA frame")};
+            }
+            frames.emplace_back(max_data_frame{maximum_data});
+            continue;
+        }
+
+        if (type == 0x11) {
+            std::uint64_t stream_id = 0;
+            std::uint64_t maximum_stream_data = 0;
+            if (!detail::read_varint_at(input, offset, stream_id) || !detail::read_varint_at(input, offset, maximum_stream_data)) {
+                return {{}, codec_error("truncated MAX_STREAM_DATA frame")};
+            }
+            frames.emplace_back(max_stream_data_frame{stream_id, maximum_stream_data});
+            continue;
+        }
+
+        if (type == 0x14) {
+            std::uint64_t maximum_data = 0;
+            if (!detail::read_varint_at(input, offset, maximum_data)) {
+                return {{}, codec_error("truncated DATA_BLOCKED frame")};
+            }
+            frames.emplace_back(data_blocked_frame{maximum_data});
+            continue;
+        }
+
+        if (type == 0x15) {
+            std::uint64_t stream_id = 0;
+            std::uint64_t maximum_stream_data = 0;
+            if (!detail::read_varint_at(input, offset, stream_id) || !detail::read_varint_at(input, offset, maximum_stream_data)) {
+                return {{}, codec_error("truncated STREAM_DATA_BLOCKED frame")};
+            }
+            frames.emplace_back(stream_data_blocked_frame{stream_id, maximum_stream_data});
             continue;
         }
 

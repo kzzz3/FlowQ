@@ -130,6 +130,60 @@ TEST_CASE("QUIC frame codec round trips all STREAM type variants") {
     }
 }
 
+TEST_CASE("QUIC frame codec round trips flow-control frame values") {
+    {
+        flowq::quic::max_data_frame frame{1024};
+        auto encoded = flowq::quic::encode_frame(frame);
+        REQUIRE(encoded.ok());
+
+        auto decoded = flowq::quic::decode_frames(encoded.payload);
+        REQUIRE(decoded.ok());
+        REQUIRE(decoded.frames.size() == 1);
+        REQUIRE(std::holds_alternative<flowq::quic::max_data_frame>(decoded.frames[0]));
+        CHECK(std::get<flowq::quic::max_data_frame>(decoded.frames[0]).maximum_data == 1024);
+    }
+
+    {
+        flowq::quic::max_stream_data_frame frame{4, 2048};
+        auto encoded = flowq::quic::encode_frame(frame);
+        REQUIRE(encoded.ok());
+
+        auto decoded = flowq::quic::decode_frames(encoded.payload);
+        REQUIRE(decoded.ok());
+        REQUIRE(decoded.frames.size() == 1);
+        REQUIRE(std::holds_alternative<flowq::quic::max_stream_data_frame>(decoded.frames[0]));
+        const auto& flow = std::get<flowq::quic::max_stream_data_frame>(decoded.frames[0]);
+        CHECK(flow.stream_id == 4);
+        CHECK(flow.maximum_stream_data == 2048);
+    }
+
+    {
+        flowq::quic::data_blocked_frame frame{4096};
+        auto encoded = flowq::quic::encode_frame(frame);
+        REQUIRE(encoded.ok());
+
+        auto decoded = flowq::quic::decode_frames(encoded.payload);
+        REQUIRE(decoded.ok());
+        REQUIRE(decoded.frames.size() == 1);
+        REQUIRE(std::holds_alternative<flowq::quic::data_blocked_frame>(decoded.frames[0]));
+        CHECK(std::get<flowq::quic::data_blocked_frame>(decoded.frames[0]).maximum_data == 4096);
+    }
+
+    {
+        flowq::quic::stream_data_blocked_frame frame{8, 8192};
+        auto encoded = flowq::quic::encode_frame(frame);
+        REQUIRE(encoded.ok());
+
+        auto decoded = flowq::quic::decode_frames(encoded.payload);
+        REQUIRE(decoded.ok());
+        REQUIRE(decoded.frames.size() == 1);
+        REQUIRE(std::holds_alternative<flowq::quic::stream_data_blocked_frame>(decoded.frames[0]));
+        const auto& blocked = std::get<flowq::quic::stream_data_blocked_frame>(decoded.frames[0]);
+        CHECK(blocked.stream_id == 8);
+        CHECK(blocked.maximum_stream_data == 8192);
+    }
+}
+
 TEST_CASE("QUIC frame codec decodes mixed old and new frames") {
     auto decoded = flowq::quic::decode_frames(bytes({
         0x00,
@@ -144,6 +198,32 @@ TEST_CASE("QUIC frame codec decodes mixed old and new frames") {
     CHECK(std::holds_alternative<flowq::quic::ping_frame>(decoded.frames[1]));
     CHECK(std::holds_alternative<flowq::quic::crypto_frame>(decoded.frames[2]));
     CHECK(std::holds_alternative<flowq::quic::stream_frame>(decoded.frames[3]));
+}
+
+TEST_CASE("QUIC frame codec decodes mixed flow-control frames") {
+    auto decoded = flowq::quic::decode_frames(bytes({
+        0x01,
+        0x10, 0x40, 0x40,
+        0x11, 0x04, 0x48, 0x00,
+        0x14, 0x50, 0x00,
+        0x15, 0x08, 0x60, 0x00,
+        0x0a, 0x01, 0x01, 0xee
+    }));
+
+    REQUIRE(decoded.ok());
+    REQUIRE(decoded.frames.size() == 6);
+    CHECK(std::holds_alternative<flowq::quic::ping_frame>(decoded.frames[0]));
+    REQUIRE(std::holds_alternative<flowq::quic::max_data_frame>(decoded.frames[1]));
+    CHECK(std::get<flowq::quic::max_data_frame>(decoded.frames[1]).maximum_data == 64);
+    REQUIRE(std::holds_alternative<flowq::quic::max_stream_data_frame>(decoded.frames[2]));
+    CHECK(std::get<flowq::quic::max_stream_data_frame>(decoded.frames[2]).stream_id == 4);
+    CHECK(std::get<flowq::quic::max_stream_data_frame>(decoded.frames[2]).maximum_stream_data == 2048);
+    REQUIRE(std::holds_alternative<flowq::quic::data_blocked_frame>(decoded.frames[3]));
+    CHECK(std::get<flowq::quic::data_blocked_frame>(decoded.frames[3]).maximum_data == 4096);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_data_blocked_frame>(decoded.frames[4]));
+    CHECK(std::get<flowq::quic::stream_data_blocked_frame>(decoded.frames[4]).stream_id == 8);
+    CHECK(std::get<flowq::quic::stream_data_blocked_frame>(decoded.frames[4]).maximum_stream_data == 8192);
+    CHECK(std::holds_alternative<flowq::quic::stream_frame>(decoded.frames[5]));
 }
 
 TEST_CASE("QUIC frame codec reports empty unknown and truncated frames") {
@@ -171,4 +251,23 @@ TEST_CASE("QUIC frame codec rejects malformed ACK CRYPTO and STREAM frames") {
 
     // Truncated nested varint.
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x06, 0x40})).ok());
+}
+
+TEST_CASE("QUIC frame codec rejects malformed flow-control frames") {
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x10})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x10, 0x40})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x11})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x11, 0x04})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x11, 0x04, 0x40})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x14})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x15})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x15, 0x08})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x15, 0x08, 0x40})).ok());
+}
+
+TEST_CASE("QUIC frame codec leaves stream-count flow-control frames unsupported in M8") {
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x12, 0x00})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x13, 0x00})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x16, 0x00})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x17, 0x00})).ok());
 }
