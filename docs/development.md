@@ -183,3 +183,24 @@ M4b remains structural and deliberately incomplete. It does not implement TLS ha
 protection, short headers, Application Data, packet-number reconstruction, Retry validation, stream state, stream
 reassembly, retransmission queues, flow control, congestion control, pacing, key discard, migration, listener demux, or
 ASIO event-loop integration.
+
+## QUIC STREAM reassembly-core scope
+
+The M5a STREAM stage adds a pure receive-side stream core in `include/flowq/quic/stream.hpp` under `flowq::quic`. It
+turns structural STREAM frames from the M2c codec into ordered byte deliveries that future connection/application APIs
+can consume.
+
+- `classify_stream_id` decodes the QUIC stream ID initiator and direction bits: client/server initiated and
+  bidirectional/unidirectional.
+- `stream_receive_state` tracks one stream's contiguous receive offset, buffered out-of-order ranges, final-size state,
+  and closed state.
+- STREAM data is delivered only as newly contiguous ordered bytes. Gaps are buffered until the missing prefix arrives;
+  duplicate frames produce no new delivery.
+- Identical overlapping bytes are accepted, while conflicting bytes at the same offset return `protocol_error`.
+- FIN fixes final size to `offset + data.size()`. Later inconsistent FIN values or data beyond the known final size
+  return `protocol_error`.
+- `stream_receive_set` routes STREAM frames by stream ID to independent receive states.
+
+M5a intentionally keeps STREAM behavior below connection/application policy. It does not implement flow-control windows,
+`MAX_DATA`, `MAX_STREAM_DATA`, `RESET_STREAM`, `STOP_SENDING`, stream scheduling, prioritization, retransmission queues,
+send buffering, short headers, Application Data packet handling, TLS, or public stream APIs.
