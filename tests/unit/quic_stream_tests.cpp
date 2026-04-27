@@ -183,6 +183,33 @@ TEST_CASE("stream receive state rejects data beyond known final size") {
     CHECK(result.error.code() == flowq::error_code::protocol_error);
 }
 
+TEST_CASE("stream receive state enforces stream data credit") {
+    flowq::quic::stream_receive_state state{5};
+
+    auto accepted = state.receive(stream(0, 0, "hello"));
+    auto blocked = state.receive(stream(0, 5, "!"));
+
+    REQUIRE(accepted.ok());
+    CHECK(as_string(accepted.data) == "hello");
+    CHECK_FALSE(blocked.ok());
+    CHECK(blocked.error.code() == flowq::error_code::flow_control_error);
+}
+
+TEST_CASE("stream receive state accepts data after receive credit increases") {
+    flowq::quic::stream_receive_state state{2};
+
+    REQUIRE(state.receive(stream(0, 0, "he")).ok());
+    auto blocked = state.receive(stream(0, 2, "llo"));
+    state.update_max_data(5);
+    auto accepted = state.receive(stream(0, 2, "llo"));
+
+    CHECK_FALSE(blocked.ok());
+    CHECK(blocked.error.code() == flowq::error_code::flow_control_error);
+    REQUIRE(accepted.ok());
+    CHECK(as_string(accepted.data) == "llo");
+    CHECK(state.next_offset() == 5);
+}
+
 TEST_CASE("stream ID classification follows QUIC initiator and direction bits") {
     auto zero = flowq::quic::classify_stream_id(0);
     CHECK(zero.initiator == flowq::quic::stream_initiator::client);
@@ -217,6 +244,28 @@ TEST_CASE("stream receive set routes stream frames independently") {
     REQUIRE(streams.find(4) != nullptr);
     CHECK(streams.find(0)->next_offset() == 1);
     CHECK(streams.find(4)->next_offset() == 1);
+}
+
+TEST_CASE("stream receive set routes stream credit updates independently") {
+    flowq::quic::stream_receive_set streams{2};
+
+    auto first_prefix = streams.receive(stream(0, 0, "he"));
+    auto first_blocked = streams.receive(stream(0, 2, "llo"));
+    auto second_blocked = streams.receive(stream(4, 0, "beta"));
+    streams.update_max_data(0, 5);
+    auto first_suffix = streams.receive(stream(0, 2, "llo"));
+
+    REQUIRE(first_prefix.result.ok());
+    CHECK_FALSE(first_blocked.result.ok());
+    CHECK(first_blocked.result.error.code() == flowq::error_code::flow_control_error);
+    CHECK_FALSE(second_blocked.result.ok());
+    CHECK(second_blocked.result.error.code() == flowq::error_code::flow_control_error);
+    REQUIRE(first_suffix.result.ok());
+    CHECK(as_string(first_suffix.result.data) == "llo");
+    REQUIRE(streams.find(0) != nullptr);
+    REQUIRE(streams.find(4) != nullptr);
+    CHECK(streams.find(0)->max_data() == 5);
+    CHECK(streams.find(4)->max_data() == 2);
 }
 
 TEST_CASE("stream send state emits STREAM frames with stable offsets") {
@@ -390,6 +439,131 @@ TEST_CASE("stream send state drops queued lost fragments covered by a larger ACK
     CHECK_FALSE(result.has_frame);
 }
 
+TEST_CASE("stream send state limits new data by peer stream credit") {
+    flowq::quic::stream_send_state state{0, 2};
+    REQUIRE(state.append(text("hello")).ok());
+
+    auto first = state.pop_frame(16);
+    auto blocked = state.pop_frame(16);
+
+    REQUIRE(first.ok());
+    REQUIRE(first.has_frame);
+    CHECK(as_string(first.frame.data) == "he");
+    CHECK(first.range.offset == 0);
+    CHECK(first.range.length == 2);
+    REQUIRE(blocked.ok());
+    CHECK_FALSE(blocked.has_frame);
+    CHECK(state.blocked());
+}
+
+TEST_CASE("stream send state emits pending data after peer credit increases") {
+    flowq::quic::stream_send_state state{0, 2};
+    REQUIRE(state.append(text("hello")).ok());
+    auto first = state.pop_frame(16);
+    REQUIRE(first.ok());
+    REQUIRE(first.has_frame);
+
+    state.update_max_data(5);
+    auto second = state.pop_frame(16);
+
+    REQUIRE(second.ok());
+    REQUIRE(second.has_frame);
+    CHECK(second.range.offset == 2);
+    CHECK(as_string(second.frame.data) == "llo");
+    CHECK_FALSE(state.blocked());
+}
+
+TEST_CASE("stream send state delays FIN until final data is within credit") {
+    flowq::quic::stream_send_state state{0, 2};
+    REQUIRE(state.append(text("hello")).ok());
+    REQUIRE(state.finish().ok());
+
+    auto first = state.pop_frame(16);
+    auto blocked = state.pop_frame(16);
+    state.update_max_data(5);
+    auto final = state.pop_frame(16);
+
+    REQUIRE(first.ok());
+    REQUIRE(first.has_frame);
+    CHECK(as_string(first.frame.data) == "he");
+    CHECK_FALSE(first.frame.fin);
+    REQUIRE(blocked.ok());
+    CHECK_FALSE(blocked.has_frame);
+    REQUIRE(final.ok());
+    REQUIRE(final.has_frame);
+    CHECK(final.range.offset == 2);
+    CHECK(as_string(final.frame.data) == "llo");
+    CHECK(final.range.fin);
+    CHECK(final.frame.fin);
+}
+
+TEST_CASE("stream send state does not emit empty FIN before buffered data") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.append(text("hello")).ok());
+    REQUIRE(state.finish().ok());
+
+    auto premature = state.pop_frame(0);
+    state.on_acked(flowq::quic::stream_send_range{5, 0, true});
+
+    REQUIRE(premature.ok());
+    CHECK_FALSE(premature.has_frame);
+    CHECK_FALSE(state.fin_sent());
+    CHECK_FALSE(state.fin_acked());
+    CHECK_FALSE(state.closed());
+
+    auto final = state.pop_frame(5);
+    REQUIRE(final.ok());
+    REQUIRE(final.has_frame);
+    CHECK(as_string(final.frame.data) == "hello");
+    CHECK(final.frame.fin);
+}
+
+TEST_CASE("stream send state reports lifecycle through FIN acknowledgement") {
+    flowq::quic::stream_send_state state{0};
+
+    CHECK_FALSE(state.finished());
+    CHECK_FALSE(state.fin_sent());
+    CHECK_FALSE(state.fin_acked());
+    CHECK_FALSE(state.closed());
+
+    REQUIRE(state.finish().ok());
+    CHECK(state.finished());
+    CHECK_FALSE(state.fin_sent());
+    CHECK_FALSE(state.fin_acked());
+    CHECK_FALSE(state.closed());
+
+    auto fin = state.pop_frame(0);
+    REQUIRE(fin.ok());
+    REQUIRE(fin.has_frame);
+    CHECK(state.fin_sent());
+    CHECK_FALSE(state.fin_acked());
+    CHECK_FALSE(state.closed());
+
+    state.on_acked(fin.range);
+    CHECK(state.finished());
+    CHECK(state.fin_sent());
+    CHECK(state.fin_acked());
+    CHECK(state.closed());
+}
+
+TEST_CASE("stream send state retransmits lost sent data while new data is credit blocked") {
+    flowq::quic::stream_send_state state{0, 2};
+    REQUIRE(state.append(text("hello")).ok());
+    auto sent = state.pop_frame(16);
+    REQUIRE(sent.ok());
+    REQUIRE(sent.has_frame);
+    REQUIRE(state.blocked());
+
+    state.on_lost(sent.range);
+    auto retransmit = state.pop_frame(16);
+
+    REQUIRE(retransmit.ok());
+    REQUIRE(retransmit.has_frame);
+    CHECK(retransmit.range.offset == 0);
+    CHECK(as_string(retransmit.frame.data) == "he");
+    CHECK(state.blocked());
+}
+
 TEST_CASE("stream send state retransmits lost FIN") {
     flowq::quic::stream_send_state state{0};
     REQUIRE(state.finish().ok());
@@ -453,4 +627,32 @@ TEST_CASE("stream send set routes independent stream send states") {
     CHECK(second.frame.offset == 0);
     CHECK(as_string(first.frame.data) == "alpha");
     CHECK(as_string(second.frame.data) == "beta");
+}
+
+TEST_CASE("stream send set routes peer stream credit updates independently") {
+    flowq::quic::stream_send_set streams{2};
+    REQUIRE(streams.append(0, text("hello")).ok());
+    REQUIRE(streams.append(4, text("beta")).ok());
+
+    auto first_prefix = streams.pop_frame(0, 16);
+    auto second_prefix = streams.pop_frame(4, 16);
+    auto first_blocked = streams.pop_frame(0, 16);
+    streams.update_max_data(0, 5);
+    auto first_suffix = streams.pop_frame(0, 16);
+    auto second_blocked = streams.pop_frame(4, 16);
+
+    REQUIRE(first_prefix.ok());
+    REQUIRE(second_prefix.ok());
+    REQUIRE(first_prefix.has_frame);
+    REQUIRE(second_prefix.has_frame);
+    CHECK(as_string(first_prefix.frame.data) == "he");
+    CHECK(as_string(second_prefix.frame.data) == "be");
+    REQUIRE(first_blocked.ok());
+    CHECK_FALSE(first_blocked.has_frame);
+    REQUIRE(first_suffix.ok());
+    REQUIRE(first_suffix.has_frame);
+    CHECK(first_suffix.range.offset == 2);
+    CHECK(as_string(first_suffix.frame.data) == "llo");
+    REQUIRE(second_blocked.ok());
+    CHECK_FALSE(second_blocked.has_frame);
 }

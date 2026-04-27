@@ -58,6 +58,10 @@ namespace detail {
     return flowq::error{flowq::error_code::protocol_error, message};
 }
 
+[[nodiscard]] inline flowq::error stream_flow_control_error(const char* message) {
+    return flowq::error{flowq::error_code::flow_control_error, message};
+}
+
 inline void append_stream_buffer(std::vector<std::byte>& output, const flowq::buffer& input) {
     output.insert(output.end(), input.data(), input.data() + static_cast<std::ptrdiff_t>(input.size()));
 }
@@ -66,6 +70,8 @@ inline void append_stream_buffer(std::vector<std::byte>& output, const flowq::bu
 
 class stream_receive_state {
 public:
+    explicit stream_receive_state(std::uint64_t max_data = UINT64_MAX) noexcept : max_data_{max_data} {}
+
     [[nodiscard]] stream_receive_result receive(const stream_frame& frame) {
         const auto offset = frame.offset_present ? frame.offset : 0;
         const auto frame_size = static_cast<std::uint64_t>(frame.data.size());
@@ -73,6 +79,10 @@ public:
             return failure("STREAM frame offset overflows");
         }
         const auto end = offset + frame_size;
+
+        if (end > max_data_) {
+            return flow_control_failure("STREAM data exceeds stream flow-control credit");
+        }
 
         std::optional<std::uint64_t> proposed_final_size = final_size_;
         if (frame.fin) {
@@ -112,8 +122,17 @@ public:
         return final_size_.has_value() && next_offset_ == *final_size_;
     }
 
+    void update_max_data(std::uint64_t max_data) noexcept {
+        max_data_ = std::max(max_data_, max_data);
+    }
+
+    [[nodiscard]] std::uint64_t max_data() const noexcept {
+        return max_data_;
+    }
+
 private:
     std::uint64_t next_offset_{};
+    std::uint64_t max_data_{UINT64_MAX};
     std::vector<std::byte> delivered_{};
     std::map<std::uint64_t, flowq::buffer> pending_{};
     std::optional<std::uint64_t> final_size_{};
@@ -128,6 +147,10 @@ private:
 
     [[nodiscard]] stream_receive_result failure(const char* message) const {
         return {{}, final_size_.has_value(), final_size_value(), closed(), detail::stream_error(message)};
+    }
+
+    [[nodiscard]] stream_receive_result flow_control_failure(const char* message) const {
+        return {{}, final_size_.has_value(), final_size_value(), closed(), detail::stream_flow_control_error(message)};
     }
 
     [[nodiscard]] flowq::error validate_overlap(std::uint64_t offset, const flowq::buffer& data) const {
@@ -245,9 +268,16 @@ struct stream_delivery {
 
 class stream_receive_set {
 public:
+    explicit stream_receive_set(std::uint64_t initial_max_data = UINT64_MAX) noexcept
+        : initial_max_data_{initial_max_data} {}
+
     [[nodiscard]] stream_delivery receive(const stream_frame& frame) {
-        auto& state = streams_[frame.stream_id];
+        auto& state = state_for(frame.stream_id);
         return {frame.stream_id, state.receive(frame)};
+    }
+
+    void update_max_data(std::uint64_t stream_id, std::uint64_t max_data) {
+        state_for(stream_id).update_max_data(max_data);
     }
 
     [[nodiscard]] const stream_receive_state* find(std::uint64_t stream_id) const noexcept {
@@ -256,7 +286,14 @@ public:
     }
 
 private:
+    std::uint64_t initial_max_data_{UINT64_MAX};
     std::map<std::uint64_t, stream_receive_state> streams_{};
+
+    [[nodiscard]] stream_receive_state& state_for(std::uint64_t stream_id) {
+        auto [iterator, inserted] = streams_.try_emplace(stream_id, initial_max_data_);
+        (void)inserted;
+        return iterator->second;
+    }
 };
 
 struct stream_operation_result {
@@ -286,7 +323,8 @@ struct stream_send_result {
 
 class stream_send_state {
 public:
-    explicit stream_send_state(std::uint64_t stream_id) : stream_id_{stream_id} {}
+    explicit stream_send_state(std::uint64_t stream_id, std::uint64_t max_data = UINT64_MAX)
+        : stream_id_{stream_id}, max_data_{max_data} {}
 
     [[nodiscard]] stream_operation_result append(const flowq::buffer& data) {
         if (finished_) {
@@ -329,12 +367,16 @@ public:
         }
 
         if (next_unsent_offset_ < bytes_.size() && max_data_size > 0) {
+            if (next_unsent_offset_ >= max_data_) {
+                return {};
+            }
             const auto available = bytes_.size() - static_cast<std::size_t>(next_unsent_offset_);
-            const auto length = std::min(max_data_size, available);
+            const auto credit = static_cast<std::size_t>(max_data_ - next_unsent_offset_);
+            const auto length = std::min(max_data_size, std::min(available, credit));
             const auto range = stream_send_range{
                 next_unsent_offset_,
                 static_cast<std::uint64_t>(length),
-                finished_ && next_unsent_offset_ + length == bytes_.size()
+                finished_ && next_unsent_offset_ + length == bytes_.size() && bytes_.size() <= max_data_
             };
             next_unsent_offset_ += length;
             if (range.fin) {
@@ -343,7 +385,7 @@ public:
             return make_frame(range);
         }
 
-        if (finished_ && !fin_sent_ && !fin_acked_) {
+        if (finished_ && !fin_sent_ && !fin_acked_ && next_unsent_offset_ == bytes_.size() && bytes_.size() <= max_data_) {
             fin_sent_ = true;
             return make_frame(stream_send_range{static_cast<std::uint64_t>(bytes_.size()), 0, true});
         }
@@ -352,6 +394,9 @@ public:
     }
 
     void on_acked(stream_send_range range) {
+        if (range.fin && (!fin_sent_ || next_unsent_offset_ != bytes_.size())) {
+            range.fin = false;
+        }
         acked_.push_back(range);
         lost_.erase(
             std::remove_if(
@@ -376,8 +421,37 @@ public:
         lost_.push_back(range);
     }
 
+    void update_max_data(std::uint64_t max_data) noexcept {
+        max_data_ = std::max(max_data_, max_data);
+    }
+
+    [[nodiscard]] std::uint64_t max_data() const noexcept {
+        return max_data_;
+    }
+
+    [[nodiscard]] bool blocked() const noexcept {
+        return next_unsent_offset_ < bytes_.size() && next_unsent_offset_ >= max_data_;
+    }
+
+    [[nodiscard]] bool finished() const noexcept {
+        return finished_;
+    }
+
+    [[nodiscard]] bool fin_sent() const noexcept {
+        return fin_sent_;
+    }
+
+    [[nodiscard]] bool fin_acked() const noexcept {
+        return fin_acked_;
+    }
+
+    [[nodiscard]] bool closed() const noexcept {
+        return finished_ && fin_acked_;
+    }
+
 private:
     std::uint64_t stream_id_{};
+    std::uint64_t max_data_{UINT64_MAX};
     std::vector<std::byte> bytes_{};
     std::uint64_t next_unsent_offset_{};
     bool finished_{};
@@ -422,6 +496,9 @@ private:
 
 class stream_send_set {
 public:
+    explicit stream_send_set(std::uint64_t initial_max_data = UINT64_MAX) noexcept
+        : initial_max_data_{initial_max_data} {}
+
     [[nodiscard]] stream_operation_result append(std::uint64_t stream_id, const flowq::buffer& data) {
         return state_for(stream_id).append(data);
     }
@@ -434,11 +511,16 @@ public:
         return state_for(stream_id).pop_frame(max_data_size);
     }
 
+    void update_max_data(std::uint64_t stream_id, std::uint64_t max_data) {
+        state_for(stream_id).update_max_data(max_data);
+    }
+
 private:
+    std::uint64_t initial_max_data_{UINT64_MAX};
     std::map<std::uint64_t, stream_send_state> streams_{};
 
     [[nodiscard]] stream_send_state& state_for(std::uint64_t stream_id) {
-        auto [iterator, inserted] = streams_.try_emplace(stream_id, stream_id);
+        auto [iterator, inserted] = streams_.try_emplace(stream_id, stream_id, initial_max_data_);
         (void)inserted;
         return iterator->second;
     }
