@@ -249,3 +249,25 @@ M7 remains a stream-core milestone, not wire-level QUIC flow-control integration
 `MAX_STREAM_DATA`, `DATA_BLOCKED`, `STREAM_DATA_BLOCKED`, connection-level flow control, packet-to-stream ACK/loss mapping
 inside `connection_loop`, congestion control, prioritization, RESET_STREAM, STOP_SENDING, short headers, Application Data
 packet handling, TLS, or public stream APIs.
+
+## QUIC flow-control frame-codec scope
+
+The M8 frame-codec stage extends `include/flowq/quic/frame.hpp` with structural wire support for QUIC byte-credit
+flow-control signaling frames. It turns the four RFC 9000 byte-credit frame types into inert value objects that can be
+encoded, decoded, and mixed with existing structural frame values.
+
+- `max_data_frame` encodes and decodes `MAX_DATA` (`0x10`) with a `maximum_data` varint.
+- `max_stream_data_frame` encodes and decodes `MAX_STREAM_DATA` (`0x11`) with `stream_id` and
+  `maximum_stream_data` varints.
+- `data_blocked_frame` encodes and decodes `DATA_BLOCKED` (`0x14`) with a `maximum_data` varint.
+- `stream_data_blocked_frame` encodes and decodes `STREAM_DATA_BLOCKED` (`0x15`) with `stream_id` and
+  `maximum_stream_data` varints.
+- Malformed or truncated flow-control frame fields return structural codec errors, matching the existing frame codec
+  style.
+- Stream-count flow-control frames (`MAX_STREAMS` and `STREAMS_BLOCKED`) remain unsupported in M8 because stream-opening
+  limits require a separate connection/stream policy stage.
+
+M8 remains a codec-only milestone. It does not apply decoded `MAX_STREAM_DATA` to M7 stream send state, emit blocked
+frames from M7 blocked state, implement connection-level flow-control accounting, integrate with `connection_loop`, add
+packet-type legality checks, support short headers or Application Data packets, implement TLS/AEAD/header protection,
+congestion control, RESET_STREAM, STOP_SENDING, stream scheduling, or public APIs.
