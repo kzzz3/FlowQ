@@ -280,6 +280,10 @@ public:
         state_for(stream_id).update_max_data(max_data);
     }
 
+    void update_max_data(const max_stream_data_frame& frame) {
+        update_max_data(frame.stream_id, frame.maximum_stream_data);
+    }
+
     [[nodiscard]] const stream_receive_state* find(std::uint64_t stream_id) const noexcept {
         const auto found = streams_.find(stream_id);
         return found == streams_.end() ? nullptr : &found->second;
@@ -425,12 +429,25 @@ public:
         max_data_ = std::max(max_data_, max_data);
     }
 
+    void update_max_data(const max_stream_data_frame& frame) noexcept {
+        if (frame.stream_id == stream_id_) {
+            update_max_data(frame.maximum_stream_data);
+        }
+    }
+
     [[nodiscard]] std::uint64_t max_data() const noexcept {
         return max_data_;
     }
 
     [[nodiscard]] bool blocked() const noexcept {
         return next_unsent_offset_ < bytes_.size() && next_unsent_offset_ >= max_data_;
+    }
+
+    [[nodiscard]] std::optional<stream_data_blocked_frame> blocked_frame() const noexcept {
+        if (!blocked()) {
+            return std::nullopt;
+        }
+        return stream_data_blocked_frame{stream_id_, max_data_};
     }
 
     [[nodiscard]] bool finished() const noexcept {
@@ -513,6 +530,18 @@ public:
 
     void update_max_data(std::uint64_t stream_id, std::uint64_t max_data) {
         state_for(stream_id).update_max_data(max_data);
+    }
+
+    void update_max_data(const max_stream_data_frame& frame) {
+        update_max_data(frame.stream_id, frame.maximum_stream_data);
+    }
+
+    [[nodiscard]] std::optional<stream_data_blocked_frame> blocked_frame(std::uint64_t stream_id) const noexcept {
+        const auto found = streams_.find(stream_id);
+        if (found == streams_.end()) {
+            return std::nullopt;
+        }
+        return found->second.blocked_frame();
     }
 
 private:
