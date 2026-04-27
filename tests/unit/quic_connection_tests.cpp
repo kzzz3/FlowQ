@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <cstddef>
 #include <initializer_list>
 #include <span>
@@ -10,6 +11,13 @@
 #include <vector>
 
 namespace {
+
+using namespace std::chrono_literals;
+using clock_type = std::chrono::steady_clock;
+
+clock_type::time_point at(std::chrono::milliseconds offset) {
+    return clock_type::time_point{offset};
+}
 
 std::vector<std::byte> bytes(std::initializer_list<unsigned int> values) {
     std::vector<std::byte> output;
@@ -166,6 +174,135 @@ TEST_CASE("connection loop applies inbound ACK frames to sent packet trackers") 
     const auto& packets = client.sent_packets(flowq::quic::packet_number_space::initial).packets();
     REQUIRE(packets.size() == 1);
     CHECK(packets[0].state == flowq::quic::sent_packet_state::acknowledged);
+}
+
+TEST_CASE("connection loop exposes recovery timer for outstanding ack eliciting packets") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+
+    loop.flush(at(0ms));
+    auto timer = loop.next_recovery_timer(at(100ms));
+
+    REQUIRE(timer.has_value());
+    CHECK(timer->space == flowq::quic::packet_number_space::initial);
+    CHECK(timer->mode == flowq::quic::loss_timer_mode::pto);
+    CHECK(timer->deadline == at(999ms));
+}
+
+TEST_CASE("connection loop clears recovery timer after packet acknowledgment") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto outbound = require_single_outbound(client.drain_actions());
+    REQUIRE(client.next_recovery_timer(at(1ms)).has_value());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(outbound.payload), outbound.peer});
+    (void)server.drain_actions();
+    server.acknowledge(flowq::quic::packet_number_space::initial);
+    auto ack_datagram = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+
+    CHECK_FALSE(client.next_recovery_timer(at(2ms)).has_value());
+}
+
+TEST_CASE("connection loop recovery timer polling does not move PTO deadline") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+
+    auto first = loop.next_recovery_timer(at(100ms));
+    auto later = loop.next_recovery_timer(at(500ms));
+
+    REQUIRE(first.has_value());
+    REQUIRE(later.has_value());
+    CHECK(later->deadline == first->deadline);
+}
+
+TEST_CASE("connection loop ACK only packets do not arm recovery timers") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto outbound = require_single_outbound(client.drain_actions());
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(outbound.payload), outbound.peer});
+    (void)server.drain_actions();
+
+    server.acknowledge(flowq::quic::packet_number_space::initial);
+
+    CHECK_FALSE(server.next_recovery_timer(at(1ms)).has_value());
+}
+
+TEST_CASE("connection loop recovery timer expiry reports time threshold losses") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    client.update_rtt(flowq::quic::rtt_sample{80ms, 0ms, 25ms, true});
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    (void)client.drain_actions();
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(10ms));
+    (void)client.drain_actions();
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{1, 0, 0, {}}}});
+    server.flush(at(20ms));
+    auto ack_datagram = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    auto result = client.on_recovery_timer(flowq::quic::packet_number_space::initial, at(100ms));
+
+    CHECK(result.space == flowq::quic::packet_number_space::initial);
+    CHECK(result.newly_lost == std::vector<std::uint64_t>{0});
+    const auto& packets = client.sent_packets(flowq::quic::packet_number_space::initial).packets();
+    REQUIRE(packets.size() == 2);
+    CHECK(packets[0].state == flowq::quic::sent_packet_state::lost);
+    CHECK(packets[1].state == flowq::quic::sent_packet_state::acknowledged);
+}
+
+TEST_CASE("connection loop does not arm loss timer without largest acknowledged packet") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    loop.update_rtt(flowq::quic::rtt_sample{80ms, 0ms, 25ms, true});
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+
+    auto timer = loop.next_recovery_timer(at(100ms));
+
+    REQUIRE(timer.has_value());
+    CHECK(timer->space == flowq::quic::packet_number_space::initial);
+    CHECK(timer->mode == flowq::quic::loss_timer_mode::pto);
+    CHECK(timer->deadline == at(240ms));
+}
+
+TEST_CASE("connection loop does not arm loss timer for packets above largest acknowledged") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    client.update_rtt(flowq::quic::rtt_sample{80ms, 0ms, 25ms, true});
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    (void)client.drain_actions();
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(10ms));
+    (void)client.drain_actions();
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{0, 0, 0, {}}}});
+    server.flush(at(20ms));
+    auto ack_datagram = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    auto timer = client.next_recovery_timer(at(100ms));
+    auto expired = client.on_recovery_timer(flowq::quic::packet_number_space::initial, at(100ms));
+
+    REQUIRE(timer.has_value());
+    CHECK(timer->mode == flowq::quic::loss_timer_mode::pto);
+    CHECK(timer->deadline == at(250ms));
+    CHECK(expired.newly_lost.empty());
+    REQUIRE(expired.next_deadline.has_value());
+    CHECK(*expired.next_deadline == at(250ms));
 }
 
 TEST_CASE("connection loop routes inbound STREAM frames to receive streams") {

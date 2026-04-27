@@ -6,8 +6,10 @@
 #include <flowq/quic/stream.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 #include <variant>
@@ -39,6 +41,18 @@ struct received_packet_event {
     std::vector<frame> frames;
     flowq::endpoint peer;
     std::vector<stream_delivery> stream_deliveries;
+};
+
+struct connection_recovery_timer {
+    packet_number_space space{};
+    loss_timer_mode mode{loss_timer_mode::none};
+    std::chrono::steady_clock::time_point deadline{};
+};
+
+struct connection_recovery_result {
+    packet_number_space space{};
+    std::vector<std::uint64_t> newly_lost;
+    std::optional<std::chrono::steady_clock::time_point> next_deadline;
 };
 
 using connection_loop_action = std::variant<outbound_datagram, received_packet_event, close_action>;
@@ -137,8 +151,46 @@ public:
     }
 
     void flush() {
-        flush_space(packet_number_space::initial, initial_queue_, next_initial_packet_number_);
-        flush_space(packet_number_space::handshake, handshake_queue_, next_handshake_packet_number_);
+        flush(std::chrono::steady_clock::now());
+    }
+
+    void flush(std::chrono::steady_clock::time_point sent_at) {
+        flush_space(packet_number_space::initial, initial_queue_, next_initial_packet_number_, sent_at);
+        flush_space(packet_number_space::handshake, handshake_queue_, next_handshake_packet_number_, sent_at);
+    }
+
+    void update_rtt(const rtt_sample& sample) {
+        recovery_rtt_.update(sample);
+    }
+
+    [[nodiscard]] std::optional<connection_recovery_timer> next_recovery_timer(std::chrono::steady_clock::time_point now) const {
+        auto selected = recovery_timer_for(packet_number_space::initial, now);
+        auto handshake = recovery_timer_for(packet_number_space::handshake, now);
+        if (handshake.has_value() && (!selected.has_value() || handshake->deadline < selected->deadline)) {
+            selected = handshake;
+        }
+        return selected;
+    }
+
+    [[nodiscard]] connection_recovery_result on_recovery_timer(packet_number_space space, std::chrono::steady_clock::time_point now) {
+        connection_recovery_result result{space, {}, {}};
+        if (!detail::is_connection_loop_space(space)) {
+            return result;
+        }
+
+        const auto largest = largest_acknowledged(space);
+        if (largest.has_value()) {
+            auto detected = detect_time_threshold_losses(recovery_packets_, recovery_rtt_, space, *largest, now);
+            result.newly_lost = std::move(detected.newly_lost);
+            for (const auto packet_number : result.newly_lost) {
+                sent_tracker(space).mark_lost(packet_number);
+            }
+        }
+
+        if (auto timer = recovery_timer_for(space, now)) {
+            result.next_deadline = timer->deadline;
+        }
+        return result;
     }
 
     void on_datagram(inbound_datagram datagram) {
@@ -194,6 +246,7 @@ public:
         }
 
         sent_tracker(space).on_packet_sent(assembled.number.value, false);
+        recovery_packets_.push_back(recovery_packet{space, assembled.number.value, std::chrono::steady_clock::now(), false, sent_packet_state::outstanding});
         actions_.emplace_back(outbound_datagram{std::move(assembled.datagram), config_.peer});
     }
 
@@ -229,6 +282,11 @@ private:
     stream_send_set send_streams_{};
     std::uint64_t connection_send_max_data_{UINT64_MAX};
     std::uint64_t connection_data_sent_{};
+    rtt_estimator recovery_rtt_{};
+    pto_config recovery_pto_config_{};
+    std::vector<recovery_packet> recovery_packets_{};
+    std::optional<std::uint64_t> largest_initial_acknowledged_{};
+    std::optional<std::uint64_t> largest_handshake_acknowledged_{};
 
     [[nodiscard]] static packet_number_space packet_space_for(const packet_header& header) noexcept {
         return std::holds_alternative<handshake_header>(header) ? packet_number_space::handshake : packet_number_space::initial;
@@ -260,7 +318,7 @@ private:
         });
     }
 
-    void flush_space(packet_number_space space, std::vector<frame>& queue, std::uint64_t& next_packet_number) {
+    void flush_space(packet_number_space space, std::vector<frame>& queue, std::uint64_t& next_packet_number, std::chrono::steady_clock::time_point sent_at) {
         if (queue.empty()) {
             return;
         }
@@ -284,6 +342,7 @@ private:
 
         ++next_packet_number;
         sent_tracker(space).on_packet_sent(assembled.number.value, ack_eliciting);
+        recovery_packets_.push_back(recovery_packet{space, assembled.number.value, sent_at, ack_eliciting, sent_packet_state::outstanding});
         queue.erase(queue.begin(), queue.begin() + static_cast<std::ptrdiff_t>(selected.next_index));
         actions_.emplace_back(outbound_datagram{std::move(assembled.datagram), config_.peer});
     }
@@ -291,7 +350,62 @@ private:
     void apply_ack_frames(packet_number_space space, const std::vector<frame>& frames) {
         for (const auto& item : frames) {
             if (const auto* ack = std::get_if<ack_frame>(&item)) {
-                (void)sent_tracker(space).on_ack_received(*ack);
+                record_largest_acknowledged(space, ack->largest_acknowledged);
+                auto result = sent_tracker(space).on_ack_received(*ack);
+                mark_recovery_packets(space, result.newly_acknowledged, sent_packet_state::acknowledged);
+                mark_recovery_packets(space, result.newly_lost, sent_packet_state::lost);
+            }
+        }
+    }
+
+    [[nodiscard]] std::optional<connection_recovery_timer> recovery_timer_for(packet_number_space space, std::chrono::steady_clock::time_point now) const {
+        std::optional<std::chrono::steady_clock::time_point> last_ack_eliciting_sent_at;
+        std::optional<std::chrono::steady_clock::time_point> earliest_loss_time;
+        const auto largest = largest_acknowledged(space);
+        const auto loss_delay = recovery_rtt_.has_sample() ? time_threshold_loss_delay(recovery_rtt_) : std::chrono::steady_clock::duration{};
+
+        for (const auto& packet : recovery_packets_) {
+            if (packet.space != space || packet.state != sent_packet_state::outstanding || !packet.ack_eliciting) {
+                continue;
+            }
+            if (!last_ack_eliciting_sent_at.has_value() || packet.sent_at > *last_ack_eliciting_sent_at) {
+                last_ack_eliciting_sent_at = packet.sent_at;
+            }
+            if (largest.has_value() && packet.packet_number < *largest && recovery_rtt_.has_sample()) {
+                const auto loss_time = packet.sent_at + loss_delay;
+                if (!earliest_loss_time.has_value() || loss_time < *earliest_loss_time) {
+                    earliest_loss_time = loss_time;
+                }
+            }
+        }
+
+        if (earliest_loss_time.has_value()) {
+            return connection_recovery_timer{space, loss_timer_mode::loss_time, *earliest_loss_time};
+        }
+        if (last_ack_eliciting_sent_at.has_value() && pto_allowed(space, recovery_pto_config_)) {
+            return connection_recovery_timer{space, loss_timer_mode::pto, pto_deadline(*last_ack_eliciting_sent_at, recovery_rtt_, space, recovery_pto_config_)};
+        }
+        return std::nullopt;
+    }
+
+    void record_largest_acknowledged(packet_number_space space, std::uint64_t packet_number) noexcept {
+        auto& stored = space == packet_number_space::handshake ? largest_handshake_acknowledged_ : largest_initial_acknowledged_;
+        if (!stored.has_value() || packet_number > *stored) {
+            stored = packet_number;
+        }
+    }
+
+    [[nodiscard]] std::optional<std::uint64_t> largest_acknowledged(packet_number_space space) const noexcept {
+        return space == packet_number_space::handshake ? largest_handshake_acknowledged_ : largest_initial_acknowledged_;
+    }
+
+    void mark_recovery_packets(packet_number_space space, const std::vector<std::uint64_t>& packet_numbers, sent_packet_state state) noexcept {
+        for (auto& packet : recovery_packets_) {
+            if (packet.space != space) {
+                continue;
+            }
+            if (std::find(packet_numbers.begin(), packet_numbers.end(), packet.packet_number) != packet_numbers.end()) {
+                packet.state = state;
             }
         }
     }

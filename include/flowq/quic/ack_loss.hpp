@@ -385,6 +385,15 @@ public:
         return packets_;
     }
 
+    void mark_lost(std::uint64_t packet_number) noexcept {
+        for (auto& packet : packets_) {
+            if (packet.packet_number == packet_number && packet.state == sent_packet_state::outstanding) {
+                packet.state = sent_packet_state::lost;
+                return;
+            }
+        }
+    }
+
 private:
     packet_number_space space_{};
     std::vector<sent_packet> packets_{};
