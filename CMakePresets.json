@@ -11,9 +11,10 @@
       "displayName": "Windows MSVC with vcpkg",
       "generator": "Visual Studio 18 2026",
       "binaryDir": "${sourceDir}/build/windows-msvc-vcpkg",
-      "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "FLOWQ_BUILD_TESTS": "ON"
+        "cacheVariables": {
+          "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "FLOWQ_BUILD_TESTS": "ON",
+        "FLOWQ_BUILD_EXAMPLES": "ON"
       }
     }
   ],
@@ -27,6 +28,7 @@
     {
       "name": "windows-msvc-vcpkg",
       "configurePreset": "windows-msvc-vcpkg",
+      "configuration": "Debug",
       "output": {
         "outputOnFailure": true
       }
