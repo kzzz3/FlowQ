@@ -89,6 +89,111 @@ struct packet_header_encode_result {
     }
 };
 
+struct packet_number_length_result {
+    std::size_t bytes{};
+    flowq::error error{};
+
+    [[nodiscard]] bool ok() const noexcept {
+        return error.ok();
+    }
+};
+
+struct packet_number_encode_result {
+    std::size_t bytes_written{};
+    flowq::error error{};
+
+    [[nodiscard]] bool ok() const noexcept {
+        return error.ok();
+    }
+};
+
+struct packet_number_decode_result {
+    std::uint64_t packet_number{};
+    flowq::error error{};
+
+    [[nodiscard]] bool ok() const noexcept {
+        return error.ok();
+    }
+};
+
+[[nodiscard]] inline flowq::error packet_number_error(const char* message) {
+    return flowq::error{flowq::error_code::protocol_error, message};
+}
+
+[[nodiscard]] inline bool valid_packet_number_length(std::size_t length) noexcept {
+    return length >= 1 && length <= 4;
+}
+
+[[nodiscard]] inline packet_number_length_result select_packet_number_length(
+    std::uint64_t packet_number,
+    std::uint64_t largest_acknowledged) {
+    if (packet_number <= largest_acknowledged) {
+        return {0, packet_number_error("packet number must be greater than largest acknowledged")};
+    }
+
+    const auto gap = packet_number - largest_acknowledged;
+    for (std::size_t length = 1; length <= 4; ++length) {
+        const auto window = std::uint64_t{1} << (length * 8U);
+        if (window > gap * 2U) {
+            return {length, {}};
+        }
+    }
+
+    return {0, packet_number_error("packet number gap exceeds 4-byte encoding window")};
+}
+
+[[nodiscard]] inline packet_number_encode_result encode_packet_number(
+    std::uint64_t packet_number,
+    std::size_t length,
+    std::span<std::byte> output) {
+    if (!valid_packet_number_length(length)) {
+        return {0, packet_number_error("packet number length must be 1 to 4 bytes")};
+    }
+    if (output.size() < length) {
+        return {0, packet_number_error("destination buffer too small for packet number")};
+    }
+
+    for (std::size_t index = 0; index < length; ++index) {
+        const auto shift = (length - 1U - index) * 8U;
+        output[index] = static_cast<std::byte>((packet_number >> shift) & 0xffU);
+    }
+
+    return {length, {}};
+}
+
+template <std::ranges::contiguous_range Range>
+    requires std::same_as<std::remove_cv_t<std::ranges::range_value_t<Range>>, std::byte>
+[[nodiscard]] auto encode_packet_number(std::uint64_t packet_number, std::size_t length, Range& output) {
+    return encode_packet_number(packet_number, length, std::span<std::byte>{std::ranges::data(output), std::ranges::size(output)});
+}
+
+[[nodiscard]] inline packet_number_decode_result decode_packet_number(
+    std::uint64_t truncated_packet_number,
+    std::size_t length,
+    std::uint64_t largest_received) {
+    if (!valid_packet_number_length(length)) {
+        return {0, packet_number_error("packet number length must be 1 to 4 bytes")};
+    }
+
+    const auto packet_number_window = std::uint64_t{1} << (length * 8U);
+    if (truncated_packet_number >= packet_number_window) {
+        return {0, packet_number_error("truncated packet number does not fit selected length")};
+    }
+
+    const auto expected_packet_number = largest_received + 1U;
+    const auto packet_number_half_window = packet_number_window / 2U;
+    const auto packet_number_mask = packet_number_window - 1U;
+    auto candidate_packet_number = (expected_packet_number & ~packet_number_mask) | truncated_packet_number;
+
+    if (candidate_packet_number + packet_number_half_window <= expected_packet_number && candidate_packet_number < max_varint - packet_number_window) {
+        candidate_packet_number += packet_number_window;
+    } else if (candidate_packet_number > expected_packet_number + packet_number_half_window && candidate_packet_number >= packet_number_window) {
+        candidate_packet_number -= packet_number_window;
+    }
+
+    return {candidate_packet_number, {}};
+}
+
 namespace detail {
 
 [[nodiscard]] inline flowq::error packet_error(const char* message) {

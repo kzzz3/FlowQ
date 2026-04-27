@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
+#include <array>
 #include <initializer_list>
 #include <variant>
 #include <vector>
@@ -212,4 +213,51 @@ TEST_CASE("packet header encode rejects invalid structural values") {
         flowq::buffer{bytes({0xab, 0xcd})}
     };
     CHECK_FALSE(flowq::quic::encode_packet_header(flowq::quic::packet_header{bad_length}).ok());
+}
+
+TEST_CASE("packet number length selection follows QUIC reconstruction window needs") {
+    auto one_byte = flowq::quic::select_packet_number_length(0xabe8, 0xabd0);
+    REQUIRE(one_byte.ok());
+    CHECK(one_byte.bytes == 1);
+
+    auto two_bytes = flowq::quic::select_packet_number_length(0x100c8, 0x10000);
+    REQUIRE(two_bytes.ok());
+    CHECK(two_bytes.bytes == 2);
+
+    auto four_bytes = flowq::quic::select_packet_number_length(0x0100'0000ULL, 0);
+    REQUIRE(four_bytes.ok());
+    CHECK(four_bytes.bytes == 4);
+
+    CHECK_FALSE(flowq::quic::select_packet_number_length(7, 7).ok());
+}
+
+TEST_CASE("packet number truncation writes selected least significant bytes") {
+    std::array<std::byte, 4> output{};
+
+    auto encoded = flowq::quic::encode_packet_number(0x12345678, 3, output);
+    REQUIRE(encoded.ok());
+    CHECK(encoded.bytes_written == 3);
+    CHECK(output[0] == std::byte{0x34});
+    CHECK(output[1] == std::byte{0x56});
+    CHECK(output[2] == std::byte{0x78});
+
+    CHECK_FALSE(flowq::quic::encode_packet_number(1, 0, output).ok());
+    CHECK_FALSE(flowq::quic::encode_packet_number(1, 5, output).ok());
+}
+
+TEST_CASE("packet number reconstruction follows RFC 9000 sample arithmetic") {
+    auto decoded = flowq::quic::decode_packet_number(0x9b32, 2, 0xa82f30ea);
+    REQUIRE(decoded.ok());
+    CHECK(decoded.packet_number == 0xa82f9b32ULL);
+
+    auto low_candidate = flowq::quic::decode_packet_number(0x01, 1, 0xff);
+    REQUIRE(low_candidate.ok());
+    CHECK(low_candidate.packet_number == 0x101ULL);
+
+    auto high_candidate = flowq::quic::decode_packet_number(0xf0, 1, 0x101);
+    REQUIRE(high_candidate.ok());
+    CHECK(high_candidate.packet_number == 0xf0ULL);
+
+    CHECK_FALSE(flowq::quic::decode_packet_number(0, 0, 0).ok());
+    CHECK_FALSE(flowq::quic::decode_packet_number(0, 5, 0).ok());
 }
