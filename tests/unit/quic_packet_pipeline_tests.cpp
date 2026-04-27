@@ -243,6 +243,33 @@ TEST_CASE("packet pipeline round trips structural Application frames") {
     check_buffer(stream.data, {0x66, 0x77});
 }
 
+TEST_CASE("packet pipeline parses short-header shell in test mode") {
+    flowq::quic::plaintext_packet_protector protector{};
+    const auto parsed = flowq::quic::parse_short_packet(
+        flowq::buffer{bytes({0x40, 0xaa, 0x07, 0x01})},
+        1,
+        protector);
+
+    REQUIRE(parsed.ok());
+    CHECK(parsed.space == flowq::quic::packet_number_space::application);
+    CHECK(parsed.number.value == 7);
+    REQUIRE(std::holds_alternative<flowq::quic::short_header>(parsed.header));
+    const auto& header = std::get<flowq::quic::short_header>(parsed.header);
+    check_buffer(header.destination_connection_id.bytes, {0xaa});
+    REQUIRE(parsed.frames.size() == 1);
+    CHECK(std::holds_alternative<flowq::quic::ping_frame>(parsed.frames[0]));
+}
+
+TEST_CASE("packet pipeline rejects production short-header parsing without header protection context") {
+    provider_backed_packet_protector protector{};
+
+    CHECK_FALSE(flowq::quic::parse_short_packet(
+        flowq::buffer{bytes({0x40, 0xaa, 0x07, 0x01})},
+        1,
+        protector,
+        flowq::quic::packet_protection_policy::production_required).ok());
+}
+
 TEST_CASE("packet pipeline rejects invalid structural Application packet metadata invariants") {
     flowq::quic::plaintext_packet_protector plaintext{};
     flowq::quic::application_packet_build_request request{
