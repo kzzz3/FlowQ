@@ -423,3 +423,23 @@ routes later packet outcomes back into `stream_send_set`.
 M15 retransmits stream information through existing stream send state; it does not construct retransmission packets, refund
 connection flow-control credit, add congestion or pacing policy, implement RESET_STREAM or STOP_SENDING, add Application
 Data packet space, short headers, TLS, AEAD/header protection, public async APIs, sockets, or production interoperability.
+
+## QUIC Application Data structural packet-space scope
+
+The M16 Application Data structural packet-space stage adds an explicit non-production Application packet path for local
+tests and future loopback development.
+
+- `packet_pipeline` exposes `application_packet_build_request`, `assemble_application_packet()`, and
+  `parse_application_packet()` for a structural Application envelope carried behind the existing `packet_protector` seam.
+- Structural Application packets use packet number space `application`, keep packet numbers independent from Initial and
+  Handshake, and can carry frames such as STREAM and ACK in deterministic tests.
+- `connection_loop` owns an Application queue, packet counter, sent tracker, receive tracker, and largest-ACKed value so
+  Application ACKs do not alias Initial or Handshake packet state.
+- `queue_application()`, `flush()`, `on_datagram()`, `acknowledge(application)`, and `sent_packets(application)` support the
+  structural Application path.
+- `decode_packet_header()` still rejects real short headers. The structural marker used by M16 is a test envelope, not an
+  RFC-valid 1-RTT packet header.
+
+M16 is not secure or interoperable QUIC. It does not implement real 1-RTT short-header encoding, packet number
+reconstruction, key phase, TLS 1.3, AEAD, header protection, congestion control, public async APIs, sockets, or production
+interoperability.

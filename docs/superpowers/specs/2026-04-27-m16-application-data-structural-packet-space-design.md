@@ -12,7 +12,8 @@
 
 ## Scope
 
-- Add Application packet-number space assembly/parsing sufficient for tests.
+- Add Application packet-number space assembly/parsing sufficient for tests through `assemble_application_packet()` and
+  `parse_application_packet()`.
 - Use explicit test protection only.
 - Let `connection_loop` queue, flush, parse, and ACK structural Application packets.
 - Preserve Initial/Handshake behavior.
@@ -21,6 +22,9 @@
 
 - Application packet numbers are independent from Initial and Handshake packet numbers.
 - Test-protected Application packets can carry STREAM frames in local tests.
+- Application ACKs are scoped to Application sent packets and must not acknowledge Initial or Handshake packets with the same
+  numeric packet number.
+- Real short-header decoding remains unsupported; structural Application packets use an explicit test-only envelope.
 - Failure paths still produce explicit errors or close actions.
 
 ## Non-Goals

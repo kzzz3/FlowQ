@@ -26,7 +26,7 @@
 - Modify: `include/flowq/quic/packet_pipeline.hpp`
 - Modify: `include/flowq/quic/packet_header.hpp`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Assemble a structural Application packet with a plaintext test protector and a STREAM frame, then parse it back and assert packet number and frames round-trip.
 
@@ -40,15 +40,15 @@ CHECK(parsed.packet_number == 0);
 REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(parsed.frames[0]));
 ```
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Expected: Application packet assembly/parsing path does not exist or is rejected.
 
-- [ ] **Step 3: Implement structural path**
+- [x] **Step 3: Implement structural path**
 
 Add the smallest explicit Application packet envelope needed for deterministic local tests. Name APIs and docs so callers cannot confuse it with secure short-header QUIC.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Expected: packet pipeline tests pass.
 
@@ -58,19 +58,20 @@ Expected: packet pipeline tests pass.
 - Modify: `tests/unit/quic_connection_tests.cpp`
 - Modify: `include/flowq/quic/connection.hpp`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Queue scheduled stream frames into Application packet space, flush to an outbound datagram using plaintext test protection, feed it to a peer connection, and assert stream delivery.
+Also assert Application ACKs are scoped to Application sent packets and do not acknowledge same-number Initial packets.
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Expected: connection still rejects Application packet number space.
 
-- [ ] **Step 3: Integrate structural Application space**
+- [x] **Step 3: Integrate structural Application space**
 
 Allow Application-space packet numbers and trackers in the connection loop only through the explicit structural/test packet path.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Expected: connection Application packet tests pass.
 
@@ -79,11 +80,11 @@ Expected: connection Application packet tests pass.
 **Files:**
 - Modify: `docs/development.md`
 
-- [ ] **Step 1: Update docs**
+- [x] **Step 1: Update docs**
 
 Document that M16 is a structural/test Application Data packet seam. State that it is not secure, not interoperable, and not real short-header/header-protected QUIC.
 
-- [ ] **Step 2: Full verification**
+- [x] **Step 2: Full verification**
 
 Run:
 
@@ -95,6 +96,6 @@ Expected: build succeeds and all tests pass.
 
 ## Self-Review
 
-- Spec coverage: Adds structural Application pipeline, connection flush/receive, and explicit safety boundary.
+- Spec coverage: Adds structural Application pipeline, connection flush/receive/ACK, independent Application packet state, ACK scoping, and explicit safety boundary.
 - Placeholder scan: Real TLS/AEAD/header protection is deferred as a documented security boundary, not a hidden task.
 - Type consistency: Reuses `packet_number_space::application`, `packet_protector`, `frame`, and connection action naming.
