@@ -342,6 +342,317 @@ TEST_CASE("connection loop schedules outbound STREAM frames from connection stre
     CHECK(as_string(stream.data) == "hello");
 }
 
+TEST_CASE("connection loop records STREAM ranges carried by sent packets") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(loop.append_stream_data(0, text("hello")).ok());
+    auto scheduled = loop.schedule_stream_frames(order, 1, 16);
+    REQUIRE(scheduled.ok());
+    loop.queue_initial(std::move(scheduled.frames));
+
+    loop.flush(at(0ms));
+
+    auto ranges = loop.sent_stream_ranges(flowq::quic::packet_number_space::initial, 0);
+    REQUIRE(ranges.size() == 1);
+    CHECK(ranges[0].stream_id == 0);
+    CHECK(ranges[0].range.offset == 0);
+    CHECK(ranges[0].range.length == 5);
+    CHECK_FALSE(ranges[0].range.fin);
+}
+
+TEST_CASE("connection loop records multiple STREAM ranges carried by one packet") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0, 4};
+    REQUIRE(loop.append_stream_data(0, text("alpha")).ok());
+    REQUIRE(loop.append_stream_data(4, text("beta")).ok());
+    auto scheduled = loop.schedule_stream_frames(order, 2, 16);
+    REQUIRE(scheduled.ok());
+    loop.queue_initial(std::move(scheduled.frames));
+
+    loop.flush(at(0ms));
+
+    auto ranges = loop.sent_stream_ranges(flowq::quic::packet_number_space::initial, 0);
+    REQUIRE(ranges.size() == 2);
+    CHECK(ranges[0].stream_id == 0);
+    CHECK(ranges[0].range.offset == 0);
+    CHECK(ranges[0].range.length == 5);
+    CHECK(ranges[1].stream_id == 4);
+    CHECK(ranges[1].range.offset == 0);
+    CHECK(ranges[1].range.length == 4);
+}
+
+TEST_CASE("connection loop records only selected STREAM ranges when packet budget splits frames") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, UINT64_MAX, UINT64_MAX, 6);
+    loop.queue_initial({
+        flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("abc")}},
+        flowq::quic::frame{flowq::quic::stream_frame{4, 0, false, true, false, text("def")}}
+    });
+
+    loop.flush(at(0ms));
+    auto first_ranges = loop.sent_stream_ranges(flowq::quic::packet_number_space::initial, 0);
+    auto second_ranges_before_flush = loop.sent_stream_ranges(flowq::quic::packet_number_space::initial, 1);
+    loop.flush(at(1ms));
+    auto second_ranges = loop.sent_stream_ranges(flowq::quic::packet_number_space::initial, 1);
+
+    REQUIRE(first_ranges.size() == 1);
+    CHECK(first_ranges[0].stream_id == 0);
+    CHECK(second_ranges_before_flush.empty());
+    REQUIRE(second_ranges.size() == 1);
+    CHECK(second_ranges[0].stream_id == 4);
+}
+
+TEST_CASE("connection loop keeps sent STREAM range ledger out of application space") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(loop.append_stream_data(0, text("hello")).ok());
+    auto scheduled = loop.schedule_stream_frames(order, 1, 16);
+    REQUIRE(scheduled.ok());
+    loop.queue_initial(std::move(scheduled.frames));
+    loop.flush(at(0ms));
+
+    CHECK(loop.sent_stream_ranges(flowq::quic::packet_number_space::application, 0).empty());
+}
+
+TEST_CASE("connection loop maps packet loss to stream retransmission state") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(client.append_stream_data(0, text("hello")).ok());
+    auto scheduled = client.schedule_stream_frames(order, 1, 16);
+    REQUIRE(scheduled.ok());
+    client.queue_initial(std::move(scheduled.frames));
+    client.flush(at(0ms));
+    (void)client.drain_actions();
+
+    for (int index = 0; index < 4; ++index) {
+        client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+        client.flush(at(std::chrono::milliseconds{10 + index}));
+        (void)client.drain_actions();
+    }
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{4, 0, 0, {}}}});
+    server.flush(at(20ms));
+    auto ack_datagram = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    auto retransmit = client.schedule_stream_frames(order, 1, 16);
+
+    REQUIRE(retransmit.ok());
+    REQUIRE(retransmit.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(retransmit.frames[0]));
+    const auto& stream = std::get<flowq::quic::stream_frame>(retransmit.frames[0]);
+    CHECK(stream.stream_id == 0);
+    CHECK(stream.offset == 0);
+    CHECK(as_string(stream.data) == "hello");
+}
+
+TEST_CASE("connection loop retransmits lost STREAM data without fresh connection credit") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, UINT64_MAX, 5);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(client.append_stream_data(0, text("hello")).ok());
+    auto scheduled = client.schedule_stream_frames(order, 1, 16);
+    REQUIRE(scheduled.ok());
+    REQUIRE(scheduled.frames.size() == 1);
+    client.queue_initial(std::move(scheduled.frames));
+    client.flush(at(0ms));
+    (void)client.drain_actions();
+
+    for (int index = 0; index < 4; ++index) {
+        client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+        client.flush(at(std::chrono::milliseconds{10 + index}));
+        (void)client.drain_actions();
+    }
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{4, 0, 0, {}}}});
+    server.flush(at(20ms));
+    auto ack_datagram = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    auto retransmit = client.schedule_stream_frames(order, 1, 16);
+
+    REQUIRE(retransmit.ok());
+    REQUIRE(retransmit.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(retransmit.frames[0]));
+    const auto& stream = std::get<flowq::quic::stream_frame>(retransmit.frames[0]);
+    CHECK(stream.offset == 0);
+    CHECK(as_string(stream.data) == "hello");
+}
+
+TEST_CASE("connection loop maps recovery timer loss to stream retransmission state") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+    client.update_rtt(flowq::quic::rtt_sample{80ms, 0ms, 25ms, true});
+    REQUIRE(client.append_stream_data(0, text("hello")).ok());
+    auto scheduled = client.schedule_stream_frames(order, 1, 16);
+    REQUIRE(scheduled.ok());
+    client.queue_initial(std::move(scheduled.frames));
+    client.flush(at(0ms));
+    (void)client.drain_actions();
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(10ms));
+    (void)client.drain_actions();
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{1, 0, 0, {}}}});
+    server.flush(at(20ms));
+    auto ack_datagram = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    auto lost = client.on_recovery_timer(flowq::quic::packet_number_space::initial, at(100ms));
+    auto retransmit = client.schedule_stream_frames(order, 1, 16);
+
+    CHECK(lost.newly_lost == std::vector<std::uint64_t>{0});
+    REQUIRE(retransmit.ok());
+    REQUIRE(retransmit.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(retransmit.frames[0]));
+    const auto& stream = std::get<flowq::quic::stream_frame>(retransmit.frames[0]);
+    CHECK(stream.stream_id == 0);
+    CHECK(stream.offset == 0);
+    CHECK(as_string(stream.data) == "hello");
+}
+
+TEST_CASE("connection loop maps packet ACK to suppress later stream retransmission") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(client.append_stream_data(0, text("hello")).ok());
+    auto scheduled = client.schedule_stream_frames(order, 1, 16);
+    REQUIRE(scheduled.ok());
+    client.queue_initial(std::move(scheduled.frames));
+    client.flush(at(0ms));
+    (void)client.drain_actions();
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{0, 0, 0, {}}}});
+    server.flush(at(10ms));
+    auto ack_datagram = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    auto lost = client.on_recovery_timer(flowq::quic::packet_number_space::initial, at(1000ms));
+    auto retransmit = client.schedule_stream_frames(order, 1, 16);
+
+    CHECK(lost.newly_lost.empty());
+    REQUIRE(retransmit.ok());
+    CHECK(retransmit.frames.empty());
+}
+
+TEST_CASE("connection loop ignores lost manual STREAM frames outside send state") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+    client.queue_initial({flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("external")}}});
+    client.flush(at(0ms));
+    (void)client.drain_actions();
+    for (int index = 0; index < 4; ++index) {
+        client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+        client.flush(at(std::chrono::milliseconds{10 + index}));
+        (void)client.drain_actions();
+    }
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{4, 0, 0, {}}}});
+    server.flush(at(20ms));
+    auto ack_datagram = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    auto retransmit = client.schedule_stream_frames(order, 1, 16);
+
+    REQUIRE(retransmit.ok());
+    CHECK(retransmit.frames.empty());
+}
+
+TEST_CASE("connection loop ignores lost manual STREAM frames for existing unsent send state") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, UINT64_MAX, 0);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(client.append_stream_data(0, text("external")).ok());
+    client.queue_initial({flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("external")}}});
+    client.flush(at(0ms));
+    (void)client.drain_actions();
+    for (int index = 0; index < 4; ++index) {
+        client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+        client.flush(at(std::chrono::milliseconds{10 + index}));
+        (void)client.drain_actions();
+    }
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{4, 0, 0, {}}}});
+    server.flush(at(20ms));
+    auto ack_datagram = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    auto scheduled = client.schedule_stream_frames(order, 1, 16);
+
+    REQUIRE(scheduled.ok());
+    REQUIRE(scheduled.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::data_blocked_frame>(scheduled.frames[0]));
+}
+
+TEST_CASE("connection loop ignores acknowledged manual STREAM frames for existing unsent send state") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(client.append_stream_data(0, text("external")).ok());
+    client.queue_initial({flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("external")}}});
+    client.flush(at(0ms));
+    (void)client.drain_actions();
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{0, 0, 0, {}}}});
+    server.flush(at(10ms));
+    auto ack_datagram = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    auto scheduled = client.schedule_stream_frames(order, 1, 16);
+
+    REQUIRE(scheduled.ok());
+    REQUIRE(scheduled.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(scheduled.frames[0]));
+    const auto& stream = std::get<flowq::quic::stream_frame>(scheduled.frames[0]);
+    CHECK(stream.offset == 0);
+    CHECK(as_string(stream.data) == "external");
+}
+
+TEST_CASE("connection loop keeps manual STREAM ACK from suppressing later real retransmission") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(client.append_stream_data(0, text("external")).ok());
+    client.queue_initial({flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("external")}}});
+    client.flush(at(0ms));
+    (void)client.drain_actions();
+    server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{0, 0, 0, {}}}});
+    server.flush(at(10ms));
+    auto manual_ack = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(manual_ack.payload), manual_ack.peer});
+
+    auto scheduled = client.schedule_stream_frames(order, 1, 16);
+    REQUIRE(scheduled.ok());
+    client.queue_initial(std::move(scheduled.frames));
+    client.flush(at(20ms));
+    (void)client.drain_actions();
+    for (int index = 0; index < 4; ++index) {
+        client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+        client.flush(at(std::chrono::milliseconds{30 + index}));
+        (void)client.drain_actions();
+    }
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{5, 0, 0, {}}}});
+    server.flush(at(40ms));
+    auto loss_ack = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(loss_ack.payload), loss_ack.peer});
+    auto retransmit = client.schedule_stream_frames(order, 1, 16);
+
+    REQUIRE(retransmit.ok());
+    REQUIRE(retransmit.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(retransmit.frames[0]));
+    const auto& retransmitted = std::get<flowq::quic::stream_frame>(retransmit.frames[0]);
+    CHECK(retransmitted.offset == 0);
+    CHECK(as_string(retransmitted.data) == "external");
+}
+
 TEST_CASE("connection loop applies inbound MAX_STREAM_DATA to stream send state") {
     flowq::quic::plaintext_packet_protector protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, 2);

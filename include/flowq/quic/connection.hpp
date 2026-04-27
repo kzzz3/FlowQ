@@ -55,6 +55,17 @@ struct connection_recovery_result {
     std::optional<std::chrono::steady_clock::time_point> next_deadline;
 };
 
+struct sent_stream_range {
+    std::uint64_t stream_id{};
+    stream_send_range range{};
+};
+
+struct sent_packet_stream_ranges {
+    packet_number_space space{};
+    std::uint64_t packet_number{};
+    std::vector<sent_stream_range> ranges;
+};
+
 using connection_loop_action = std::variant<outbound_datagram, received_packet_event, close_action>;
 
 namespace detail {
@@ -118,8 +129,9 @@ public:
                 break;
             }
 
+            const auto has_retransmission = send_streams_.has_retransmittable_data(stream_id);
             const auto remaining_credit = connection_send_max_data_ - connection_data_sent_;
-            if (remaining_credit == 0) {
+            if (remaining_credit == 0 && !has_retransmission) {
                 if (send_streams_.has_unsent_data(stream_id)) {
                     result.frames.push_back(frame{data_blocked_frame{connection_send_max_data_}});
                     break;
@@ -127,21 +139,24 @@ public:
                 continue;
             }
 
-            const auto stream_limit = std::min(max_stream_data_size, static_cast<std::size_t>(remaining_credit));
-            const std::uint64_t selected_stream[]{stream_id};
-            auto stream_result = send_streams_.pop_frames(selected_stream, 1, stream_limit);
+            const auto stream_limit = has_retransmission ? max_stream_data_size : std::min(max_stream_data_size, static_cast<std::size_t>(remaining_credit));
+            auto stream_result = send_streams_.pop_frame(stream_id, stream_limit);
             if (!stream_result.ok()) {
                 result.error = stream_result.error;
                 return result;
             }
-            if (stream_result.frames.empty()) {
+            if (stream_result.has_frame) {
+                if (!stream_result.retransmission) {
+                    connection_data_sent_ += stream_result.frame.data.size();
+                }
+                result.frames.push_back(frame{std::move(stream_result.frame)});
                 continue;
             }
 
-            if (const auto* stream = std::get_if<stream_frame>(&stream_result.frames.front())) {
-                connection_data_sent_ += stream->data.size();
+            auto blocked = send_streams_.blocked_frame(stream_id);
+            if (blocked.has_value()) {
+                result.frames.push_back(frame{*blocked});
             }
-            result.frames.push_back(std::move(stream_result.frames.front()));
         }
         return result;
     }
@@ -185,6 +200,7 @@ public:
             for (const auto packet_number : result.newly_lost) {
                 sent_tracker(space).mark_lost(packet_number);
             }
+            apply_stream_loss_mapping(space, result.newly_lost);
         }
 
         if (auto timer = recovery_timer_for(space, now)) {
@@ -267,6 +283,15 @@ public:
         return space == packet_number_space::handshake ? handshake_sent_ : initial_sent_;
     }
 
+    [[nodiscard]] std::vector<sent_stream_range> sent_stream_ranges(packet_number_space space, std::uint64_t packet_number) const {
+        for (const auto& packet : sent_stream_ranges_) {
+            if (packet.space == space && packet.packet_number == packet_number) {
+                return packet.ranges;
+            }
+        }
+        return {};
+    }
+
 private:
     connection_loop_config config_;
     std::vector<connection_loop_action> actions_{};
@@ -287,6 +312,7 @@ private:
     std::vector<recovery_packet> recovery_packets_{};
     std::optional<std::uint64_t> largest_initial_acknowledged_{};
     std::optional<std::uint64_t> largest_handshake_acknowledged_{};
+    std::vector<sent_packet_stream_ranges> sent_stream_ranges_{};
 
     [[nodiscard]] static packet_number_space packet_space_for(const packet_header& header) noexcept {
         return std::holds_alternative<handshake_header>(header) ? packet_number_space::handshake : packet_number_space::initial;
@@ -343,6 +369,7 @@ private:
         ++next_packet_number;
         sent_tracker(space).on_packet_sent(assembled.number.value, ack_eliciting);
         recovery_packets_.push_back(recovery_packet{space, assembled.number.value, sent_at, ack_eliciting, sent_packet_state::outstanding});
+        record_sent_stream_ranges(space, assembled.number.value, selected.frames);
         queue.erase(queue.begin(), queue.begin() + static_cast<std::ptrdiff_t>(selected.next_index));
         actions_.emplace_back(outbound_datagram{std::move(assembled.datagram), config_.peer});
     }
@@ -354,6 +381,39 @@ private:
                 auto result = sent_tracker(space).on_ack_received(*ack);
                 mark_recovery_packets(space, result.newly_acknowledged, sent_packet_state::acknowledged);
                 mark_recovery_packets(space, result.newly_lost, sent_packet_state::lost);
+                apply_stream_ack_mapping(space, result.newly_acknowledged);
+                apply_stream_loss_mapping(space, result.newly_lost);
+            }
+        }
+    }
+
+    void record_sent_stream_ranges(packet_number_space space, std::uint64_t packet_number, const std::vector<frame>& frames) {
+        sent_packet_stream_ranges packet{space, packet_number, {}};
+        for (const auto& item : frames) {
+            if (const auto* stream = std::get_if<stream_frame>(&item)) {
+                packet.ranges.push_back(sent_stream_range{
+                    stream->stream_id,
+                    stream_send_range{stream->offset_present ? stream->offset : 0, static_cast<std::uint64_t>(stream->data.size()), stream->fin}
+                });
+            }
+        }
+        if (!packet.ranges.empty()) {
+            sent_stream_ranges_.push_back(std::move(packet));
+        }
+    }
+
+    void apply_stream_ack_mapping(packet_number_space space, const std::vector<std::uint64_t>& packet_numbers) {
+        for (const auto packet_number : packet_numbers) {
+            for (const auto& range : sent_stream_ranges(space, packet_number)) {
+                send_streams_.on_acked(range.stream_id, range.range);
+            }
+        }
+    }
+
+    void apply_stream_loss_mapping(packet_number_space space, const std::vector<std::uint64_t>& packet_numbers) {
+        for (const auto packet_number : packet_numbers) {
+            for (const auto& range : sent_stream_ranges(space, packet_number)) {
+                send_streams_.on_lost(range.stream_id, range.range);
             }
         }
     }
