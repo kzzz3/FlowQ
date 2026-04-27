@@ -13,6 +13,12 @@
       "dependencies": [
         "openssl"
       ]
+    },
+    "openssl-quic-tls": {
+      "description": "Enable the experimental OpenSSL QUIC TLS provider surface.",
+      "dependencies": [
+        "openssl"
+      ]
     }
   }
 }
