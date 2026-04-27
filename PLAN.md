@@ -30,7 +30,7 @@ FlowQ is a modern C++ protocol library that builds a deterministic, testable, no
 - [x] M28: Add crypto provider boundary and fail-closed packet protection contract.
 - [x] M29: Pass selected RFC 9001 Initial packet-protection vectors through vetted primitives.
 - [x] M30: Add structural transport parameter codec and config mapping.
-- [ ] M31: Add TLS handshake adapter boundary and CRYPTO byte pump.
+- [x] M31: Add TLS handshake adapter boundary and CRYPTO byte pump.
 - [ ] M31b: Add default-off external TLS provider adapter integration.
 - [ ] M32: Add RFC-shaped short-header value model and parser shell.
 - [ ] M33: Add key lifecycle gates and packet-space discard rules.
@@ -99,7 +99,7 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 
 - [ ] External TLS/crypto adapter implementation track.
 - [x] M27 packet-number truncation/reconstruction helper foundation.
-- [ ] M31-M33 TLS adapter, short-header, and key-lifecycle foundations.
+- [ ] M31b-M33 external TLS adapter, short-header, and key-lifecycle foundations.
 - [ ] M34-M36 congestion-control, connection routing, and production-shaped endpoint foundations.
 - [ ] M37-M39 diagnostics, fuzzing, interop harness, and production release evidence gates.
 - [ ] HTTP/3 and WebTransport backlog tracks after transport production-readiness evidence.
@@ -119,3 +119,4 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 - **Crypto provider boundary risk**: M28 adds external provider capability evidence only; future work must not treat provider-shaped values as an in-tree crypto backend or a production security claim.
 - **Crypto vector risk**: M29 validates selected RFC 9001 Initial vectors through OpenSSL only when explicitly enabled; passing these vectors is not a production TLS, packet-protection, or interoperability claim.
 - **Transport-parameter risk**: M30 encodes, decodes, preserves unknown parameters, and maps selected values into config only; TLS extension binding and authenticated negotiation remain future work.
+- **TLS handshake boundary risk**: M31 routes opaque CRYPTO bytes and observes handshake/key state only; external provider wiring, certificate validation, TLS transcript handling, and real key schedule remain M31b/future work.
