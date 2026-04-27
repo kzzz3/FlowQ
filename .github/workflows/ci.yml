@@ -1,0 +1,67 @@
+name: windows-msvc-vcpkg
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-msvc-vcpkg:
+    name: Windows MSVC vcpkg
+    runs-on: windows-2025
+
+    env:
+      PRESET: windows-msvc-vcpkg
+      VCPKG_ROOT: C:\vcpkg
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+      CTEST_OUTPUT_ON_FAILURE: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show tool versions
+        shell: pwsh
+        run: |
+          cmake --version
+          ctest --version
+          & "$env:VCPKG_ROOT\vcpkg.exe" version
+
+      - name: Configure FlowQ
+        shell: pwsh
+        run: cmake --preset $env:PRESET
+
+      - name: Build FlowQ
+        shell: pwsh
+        run: cmake --build --preset $env:PRESET
+
+      - name: Test FlowQ
+        shell: pwsh
+        run: ctest --preset $env:PRESET --timeout 10
+
+      - name: Install FlowQ package
+        shell: pwsh
+        run: |
+          cmake --install build/windows-msvc-vcpkg `
+            --config Debug `
+            --prefix build/install-flowq
+
+      - name: Configure package consumer
+        shell: pwsh
+        run: |
+          cmake -S tests/package-consumer `
+            -B build/package-consumer `
+            -G "Visual Studio 18 2026" `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DCMAKE_PREFIX_PATH="$env:GITHUB_WORKSPACE/build/install-flowq"
+
+      - name: Build package consumer
+        shell: pwsh
+        run: cmake --build build/package-consumer --config Debug
+
+      - name: Run package consumer
+        shell: pwsh
+        run: .\build\package-consumer\Debug\flowq_package_consumer.exe
