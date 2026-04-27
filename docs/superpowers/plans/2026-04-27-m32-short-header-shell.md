@@ -21,14 +21,14 @@
 
 ## Tasks
 
-- [ ] Write RED tests for short-header fixed bit, spin bit preservation, key phase, destination connection ID, packet-number length, and protected payload bytes.
-- [ ] Write RED tests proving parser requires caller-provided destination connection ID length.
-- [ ] Write RED tests proving production-required parsing fails closed without header-protection context.
-- [ ] Verify RED.
-- [ ] Add `short_header` value type and decode/encode shell.
-- [ ] Use M27 helpers for packet-number length and truncated packet-number bytes.
-- [ ] Keep structural Application envelope separate from real short headers.
-- [ ] Verify GREEN with packet-header and packet-pipeline focused tests.
+- [x] Write RED tests for short-header fixed bit, spin bit preservation, key phase, destination connection ID, packet-number length, and protected payload bytes.
+- [x] Write RED tests proving parser requires caller-provided destination connection ID length.
+- [x] Write RED tests proving production-required parsing fails closed without header-protection context.
+- [x] Verify RED.
+- [x] Add `short_header` value type and decode/encode shell.
+- [x] Use M27 helpers for packet-number length and truncated packet-number bytes.
+- [x] Keep structural Application envelope separate from real short headers.
+- [x] Verify GREEN with packet-header and packet-pipeline focused tests.
 - [ ] Run full verification and Oracle review.
 
 ## Acceptance Gate

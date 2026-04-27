@@ -28,7 +28,7 @@
 - [x] M31: TLS handshake adapter boundary and CRYPTO byte pump.
 - [x] M31b-a: Default-off OpenSSL QUIC TLS provider surface.
 - [ ] M31b-b: Provider-backed local TLS handshake evidence.
-- [ ] M32: RFC-shaped short-header value model and parser shell.
+- [x] M32: RFC-shaped short-header value model and parser shell.
 - [ ] M33: Key lifecycle gates and packet-space discard rules.
 - [ ] M34: Recovery and congestion-control production baseline.
 - [ ] M35: Connection ID routing, version negotiation, Retry, and address-validation preparation.
@@ -190,13 +190,13 @@ M32 depends on M31b for production-path packet protection and key availability e
 - Modify: `docs/development.md`
 
 **TDD steps:**
-- [ ] Write tests for short-header structural fields: fixed bit, spin bit preservation, key phase, destination connection ID, packet-number length, protected payload bytes.
-- [ ] Write tests proving parsing protected short headers requires caller-provided destination connection ID length and header-protection context.
-- [ ] Write tests proving short-header parsing fails closed when header protection context is absent under production policy.
-- [ ] Verify RED.
-- [ ] Add `short_header` value type and parser shell using M27 helpers.
-- [ ] Keep structural Application envelope separate and clearly non-production.
-- [ ] Verify GREEN and full CTest.
+- [x] Write tests for short-header structural fields: fixed bit, spin bit preservation, key phase, destination connection ID, packet-number length, protected payload bytes.
+- [x] Write tests proving parsing protected short headers requires caller-provided destination connection ID length and header-protection context.
+- [x] Write tests proving short-header parsing fails closed when header protection context is absent under production policy.
+- [x] Verify RED.
+- [x] Add `short_header` value type and parser shell using M27 helpers.
+- [x] Keep structural Application envelope separate and clearly non-production.
+- [x] Verify GREEN and full CTest.
 
 **Acceptance gate:** Short-header shape exists for future packet protection integration, but docs avoid claiming real 1-RTT support.
 
