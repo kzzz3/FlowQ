@@ -48,7 +48,8 @@ flowq::quic::connection_loop make_loop(
     flowq::endpoint peer,
     const flowq::quic::packet_protector& protector,
     std::uint64_t initial_stream_send_max_data = UINT64_MAX,
-    std::uint64_t initial_connection_send_max_data = UINT64_MAX) {
+    std::uint64_t initial_connection_send_max_data = UINT64_MAX,
+    std::size_t max_packet_payload_size = SIZE_MAX) {
     return flowq::quic::connection_loop{flowq::quic::connection_loop_config{
         flowq::quic::connection_role::client,
         1,
@@ -59,7 +60,8 @@ flowq::quic::connection_loop make_loop(
         &protector,
         flowq::quic::packet_pipeline_config{1200},
         initial_stream_send_max_data,
-        initial_connection_send_max_data
+        initial_connection_send_max_data,
+        max_packet_payload_size
     }};
 }
 
@@ -85,6 +87,35 @@ TEST_CASE("connection loop flushes queued Initial frames as an outbound datagram
     CHECK_FALSE(datagram.payload.empty());
     CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets().size() == 1);
     CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets()[0].packet_number == 0);
+}
+
+TEST_CASE("connection loop preserves queued frames that exceed payload budget for a later flush") {
+    flowq::quic::plaintext_packet_protector protector{};
+    flowq::endpoint peer{"127.0.0.1", 4433, "hq-interop"};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), peer, protector, UINT64_MAX, UINT64_MAX, 7);
+    loop.queue_initial({
+        flowq::quic::frame{flowq::quic::ping_frame{}},
+        flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("abc")}},
+        flowq::quic::frame{flowq::quic::ping_frame{}}
+    });
+
+    loop.flush();
+    auto first_datagram = require_single_outbound(loop.drain_actions());
+    auto first = flowq::quic::parse_long_packet(first_datagram.payload, protector);
+    REQUIRE(first.ok());
+    REQUIRE(first.frames.size() == 2);
+    CHECK(std::holds_alternative<flowq::quic::ping_frame>(first.frames[0]));
+    CHECK(std::holds_alternative<flowq::quic::stream_frame>(first.frames[1]));
+
+    loop.flush();
+    auto second_datagram = require_single_outbound(loop.drain_actions());
+    auto second = flowq::quic::parse_long_packet(second_datagram.payload, protector);
+    REQUIRE(second.ok());
+    REQUIRE(second.frames.size() == 1);
+    CHECK(std::holds_alternative<flowq::quic::ping_frame>(second.frames[0]));
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets().size() == 2);
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets()[0].packet_number == 0);
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets()[1].packet_number == 1);
 }
 
 TEST_CASE("connection loop parses inbound Initial packets and generates ACK packets") {

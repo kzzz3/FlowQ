@@ -31,6 +31,7 @@ struct connection_loop_config {
     packet_pipeline_config pipeline{};
     std::uint64_t initial_stream_send_max_data{UINT64_MAX};
     std::uint64_t initial_connection_send_max_data{UINT64_MAX};
+    std::size_t max_packet_payload_size{SIZE_MAX};
 };
 
 struct received_packet_event {
@@ -264,8 +265,18 @@ private:
             return;
         }
 
-        const auto ack_eliciting = detail::is_ack_eliciting(queue);
-        auto assembled = assemble_space(space, next_packet_number, queue);
+        auto selected = select_frames_for_payload_budget(queue, config_.max_packet_payload_size);
+        if (!selected.ok()) {
+            actions_.emplace_back(close_action{selected.error});
+            return;
+        }
+        if (selected.frames.empty()) {
+            actions_.emplace_back(close_action{flowq::error{flowq::error_code::protocol_error, "frame exceeds packet payload budget"}});
+            return;
+        }
+
+        const auto ack_eliciting = detail::is_ack_eliciting(selected.frames);
+        auto assembled = assemble_space(space, next_packet_number, selected.frames);
         if (!assembled.ok()) {
             actions_.emplace_back(close_action{assembled.error});
             return;
@@ -273,7 +284,7 @@ private:
 
         ++next_packet_number;
         sent_tracker(space).on_packet_sent(assembled.number.value, ack_eliciting);
-        queue.clear();
+        queue.erase(queue.begin(), queue.begin() + static_cast<std::ptrdiff_t>(selected.next_index));
         actions_.emplace_back(outbound_datagram{std::move(assembled.datagram), config_.peer});
     }
 

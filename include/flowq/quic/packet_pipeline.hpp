@@ -107,6 +107,17 @@ struct parsed_packet {
     }
 };
 
+struct frame_payload_budget_selection {
+    std::vector<frame> frames;
+    std::size_t encoded_size{};
+    std::size_t next_index{};
+    flowq::error error{};
+
+    [[nodiscard]] bool ok() const noexcept {
+        return error.ok();
+    }
+};
+
 namespace detail {
 
 [[nodiscard]] inline flowq::error pipeline_error(const char* message) {
@@ -164,6 +175,35 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
 }
 
 } // namespace detail
+
+[[nodiscard]] inline frame_payload_budget_selection select_frames_for_payload_budget(std::span<const frame> candidates, std::size_t budget) {
+    frame_payload_budget_selection result{};
+    result.frames.reserve(candidates.size());
+
+    for (std::size_t index = 0; index < candidates.size(); ++index) {
+        const auto encoded = std::visit(
+            [](const auto& concrete_frame) {
+                return encode_frame(concrete_frame);
+            },
+            candidates[index]);
+        if (!encoded.ok()) {
+            result.error = encoded.error;
+            result.next_index = index;
+            return result;
+        }
+
+        if (encoded.payload.size() > budget - result.encoded_size) {
+            result.next_index = index;
+            return result;
+        }
+
+        result.encoded_size += encoded.payload.size();
+        result.frames.push_back(candidates[index]);
+        result.next_index = index + 1;
+    }
+
+    return result;
+}
 
 [[nodiscard]] inline assembled_packet assemble_long_packet(const packet_build_request& request) {
     if (request.protector == nullptr) {

@@ -195,6 +195,52 @@ TEST_CASE("packet pipeline enforces maximum datagram size") {
     CHECK_FALSE(flowq::quic::assemble_long_packet(request).ok());
 }
 
+TEST_CASE("packet pipeline selects complete frames by encoded payload budget") {
+    const std::vector<flowq::quic::frame> candidates{
+        flowq::quic::frame{flowq::quic::ping_frame{}},
+        flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, flowq::buffer{bytes({0x01, 0x02, 0x03})}}},
+        flowq::quic::frame{flowq::quic::ping_frame{}}
+    };
+
+    auto result = flowq::quic::select_frames_for_payload_budget(candidates, 7);
+
+    REQUIRE(result.ok());
+    CHECK(result.encoded_size == 7);
+    CHECK(result.next_index == 2);
+    REQUIRE(result.frames.size() == 2);
+    CHECK(std::holds_alternative<flowq::quic::ping_frame>(result.frames[0]));
+    CHECK(std::holds_alternative<flowq::quic::stream_frame>(result.frames[1]));
+}
+
+TEST_CASE("packet pipeline returns empty budget selection before first non-fitting frame") {
+    const std::vector<flowq::quic::frame> candidates{
+        flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, flowq::buffer{bytes({0x01, 0x02, 0x03})}}},
+        flowq::quic::frame{flowq::quic::ping_frame{}}
+    };
+
+    auto result = flowq::quic::select_frames_for_payload_budget(candidates, 5);
+
+    REQUIRE(result.ok());
+    CHECK(result.encoded_size == 0);
+    CHECK(result.next_index == 0);
+    CHECK(result.frames.empty());
+}
+
+TEST_CASE("packet pipeline includes frame that exactly fits payload budget") {
+    const std::vector<flowq::quic::frame> candidates{
+        flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, flowq::buffer{bytes({0x01, 0x02, 0x03})}}},
+        flowq::quic::frame{flowq::quic::ping_frame{}}
+    };
+
+    auto result = flowq::quic::select_frames_for_payload_budget(candidates, 6);
+
+    REQUIRE(result.ok());
+    CHECK(result.encoded_size == 6);
+    CHECK(result.next_index == 1);
+    REQUIRE(result.frames.size() == 1);
+    CHECK(std::holds_alternative<flowq::quic::stream_frame>(result.frames[0]));
+}
+
 TEST_CASE("packet pipeline rejects packets without fixed packet number bytes") {
     flowq::quic::initial_header header{
         std::byte{0xc0},
