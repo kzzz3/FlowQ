@@ -31,7 +31,8 @@ FlowQ is a modern C++ protocol library that builds a deterministic, testable, no
 - [x] M29: Pass selected RFC 9001 Initial packet-protection vectors through vetted primitives.
 - [x] M30: Add structural transport parameter codec and config mapping.
 - [x] M31: Add TLS handshake adapter boundary and CRYPTO byte pump.
-- [ ] M31b: Add default-off external TLS provider adapter integration.
+- [x] M31b-a: Add default-off OpenSSL QUIC TLS provider surface.
+- [ ] M31b-b: Add provider-backed local TLS handshake evidence.
 - [ ] M32: Add RFC-shaped short-header value model and parser shell.
 - [ ] M33: Add key lifecycle gates and packet-space discard rules.
 - [ ] M34: Add recovery and congestion-control production baseline.
@@ -99,7 +100,7 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 
 - [ ] External TLS/crypto adapter implementation track.
 - [x] M27 packet-number truncation/reconstruction helper foundation.
-- [ ] M31b-M33 external TLS adapter, short-header, and key-lifecycle foundations.
+- [ ] M31b-b-M33 local TLS handshake evidence, short-header, and key-lifecycle foundations.
 - [ ] M34-M36 congestion-control, connection routing, and production-shaped endpoint foundations.
 - [ ] M37-M39 diagnostics, fuzzing, interop harness, and production release evidence gates.
 - [ ] HTTP/3 and WebTransport backlog tracks after transport production-readiness evidence.
@@ -120,3 +121,4 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 - **Crypto vector risk**: M29 validates selected RFC 9001 Initial vectors through OpenSSL only when explicitly enabled; passing these vectors is not a production TLS, packet-protection, or interoperability claim.
 - **Transport-parameter risk**: M30 encodes, decodes, preserves unknown parameters, and maps selected values into config only; TLS extension binding and authenticated negotiation remain future work.
 - **TLS handshake boundary risk**: M31 routes opaque CRYPTO bytes and observes handshake/key state only; external provider wiring, certificate validation, TLS transcript handling, and real key schedule remain M31b/future work.
+- **TLS provider surface risk**: M31b-a adds only default-off OpenSSL QUIC TLS API detection and provider metadata; complete TLS handshakes, certificate-policy validation, and key lifecycle proof remain future work.

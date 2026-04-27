@@ -83,6 +83,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - `include/flowq/quic/crypto_provider.hpp`: external crypto-provider capability evidence values.
 - `include/flowq/quic/initial_keys.hpp`: optional OpenSSL-backed RFC 9001 Initial vector helpers.
 - `include/flowq/quic/tls_handshake.hpp`: TLS handshake adapter boundary for opaque CRYPTO byte flow and state observation.
+- `include/flowq/quic/tls_provider_backend.hpp`: default-off OpenSSL QUIC TLS provider metadata and API-availability surface.
 - `include/flowq/quic/transport_parameters.hpp`: structural QUIC transport parameter codec and config mapping helpers.
 - `include/flowq/quic/varint.hpp`: QUIC varint codec.
 - `include/flowq/quic/frame.hpp`: structural frame codec.
@@ -126,8 +127,8 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 
 ## Current Status
 
-M31 is complete: FlowQ can model a TLS handshake adapter boundary, move opaque CRYPTO bytes by encryption level, observe handshake/key state, and block production-required Application sends until handshake confirmation plus application key availability. FlowQ remains a non-production C++20 QUIC-like library baseline; real TLS 1.3, certificate validation, key schedule, authenticated transport-parameter negotiation, full packet protection, congestion control, interoperability, HTTP/3, and WebTransport remain future work.
+M31b-a is complete: FlowQ can expose default-off OpenSSL QUIC TLS provider metadata/API availability while keeping the default build backend-free. FlowQ remains a non-production C++20 QUIC-like library baseline; complete TLS handshakes, certificate validation, key schedule, authenticated transport-parameter negotiation, full packet protection, congestion control, interoperability, HTTP/3, and WebTransport remain future work.
 
 The completed plan `docs/superpowers/plans/2026-04-27-post-m19-basic-quic-library-completion.md` covers M20-M26 through this baseline. Post-basic production QUIC work remains separate: real TLS 1.3, AEAD, header protection, short-header packet-number reconstruction, congestion control, interoperability, HTTP/3, and WebTransport.
 
-Post-basic roadmap: `docs/superpowers/specs/2026-04-27-post-basic-production-readiness-design.md`, `docs/superpowers/plans/2026-04-27-post-basic-production-readiness-roadmap.md`, `docs/superpowers/plans/2026-04-27-m27-packet-number-helpers.md`, `docs/superpowers/plans/2026-04-27-m28-crypto-provider-boundary.md`, `docs/superpowers/plans/2026-04-27-m29-rfc9001-initial-vectors.md`, `docs/superpowers/plans/2026-04-27-m30-transport-parameters.md`, and `docs/superpowers/plans/2026-04-27-m31-tls-handshake-adapter.md`.
+Post-basic roadmap: `docs/superpowers/specs/2026-04-27-post-basic-production-readiness-design.md`, `docs/superpowers/plans/2026-04-27-post-basic-production-readiness-roadmap.md`, `docs/superpowers/plans/2026-04-27-m27-packet-number-helpers.md`, `docs/superpowers/plans/2026-04-27-m28-crypto-provider-boundary.md`, `docs/superpowers/plans/2026-04-27-m29-rfc9001-initial-vectors.md`, `docs/superpowers/plans/2026-04-27-m30-transport-parameters.md`, `docs/superpowers/plans/2026-04-27-m31-tls-handshake-adapter.md`, and `docs/superpowers/plans/2026-04-27-m31b-external-tls-provider-adapter.md`.
