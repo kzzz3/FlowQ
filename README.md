@@ -58,6 +58,7 @@ ctest --preset windows-msvc-vcpkg --timeout 10
 - `include/flowq/quic/ack_loss.hpp`: ACK/loss and recovery primitives.
 - `include/flowq/quic/stream.hpp`: stream receive/send state and flow-control signals.
 - `include/flowq/quic/connection.hpp`: deterministic connection loop integration.
+- `tests/integration/`: deterministic in-memory loopback tests that compose connection-loop pieces.
 - `tests/unit/`: Catch2 tests for each protocol module.
 - `docs/development.md`: implemented milestone notes and build guidance.
 - `docs/superpowers/specs/`: design documents for staged milestones.
@@ -83,4 +84,4 @@ ctest --preset windows-msvc-vcpkg --timeout 10
 
 ## Current Status
 
-M17 is complete: FlowQ now has structural RESET_STREAM and STOP_SENDING codecs plus minimal stream/connection reset-stop effects for deterministic tests. M18 is next: an in-memory QUIC-like loopback session.
+M18 is complete: FlowQ now has a deterministic in-memory, non-production QUIC-like loopback session that exchanges structural Application STREAM data in both directions, ACKs packets, retransmits lost stream bytes, exercises stream credit updates, and observes RESET_STREAM. M19 is next: documenting and enforcing the crypto adapter seam for future real TLS/packet protection.
