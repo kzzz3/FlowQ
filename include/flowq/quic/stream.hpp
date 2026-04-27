@@ -325,6 +325,15 @@ struct stream_send_result {
     }
 };
 
+struct stream_frame_schedule_result {
+    std::vector<frame> frames;
+    flowq::error error{};
+
+    [[nodiscard]] bool ok() const noexcept {
+        return error.ok();
+    }
+};
+
 class stream_send_state {
 public:
     explicit stream_send_state(std::uint64_t stream_id, std::uint64_t max_data = UINT64_MAX)
@@ -526,6 +535,40 @@ public:
 
     [[nodiscard]] stream_send_result pop_frame(std::uint64_t stream_id, std::size_t max_data_size) {
         return state_for(stream_id).pop_frame(max_data_size);
+    }
+
+    [[nodiscard]] stream_frame_schedule_result pop_frames(
+        std::span<const std::uint64_t> stream_ids,
+        std::size_t max_frames,
+        std::size_t max_stream_data_size) {
+        stream_frame_schedule_result result{};
+        result.frames.reserve(std::min(max_frames, stream_ids.size()));
+        if (max_frames == 0) {
+            return result;
+        }
+
+        for (const auto stream_id : stream_ids) {
+            if (result.frames.size() == max_frames) {
+                break;
+            }
+
+            auto stream_result = pop_frame(stream_id, max_stream_data_size);
+            if (!stream_result.ok()) {
+                result.error = stream_result.error;
+                return result;
+            }
+
+            if (stream_result.has_frame) {
+                result.frames.push_back(frame{std::move(stream_result.frame)});
+                continue;
+            }
+
+            auto blocked = blocked_frame(stream_id);
+            if (blocked.has_value()) {
+                result.frames.push_back(frame{*blocked});
+            }
+        }
+        return result;
     }
 
     void update_max_data(std::uint64_t stream_id, std::uint64_t max_data) {

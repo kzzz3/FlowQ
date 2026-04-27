@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -758,4 +759,99 @@ TEST_CASE("stream send set reports STREAM_DATA_BLOCKED frame for selected blocke
     CHECK(second->stream_id == 4);
     CHECK(second->maximum_stream_data == 2);
     CHECK_FALSE(absent.has_value());
+}
+
+TEST_CASE("stream send set batches STREAM frames in selected order") {
+    flowq::quic::stream_send_set streams{};
+    REQUIRE(streams.append(0, text("alpha")).ok());
+    REQUIRE(streams.append(4, text("beta")).ok());
+    const std::vector<std::uint64_t> order{4, 0};
+
+    auto batch = streams.pop_frames(order, 4, 16);
+
+    REQUIRE(batch.ok());
+    REQUIRE(batch.frames.size() == 2);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(batch.frames[0]));
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(batch.frames[1]));
+    const auto& first = std::get<flowq::quic::stream_frame>(batch.frames[0]);
+    const auto& second = std::get<flowq::quic::stream_frame>(batch.frames[1]);
+    CHECK(first.stream_id == 4);
+    CHECK(as_string(first.data) == "beta");
+    CHECK(second.stream_id == 0);
+    CHECK(as_string(second.data) == "alpha");
+}
+
+TEST_CASE("stream send set respects scheduled frame limit") {
+    flowq::quic::stream_send_set streams{};
+    REQUIRE(streams.append(0, text("alpha")).ok());
+    REQUIRE(streams.append(4, text("beta")).ok());
+    const std::vector<std::uint64_t> order{0, 4};
+
+    auto first_batch = streams.pop_frames(order, 1, 16);
+    auto second_batch = streams.pop_frames(order, 1, 16);
+
+    REQUIRE(first_batch.ok());
+    REQUIRE(second_batch.ok());
+    REQUIRE(first_batch.frames.size() == 1);
+    REQUIRE(second_batch.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(first_batch.frames[0]));
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(second_batch.frames[0]));
+    const auto& first = std::get<flowq::quic::stream_frame>(first_batch.frames[0]);
+    const auto& second = std::get<flowq::quic::stream_frame>(second_batch.frames[0]);
+    CHECK(first.stream_id == 0);
+    CHECK(second.stream_id == 4);
+}
+
+TEST_CASE("stream send set batches STREAM_DATA_BLOCKED for selected blocked stream") {
+    flowq::quic::stream_send_set streams{2};
+    REQUIRE(streams.append(0, text("hello")).ok());
+    const std::vector<std::uint64_t> order{0};
+    auto prefix = streams.pop_frames(order, 1, 16);
+    REQUIRE(prefix.ok());
+    REQUIRE(prefix.frames.size() == 1);
+
+    auto blocked = streams.pop_frames(order, 1, 16);
+
+    REQUIRE(blocked.ok());
+    REQUIRE(blocked.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_data_blocked_frame>(blocked.frames[0]));
+    const auto& blocked_frame = std::get<flowq::quic::stream_data_blocked_frame>(blocked.frames[0]);
+    CHECK(blocked_frame.stream_id == 0);
+    CHECK(blocked_frame.maximum_stream_data == 2);
+}
+
+TEST_CASE("stream send set emits STREAM after credit update instead of blocked frame") {
+    flowq::quic::stream_send_set streams{2};
+    REQUIRE(streams.append(0, text("hello")).ok());
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(streams.pop_frames(order, 1, 16).frames.size() == 1);
+    REQUIRE(streams.pop_frames(order, 1, 16).frames.size() == 1);
+
+    streams.update_max_data(flowq::quic::max_stream_data_frame{0, 5});
+    auto resumed = streams.pop_frames(order, 1, 16);
+
+    REQUIRE(resumed.ok());
+    REQUIRE(resumed.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(resumed.frames[0]));
+    const auto& suffix = std::get<flowq::quic::stream_frame>(resumed.frames[0]);
+    CHECK(suffix.stream_id == 0);
+    CHECK(suffix.offset == 2);
+    CHECK(as_string(suffix.data) == "llo");
+}
+
+TEST_CASE("stream send set returns empty successful schedule when no frame is available") {
+    flowq::quic::stream_send_set streams{};
+    const std::vector<std::uint64_t> empty_order{};
+    const std::vector<std::uint64_t> absent_order{8};
+
+    auto no_streams = streams.pop_frames(empty_order, 4, 16);
+    auto no_frames_allowed = streams.pop_frames(absent_order, 0, 16);
+    auto absent = streams.pop_frames(absent_order, 4, 16);
+
+    REQUIRE(no_streams.ok());
+    REQUIRE(no_frames_allowed.ok());
+    REQUIRE(absent.ok());
+    CHECK(no_streams.frames.empty());
+    CHECK(no_frames_allowed.frames.empty());
+    CHECK(absent.frames.empty());
 }
