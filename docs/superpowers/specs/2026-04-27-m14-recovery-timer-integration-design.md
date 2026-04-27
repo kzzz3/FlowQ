@@ -16,12 +16,14 @@
 - Expose `next_recovery_timer(now)` or equivalent value query.
 - Process a timer-expired input into packet-level loss results.
 - Preserve existing ACK-driven sent-packet tracker behavior.
+- Keep Initial and Handshake recovery metadata isolated; Application packet space remains outside `connection_loop`.
 
 ## Behavioral Rules
 
 - No timer query may mutate send timestamps just because it is polled.
 - ACKed packets do not keep recovery timers alive.
 - Application PTO remains gated by handshake confirmation rules already modeled in M3b.
+- PTO expiry does not imply packet loss; M14 reports time-threshold losses only.
 
 ## Non-Goals
 

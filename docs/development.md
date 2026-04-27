@@ -376,3 +376,23 @@ M13 budgets encoded frame payload bytes only. It does not account for long-heade
 packet protection overhead, UDP datagram PMTU, Initial minimum-size padding, coalescing, congestion control, pacing,
 Application Data packets, short headers, TLS, AEAD/header protection, public async stream APIs, sockets, or production
 interoperability.
+
+## QUIC recovery timer integration scope
+
+The M14 recovery timer integration stage wires the existing M3b recovery helpers into `connection_loop` as deterministic
+value queries and timer-expiry results. It still does not own ASIO timers or construct retransmission packets.
+
+- `connection_loop::flush(sent_at)` is a deterministic overload for tests and integration seams; the existing `flush()`
+  remains available and stamps sent packets with `steady_clock::now()`.
+- `connection_loop` records per-packet recovery metadata for Initial and Handshake packets alongside the existing sent
+  packet trackers.
+- `next_recovery_timer(now)` returns the earliest Initial/Handshake recovery deadline as a value containing packet number
+  space, timer mode, and deadline. Polling the query does not mutate packet timestamps or move PTO anchors.
+- Inbound ACK processing synchronizes recovery metadata so acknowledged packets stop keeping timers alive.
+- `on_recovery_timer(space, now)` runs time-threshold loss detection for the selected space and returns newly lost packet
+  numbers without building PTO probes or retransmission packets.
+- ACK-only packets remain non-ack-eliciting and do not arm recovery timers.
+
+M14 remains a deterministic recovery-integration seam. It does not own real timers, schedule ASIO operations, build probe
+packets, perform stream retransmission, implement congestion control, pacing, persistent congestion, ECN, Application Data
+packet space, short headers, TLS, AEAD/header protection, public async APIs, sockets, or production interoperability.

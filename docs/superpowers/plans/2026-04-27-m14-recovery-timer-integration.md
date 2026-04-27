@@ -23,7 +23,7 @@
 - Modify: `tests/unit/quic_connection_tests.cpp`
 - Modify: `include/flowq/quic/connection.hpp`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 After flushing an ack-eliciting packet, ask the connection loop for its next recovery timer and assert a deadline is present. After ACKing that packet, assert no timer remains for that packet number space.
 
@@ -35,15 +35,15 @@ REQUIRE(timer.has_value());
 CHECK(timer->space == flowq::quic::packet_number_space::initial);
 ```
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Expected: `next_recovery_timer()` does not exist on the connection loop.
 
-- [ ] **Step 3: Implement minimal timer selector**
+- [x] **Step 3: Implement minimal timer selector**
 
-Store enough sent packet timestamps and ack-eliciting metadata to call existing recovery helper functions. Return a value-only deadline object.
+Store enough sent packet timestamps and ack-eliciting metadata to call existing recovery helper functions. Return a value-only deadline object. Preserve the existing `flush()` API with a deterministic `flush(sent_at)` overload for tests.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Expected: connection recovery timer tests pass.
 
@@ -53,19 +53,19 @@ Expected: connection recovery timer tests pass.
 - Modify: `tests/unit/quic_connection_tests.cpp`
 - Modify: `include/flowq/quic/connection.hpp`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create two sent packets, advance time beyond the loss threshold, call `on_recovery_timer(now)`, and assert the result reports packet-level loss values without building probe packets.
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Expected: timer expiry entry point does not exist.
 
-- [ ] **Step 3: Implement minimal expiry handling**
+- [x] **Step 3: Implement minimal expiry handling**
 
 Call existing loss detection helpers, mark packet metadata lost, and return a deterministic loss result. Do not implement congestion, pacing, or PTO probe construction.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Expected: timer expiry tests pass.
 
@@ -74,11 +74,11 @@ Expected: timer expiry tests pass.
 **Files:**
 - Modify: `docs/development.md`
 
-- [ ] **Step 1: Update docs**
+- [x] **Step 1: Update docs**
 
 Document that M14 wires recovery decisions into connection state but still excludes full RFC 9002 production recovery, persistent congestion, pacing, congestion control, and real timer ownership.
 
-- [ ] **Step 2: Full verification**
+- [x] **Step 2: Full verification**
 
 Run:
 
