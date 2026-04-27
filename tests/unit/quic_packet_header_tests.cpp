@@ -195,6 +195,58 @@ TEST_CASE("packet header keeps short and structural Application packets out of l
     CHECK_FALSE(flowq::quic::decode_packet_header(bytes({0x50, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00})).ok());
 }
 
+TEST_CASE("packet header decodes short header with caller supplied connection ID length") {
+    auto decoded = flowq::quic::decode_short_header(bytes({
+        0x65,
+        0xaa, 0xbb, 0xcc,
+        0x12, 0x34,
+        0xde, 0xad
+    }), 3);
+
+    REQUIRE(decoded.ok());
+    REQUIRE(std::holds_alternative<flowq::quic::short_header>(decoded.header));
+    const auto& header = std::get<flowq::quic::short_header>(decoded.header);
+    CHECK(header.first_byte == std::byte{0x65});
+    CHECK(header.fixed_bit);
+    CHECK(header.spin_bit);
+    CHECK(header.key_phase);
+    CHECK(header.packet_number_length == 2);
+    CHECK(header.truncated_packet_number == 0x1234U);
+    check_buffer(header.destination_connection_id.bytes, {0xaa, 0xbb, 0xcc});
+    check_buffer(header.protected_payload, {0xde, 0xad});
+}
+
+TEST_CASE("packet header requires explicit destination connection ID length for short headers") {
+    auto input = bytes({0x41, 0xaa, 0x07, 0x01});
+
+    CHECK_FALSE(flowq::quic::decode_packet_header(input).ok());
+    CHECK(flowq::quic::decode_short_header(input, 1).ok());
+    CHECK_FALSE(flowq::quic::decode_short_header(input, 4).ok());
+    CHECK_FALSE(flowq::quic::decode_short_header(bytes({0x00, 0x01}), 0).ok());
+}
+
+TEST_CASE("packet header encodes short header shell") {
+    flowq::quic::short_header header{
+        std::byte{0x62},
+        flowq::quic::connection_id{flowq::buffer{bytes({0xaa, 0xbb})}},
+        true,
+        true,
+        false,
+        3,
+        0x010203,
+        flowq::buffer{bytes({0x99})}
+    };
+
+    auto encoded = flowq::quic::encode_packet_header(flowq::quic::packet_header{header});
+    REQUIRE(encoded.ok());
+    check_buffer(encoded.payload, {0x62, 0xaa, 0xbb, 0x01, 0x02, 0x03, 0x99});
+
+    auto decoded = flowq::quic::decode_short_header(encoded.payload, 2);
+    REQUIRE(decoded.ok());
+    REQUIRE(std::holds_alternative<flowq::quic::short_header>(decoded.header));
+    CHECK(std::get<flowq::quic::short_header>(decoded.header).truncated_packet_number == 0x010203U);
+}
+
 TEST_CASE("packet header encode rejects invalid structural values") {
     flowq::quic::version_negotiation_header no_versions{
         std::byte{0x80},

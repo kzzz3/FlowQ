@@ -21,6 +21,7 @@ enum class packet_header_kind {
     initial,
     handshake,
     retry,
+    short_packet,
     structural_application
 };
 
@@ -69,7 +70,18 @@ struct structural_application_header {
     flowq::buffer protected_payload;
 };
 
-using packet_header = std::variant<version_negotiation_header, initial_header, handshake_header, retry_header, structural_application_header>;
+struct short_header {
+    std::byte first_byte{};
+    connection_id destination_connection_id;
+    bool fixed_bit{};
+    bool spin_bit{};
+    bool key_phase{};
+    std::size_t packet_number_length{};
+    std::uint64_t truncated_packet_number{};
+    flowq::buffer protected_payload;
+};
+
+using packet_header = std::variant<version_negotiation_header, initial_header, handshake_header, retry_header, short_header, structural_application_header>;
 
 struct packet_header_decode_result {
     packet_header header{};
@@ -257,6 +269,38 @@ inline void append_u32(std::vector<std::byte>& output, std::uint32_t value) {
     return true;
 }
 
+[[nodiscard]] inline packet_number_decode_result read_truncated_packet_number(
+    std::span<const std::byte> input,
+    std::size_t offset,
+    std::size_t length) {
+    if (!valid_packet_number_length(length)) {
+        return {0, packet_number_error("packet number length must be 1 to 4 bytes")};
+    }
+    if (input.size() - offset < length) {
+        return {0, packet_error("truncated short-header packet number")};
+    }
+
+    std::uint64_t value = 0;
+    for (std::size_t index = 0; index < length; ++index) {
+        value = (value << 8U) | static_cast<std::uint64_t>(input[offset + index]);
+    }
+    return {value, {}};
+}
+
+[[nodiscard]] inline std::byte short_header_first_byte(const short_header& header) {
+    auto first = static_cast<std::uint8_t>((header.packet_number_length - 1U) & 0x03U);
+    if (header.fixed_bit) {
+        first |= 0x40U;
+    }
+    if (header.spin_bit) {
+        first |= 0x20U;
+    }
+    if (header.key_phase) {
+        first |= 0x04U;
+    }
+    return static_cast<std::byte>(first);
+}
+
 [[nodiscard]] inline bool read_packet_varint_at(std::span<const std::byte> input, std::size_t& offset, std::uint64_t& value) {
     const auto result = decode_varint(input.subspan(offset));
     if (!result.ok()) {
@@ -442,6 +486,32 @@ inline void append_u32(std::vector<std::byte>& output, std::uint32_t value) {
     return {flowq::buffer{output}, {}};
 }
 
+[[nodiscard]] inline packet_header_encode_result encode_short(const short_header& header) {
+    if (!header.fixed_bit) {
+        return {{}, packet_error("short header fixed bit must be set")};
+    }
+    if (!valid_packet_number_length(header.packet_number_length)) {
+        return {{}, packet_error("short header packet number length must be 1 to 4 bytes")};
+    }
+
+    std::array<std::byte, 4> packet_number_bytes{};
+    auto encoded_packet_number = encode_packet_number(header.truncated_packet_number, header.packet_number_length, packet_number_bytes);
+    if (!encoded_packet_number.ok()) {
+        return {{}, encoded_packet_number.error};
+    }
+
+    std::vector<std::byte> output;
+    output.reserve(1 + header.destination_connection_id.bytes.size() + header.packet_number_length + header.protected_payload.size());
+    output.push_back(short_header_first_byte(header));
+    output.insert(
+        output.end(),
+        header.destination_connection_id.bytes.data(),
+        header.destination_connection_id.bytes.data() + static_cast<std::ptrdiff_t>(header.destination_connection_id.bytes.size()));
+    output.insert(output.end(), packet_number_bytes.begin(), packet_number_bytes.begin() + static_cast<std::ptrdiff_t>(header.packet_number_length));
+    output.insert(output.end(), header.protected_payload.data(), header.protected_payload.data() + static_cast<std::ptrdiff_t>(header.protected_payload.size()));
+    return {flowq::buffer{output}, {}};
+}
+
 } // namespace detail
 
 [[nodiscard]] inline packet_header_decode_result decode_packet_header(std::span<const std::byte> input) {
@@ -487,6 +557,57 @@ inline void append_u32(std::vector<std::byte>& output, std::uint32_t value) {
     }
 }
 
+[[nodiscard]] inline packet_header_decode_result decode_short_header(
+    std::span<const std::byte> input,
+    std::size_t destination_connection_id_length) {
+    if (input.empty()) {
+        return {{}, detail::packet_error("empty short-header input")};
+    }
+
+    const auto first_byte = input[0];
+    const auto first = static_cast<std::uint8_t>(first_byte);
+    if ((first & 0x80U) != 0) {
+        return {{}, detail::packet_error("short header must not use long-header form")};
+    }
+    if ((first & 0x40U) == 0) {
+        return {{}, detail::packet_error("short header fixed bit is not set")};
+    }
+    if (destination_connection_id_length > input.size() - 1U) {
+        return {{}, detail::packet_error("truncated short-header destination connection ID")};
+    }
+
+    const auto packet_number_length = static_cast<std::size_t>(first & 0x03U) + 1U;
+    const auto packet_number_offset = 1U + destination_connection_id_length;
+    auto packet_number = detail::read_truncated_packet_number(input, packet_number_offset, packet_number_length);
+    if (!packet_number.ok()) {
+        return {{}, packet_number.error};
+    }
+
+    const auto payload_offset = packet_number_offset + packet_number_length;
+    return {short_header{
+        first_byte,
+        connection_id{flowq::buffer{input.subspan(1, destination_connection_id_length)}},
+        true,
+        (first & 0x20U) != 0,
+        (first & 0x04U) != 0,
+        packet_number_length,
+        packet_number.packet_number,
+        flowq::buffer{input.subspan(payload_offset)}
+    }, {}};
+}
+
+[[nodiscard]] inline packet_header_decode_result decode_short_header(
+    const flowq::buffer& input,
+    std::size_t destination_connection_id_length) {
+    return decode_short_header(std::span<const std::byte>{input.data(), input.size()}, destination_connection_id_length);
+}
+
+template <std::ranges::contiguous_range Range>
+    requires std::same_as<std::remove_cv_t<std::ranges::range_value_t<Range>>, std::byte>
+[[nodiscard]] auto decode_short_header(const Range& input, std::size_t destination_connection_id_length) {
+    return decode_short_header(std::span<const std::byte>{std::ranges::data(input), std::ranges::size(input)}, destination_connection_id_length);
+}
+
 [[nodiscard]] inline packet_header_decode_result decode_packet_header(const flowq::buffer& input) {
     return decode_packet_header(std::span<const std::byte>{input.data(), input.size()});
 }
@@ -509,6 +630,8 @@ template <std::ranges::contiguous_range Range>
                 return detail::encode_handshake(concrete_header);
             } else if constexpr (std::is_same_v<header_type, retry_header>) {
                 return detail::encode_retry(concrete_header);
+            } else if constexpr (std::is_same_v<header_type, short_header>) {
+                return detail::encode_short(concrete_header);
             } else {
                 return detail::encode_structural_application(concrete_header);
             }
