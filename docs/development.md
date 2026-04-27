@@ -292,3 +292,25 @@ connection-level flow-control accounting, receive peer `STREAM_DATA_BLOCKED` as 
 frames, integrate with `connection_loop`, add packet-type legality checks, support short headers or Application Data
 packets, implement TLS/AEAD/header protection, congestion control, RESET_STREAM, STOP_SENDING, stream scheduling, or
 public APIs.
+
+## QUIC STREAM outbound frame scheduler seam scope
+
+The M10 STREAM scheduler stage adds a pure outbound batching helper to `include/flowq/quic/stream.hpp`. It turns selected
+stream send states into deterministic vectors of existing structural `flowq::quic::frame` values that a future packet or
+Application Data scheduler can consume.
+
+- `stream_send_set::pop_frames()` iterates caller-provided stream IDs in order, keeping scheduling deterministic and free
+  of hidden priority policy.
+- STREAM data is produced through the existing `stream_send_state::pop_frame()` path, so offsets, FIN behavior,
+  retransmission priority, and stream-level credit enforcement remain centralized in the send core.
+- When no STREAM data can be emitted for a selected blocked stream, the scheduler can include the existing M9
+  `STREAM_DATA_BLOCKED` signal value.
+- `max_frames` bounds the number of complete frame values returned by one scheduling call. Byte-level packet payload
+  budgeting remains future packet-scheduler work because encoded frame overhead depends on packet construction choices.
+- Empty selections, zero frame budget, absent streams, and unblocked drained streams return successful empty batches rather
+  than protocol errors.
+
+M10 remains below packet scheduling and connection integration. It does not implement encoded frame byte-budget fitting,
+`MAX_DATA`, `DATA_BLOCKED`, connection-level flow control, `connection_loop` integration, packet-type legality,
+Application Data packets, short headers, TLS, AEAD/header protection, congestion control, RESET_STREAM, STOP_SENDING,
+prioritization policy beyond caller order, blocked-frame deduplication, or public APIs.
