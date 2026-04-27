@@ -14,7 +14,7 @@
 
 - Track peer connection send credit as an absolute maximum data offset.
 - Track total stream data scheduled/sent at connection level.
-- Apply `max_data_frame` monotonically.
+- Apply `max_data_frame` monotonically through direct loop updates and inbound packet processing.
 - Emit one query-only `data_blocked_frame` when aggregate credit prevents stream progress.
 - Preserve per-stream `MAX_STREAM_DATA` / `STREAM_DATA_BLOCKED` semantics from M9/M10.
 
@@ -23,6 +23,11 @@
 - Connection credit is absolute, not incremental.
 - STREAM data must satisfy both stream credit and connection credit.
 - Control frames do not consume stream data credit.
+- Stale or lower `MAX_DATA` frames do not shrink existing connection send credit.
+- Connection credit is capped before stream frame extraction; emitted STREAM offsets and FIN behavior remain owned by
+  `stream_send_state`.
+- If stream credit is exhausted while aggregate connection credit remains, scheduling preserves `STREAM_DATA_BLOCKED`
+  instead of reporting `DATA_BLOCKED`.
 - Repeated `DATA_BLOCKED` emission is allowed unless a later milestone adds deduplication.
 
 ## Non-Goals

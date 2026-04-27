@@ -333,3 +333,25 @@ introducing real Application Data packet protection or public stream APIs.
 M11 remains a structural integration seam. It does not implement Application packet space, short headers, real TLS,
 AEAD/header protection, connection-level `MAX_DATA` / `DATA_BLOCKED`, packet byte-budget fitting, congestion control,
 RESET_STREAM, STOP_SENDING, public async stream APIs, sockets, or production interoperability.
+
+## QUIC connection-level flow-control seam scope
+
+The M12 connection-level flow-control stage adds aggregate outbound STREAM byte-credit accounting to
+`connection_loop`. It composes with the M7/M9 stream-level credit rules instead of replacing them.
+
+- `connection_loop_config::initial_connection_send_max_data` lets tests model peer connection credit before transport
+  parameter negotiation exists.
+- `connection_loop::schedule_stream_frames()` caps emitted STREAM bytes by the remaining connection-level credit before
+  delegating to the stream scheduler, so stream offsets remain owned by `stream_send_state`.
+- `MAX_DATA` is applied monotonically through both `connection_loop::update_max_data()` and inbound decoded
+  `max_data_frame` values on the packet path.
+- Connection-level accounting consumes only STREAM payload bytes. Control frames such as `STREAM_DATA_BLOCKED` do not
+  consume aggregate data credit.
+- When aggregate credit is exhausted and selected streams still have unsent data, scheduling can return one structural
+  `DATA_BLOCKED` frame with the current absolute maximum.
+- If stream credit is exhausted before connection credit, existing `STREAM_DATA_BLOCKED` behavior is preserved.
+
+M12 remains a structural flow-control seam. It does not implement receive-window growth policy, `MAX_STREAMS` /
+`STREAMS_BLOCKED`, encoded packet byte-budget fitting, Application Data packets, short headers, TLS, AEAD/header
+protection, congestion control, pacing, blocked-frame deduplication, RESET_STREAM, STOP_SENDING, public async stream APIs,
+sockets, or production interoperability.
