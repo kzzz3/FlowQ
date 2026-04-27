@@ -24,7 +24,7 @@
 - Modify: `tests/unit/quic_connection_tests.cpp`
 - Modify: `include/flowq/quic/connection.hpp`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Schedule and flush a STREAM frame, then inspect a test-visible ledger snapshot showing packet number, stream ID, offset, length, and FIN flag.
 
@@ -38,15 +38,15 @@ CHECK(ranges[0].offset == 0);
 CHECK(ranges[0].length == 5);
 ```
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Expected: no sent stream range ledger exists.
 
-- [ ] **Step 3: Implement ledger recording**
+- [x] **Step 3: Implement ledger recording**
 
 When STREAM frames are included in a sent packet, record their stream ranges keyed by packet number space and packet number.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Expected: ledger tests pass.
 
@@ -57,19 +57,19 @@ Expected: ledger tests pass.
 - Modify: `include/flowq/quic/connection.hpp`
 - Modify: `include/flowq/quic/stream.hpp`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
-Send stream data, mark the packet lost, schedule again, and assert the retransmitted STREAM frame carries the same stream ID, offset, and bytes. Then ACK the retransmission and assert a later loss signal does not reschedule already acknowledged data.
+Send stream data, mark the packet lost through ACK-threshold and recovery-timer paths, schedule again, and assert the retransmitted STREAM frame carries the same stream ID, offset, and bytes. Then ACK the sent stream information and assert a later loss signal does not reschedule already acknowledged data.
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Expected: packet loss does not yet feed stream retransmission state.
 
-- [ ] **Step 3: Implement mapping callbacks**
+- [x] **Step 3: Implement mapping callbacks**
 
-On packet ACK, call stream set ACK routing. On packet loss, call stream set loss routing. Preserve packet-level ACK/loss tracker behavior.
+On packet ACK, call stream set ACK routing. On packet loss from ACK-threshold or recovery timer paths, call stream set loss routing. Preserve packet-level ACK/loss tracker behavior. Retransmitted lost STREAM ranges must bypass fresh connection credit accounting, late ACKs for lost FIN ranges must suppress FIN retransmission, and manually queued STREAM frames must not create send state during outcome routing.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Expected: stream retransmission mapping tests pass.
 
@@ -78,11 +78,11 @@ Expected: stream retransmission mapping tests pass.
 **Files:**
 - Modify: `docs/development.md`
 
-- [ ] **Step 1: Update docs**
+- [x] **Step 1: Update docs**
 
 Document that M15 retransmits stream information, not packet numbers. Exclude congestion, prioritization, RESET_STREAM, STOP_SENDING, and full packet recovery policy beyond existing helpers.
 
-- [ ] **Step 2: Full verification**
+- [x] **Step 2: Full verification**
 
 Run:
 
@@ -94,6 +94,6 @@ Expected: build succeeds and all tests pass.
 
 ## Self-Review
 
-- Spec coverage: Records sent stream ranges, maps ACK/loss to stream state, proves retransmission bytes are stable.
+- Spec coverage: Records sent stream ranges, maps ACK/loss to stream state, proves retransmission bytes are stable, covers connection-credit-exhausted retransmission, late FIN ACK suppression after empty and partial data retransmission, unsent empty FIN loss rejection, manual STREAM ACK/loss safety for missing and existing unsent send state, packet-budget splitting, and Application-space ledger boundaries.
 - Placeholder scan: No retransmission policy placeholder is hidden; this is a ledger integration milestone.
 - Type consistency: Uses existing `stream_send_range`, packet-number-space names, and stream set routing style.

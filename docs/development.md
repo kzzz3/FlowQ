@@ -396,3 +396,30 @@ value queries and timer-expiry results. It still does not own ASIO timers or con
 M14 remains a deterministic recovery-integration seam. It does not own real timers, schedule ASIO operations, build probe
 packets, perform stream retransmission, implement congestion control, pacing, persistent congestion, ECN, Application Data
 packet space, short headers, TLS, AEAD/header protection, public async APIs, sockets, or production interoperability.
+
+## QUIC STREAM ACK/loss mapping scope
+
+The M15 STREAM ACK/loss mapping stage records which STREAM information was carried by sent Initial/Handshake packets and
+routes later packet outcomes back into `stream_send_set`.
+
+- `connection_loop` keeps a packet-to-stream ledger keyed by packet number space and packet number. Each ledger entry stores
+  stream ID, offset, length, and FIN for STREAM frames that were actually selected into a sent packet.
+- `sent_stream_ranges(space, packet_number)` exposes a value snapshot for deterministic tests.
+- Inbound ACK handling routes newly acknowledged packet numbers to `stream_send_set::on_acked()`, suppressing later
+  retransmission of acknowledged stream information.
+- Packet-threshold loss from ACK processing and time-threshold loss from `on_recovery_timer()` route newly lost packet
+  numbers to `stream_send_set::on_lost()`, allowing the existing stream scheduler to retransmit the same stream offset,
+  bytes, and FIN information with a future packet number.
+- Lost STREAM retransmissions are scheduled from already-sent stream ranges, so they do not consume fresh connection-level
+  flow-control credit or advance the aggregate sent-data counter again.
+- Stream send state validates ACK/loss ranges against bytes already emitted by the scheduler. Late ACKs for a lost FIN
+  suppress the queued FIN retransmission, including after partial data retransmission, while ACKs for FIN ranges that were
+  neither sent nor marked lost remain ignored. Loss signals for unsent empty FIN ranges are also ignored so the first FIN
+  emission remains a normal send, not a retransmission.
+- Non-STREAM frames do not create stream ledger entries, and M13 packet-budget splitting records only frames included in the
+  selected sent prefix. Manually queued STREAM frames that do not belong to `stream_send_set` do not create send state when
+  packet outcomes are mapped back.
+
+M15 retransmits stream information through existing stream send state; it does not construct retransmission packets, refund
+connection flow-control credit, add congestion or pacing policy, implement RESET_STREAM or STOP_SENDING, add Application
+Data packet space, short headers, TLS, AEAD/header protection, public async APIs, sockets, or production interoperability.
