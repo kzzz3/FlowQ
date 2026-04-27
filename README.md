@@ -81,6 +81,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - `include/flowq/asio/`: Asio sender-style boundary helpers.
 - `include/flowq/quic/core.hpp`: deterministic protocol action seam.
 - `include/flowq/quic/crypto_provider.hpp`: external crypto-provider capability evidence values.
+- `include/flowq/quic/initial_keys.hpp`: optional OpenSSL-backed RFC 9001 Initial vector helpers.
 - `include/flowq/quic/varint.hpp`: QUIC varint codec.
 - `include/flowq/quic/frame.hpp`: structural frame codec.
 - `include/flowq/quic/packet_header.hpp`: structural packet header codec.
@@ -123,8 +124,8 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 
 ## Current Status
 
-M28 is complete: FlowQ has a fail-closed crypto provider capability boundary for future external TLS/packet-protection adapters. FlowQ remains a non-production C++20 QUIC-like library baseline; production TLS, AEAD, header protection implementation, congestion control, interoperability, HTTP/3, and WebTransport remain future work.
+M29 is complete: FlowQ can verify selected RFC 9001 Initial key and packet-protection vectors through an explicitly enabled OpenSSL/vcpkg backend. FlowQ remains a non-production C++20 QUIC-like library baseline; production TLS, full packet protection, congestion control, interoperability, HTTP/3, and WebTransport remain future work.
 
 The completed plan `docs/superpowers/plans/2026-04-27-post-m19-basic-quic-library-completion.md` covers M20-M26 through this baseline. Post-basic production QUIC work remains separate: real TLS 1.3, AEAD, header protection, short-header packet-number reconstruction, congestion control, interoperability, HTTP/3, and WebTransport.
 
-Post-basic roadmap: `docs/superpowers/specs/2026-04-27-post-basic-production-readiness-design.md`, `docs/superpowers/plans/2026-04-27-post-basic-production-readiness-roadmap.md`, `docs/superpowers/plans/2026-04-27-m27-packet-number-helpers.md`, and `docs/superpowers/plans/2026-04-27-m28-crypto-provider-boundary.md`.
+Post-basic roadmap: `docs/superpowers/specs/2026-04-27-post-basic-production-readiness-design.md`, `docs/superpowers/plans/2026-04-27-post-basic-production-readiness-roadmap.md`, `docs/superpowers/plans/2026-04-27-m27-packet-number-helpers.md`, `docs/superpowers/plans/2026-04-27-m28-crypto-provider-boundary.md`, and `docs/superpowers/plans/2026-04-27-m29-rfc9001-initial-vectors.md`.

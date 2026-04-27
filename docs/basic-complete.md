@@ -9,6 +9,7 @@ FlowQ is basic complete as a non-production C++20 QUIC-like library baseline. Th
 - Synchronous public session façade in `flowq::quic::session` for queueing stream data, flushing outbound datagrams, processing inbound datagrams, observing stream deliveries, acknowledging packets, and exposing deterministic recovery timer values.
 - Explicit packet-protection seam through `flowq::quic::packet_protector` and `flowq::quic::packet_protection_policy`.
 - External crypto-provider capability evidence values for future vetted provider adapters.
+- Optional OpenSSL-backed RFC 9001 Initial vector helpers when the explicit crypto backend option is enabled.
 - Plaintext packet protection for deterministic tests and local examples, marked test-only by capability reporting.
 - Bounded non-production UDP/ASIO session adapter for local loopback smoke paths with caller-owned sockets.
 - ASIO recovery scheduler adapter that schedules already-computed deterministic recovery deadlines.
@@ -42,6 +43,7 @@ FlowQ is basic complete as a non-production C++20 QUIC-like library baseline. Th
 - `include/flowq/quic/crypto_provider.hpp`
 - `include/flowq/quic/events.hpp`
 - `include/flowq/quic/frame.hpp`
+- `include/flowq/quic/initial_keys.hpp`
 - `include/flowq/quic/packet_header.hpp`
 - `include/flowq/quic/packet_pipeline.hpp`
 - `include/flowq/quic/recovery_scheduler.hpp`
@@ -79,8 +81,9 @@ The CI workflow in `.github/workflows/ci.yml` runs the same gate shape on a Wind
 
 Production QUIC work remains intentionally separate from this baseline and requires new specs and plans before implementation:
 
-- RFC 9000 packet-number truncation/reconstruction helpers and the M28 crypto-provider capability boundary are in place, but
-  real TLS, AEAD, short headers, and header protection remain future work.
+- RFC 9000 packet-number truncation/reconstruction helpers, the M28 crypto-provider capability boundary, and selected M29
+  RFC 9001 Initial vectors are in place, but real TLS, complete packet protection, short headers, and header protection
+  integration remain future work.
 - The complete M28-M39 production-readiness route is tracked in
   `docs/superpowers/plans/2026-04-27-post-basic-production-readiness-roadmap.md`.
 - External TLS 1.3 and QUIC packet-protection adapter backed by a mature crypto library.

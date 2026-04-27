@@ -675,3 +675,22 @@ policy gate in `include/flowq/quic/packet_pipeline.hpp`.
 M28 does not add OpenSSL, BoringSSL, AWS-LC, Schannel, QuicTLS, TLS 1.3, AEAD, HKDF, header-protection implementation,
 certificate validation, random generation, key schedule, packet-protection vectors, short headers, or interoperability
 claims. It is a fail-closed boundary milestone only.
+
+### M29 RFC 9001 Initial vector scope
+
+M29 adds optional OpenSSL-backed helpers in `include/flowq/quic/initial_keys.hpp` for selected RFC 9001 Appendix A Initial
+packet-protection vectors.
+
+- The default build keeps the OpenSSL backend disabled and reports a structured error from Initial key helpers that require
+  crypto primitives.
+- Enabling `FLOWQ_ENABLE_OPENSSL_CRYPTO=ON` with the vcpkg manifest feature `openssl-crypto` links `OpenSSL::Crypto` and
+  uses OpenSSL EVP APIs for HKDF-SHA256, AES-128-GCM seal/open, and AES-128-ECB header-protection sample masks.
+- Vector tests verify the RFC 9001 Initial salt, initial/client/server secrets, client/server key material, the Appendix A
+  header-protection mask sample, and AES-GCM authentication failure for altered AAD or ciphertext.
+- The package config records `find_dependency(OpenSSL COMPONENTS Crypto)` only when FlowQ is configured with the OpenSSL
+  backend enabled, so default package consumption stays backend-free. Consumers of an OpenSSL-enabled FlowQ install must
+  make the same OpenSSL package discoverable through their toolchain, `CMAKE_PREFIX_PATH`, or `OPENSSL_ROOT_DIR`.
+
+M29 does not implement TLS 1.3, certificate validation, a key schedule, complete QUIC packet protection, header-protection
+integration, short headers, runtime provider selection, or interoperability. Passing selected Initial vectors is not a
+production security claim.
