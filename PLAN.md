@@ -18,7 +18,7 @@ FlowQ is a modern C++ protocol library that builds a deterministic, testable, no
 - [x] M16: Add a clearly non-production structural Application packet-number space for tests and loopback.
 - [x] M17: Add minimal close/reset structural codecs and stream effects.
 - [x] M18: Prove a basic in-memory QUIC-like loopback session.
-- [ ] M19: Document and enforce the crypto adapter seam for future real TLS/packet protection.
+- [x] M19: Document and enforce the crypto adapter seam for future real TLS/packet protection.
 
 ## Tech Stack and Architecture Decisions
 
@@ -59,14 +59,14 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 
 ### Phase 4: Security Boundary Documentation
 
-- [ ] M19 crypto adapter seam and explicit unsafe test-protection boundary.
+- [x] M19 crypto adapter seam and explicit unsafe test-protection boundary.
 
 ## Risk Assessment
 
 - **Application packet modeling risk**: M16 now has independent Application packet counters and trackers; future changes must preserve this and avoid aliasing Application state into Initial or Handshake.
 - **Reset/stop scope risk**: M17 reset/stop behavior is structural and test-visible only; future work must avoid treating it as a complete stream lifecycle or application cancellation API.
 - **Loopback scope risk**: M18 proves deterministic in-memory session behavior only; future work must not present it as socket, TLS, or interoperable QUIC support.
-- **Security claim risk**: plaintext/test protection must stay explicitly non-production and must not be described as secure QUIC.
-- **Scope creep risk**: real short-header packet number reconstruction, TLS, AEAD, header protection, congestion control, and UDP public APIs are deferred beyond M19.
+- **Security claim risk**: M19 adds explicit protector capability reporting and production-required rejection for test-only protection; future docs must continue to avoid describing plaintext/test protection as secure QUIC.
+- **Scope creep risk**: real short-header packet number reconstruction, TLS, AEAD, header protection, congestion control, and UDP public APIs remain deferred beyond this baseline.
 - **Tooling risk**: local LSP diagnostics currently cannot run because `clangd` is not installed in this environment; MSVC build and CTest are the executable verification gates.
 - **Documentation drift risk**: this `PLAN.md`, `README.md`, `docs/development.md`, and milestone docs must be updated together when implementation scope evolves.

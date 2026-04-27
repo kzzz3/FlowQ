@@ -16,7 +16,7 @@ FlowQ is intentionally staged:
 4. Non-production loopback proof.
 5. Future adapter boundary for real TLS and packet protection.
 
-The current baseline is a testable QUIC-like core. Real TLS 1.3, AEAD, header protection, congestion control, and production interoperability are explicitly deferred.
+The current baseline is a testable QUIC-like core with an explicit crypto adapter seam. Real TLS 1.3, AEAD, header protection, congestion control, and production interoperability are explicitly deferred.
 
 ## Getting Started
 
@@ -84,4 +84,4 @@ ctest --preset windows-msvc-vcpkg --timeout 10
 
 ## Current Status
 
-M18 is complete: FlowQ now has a deterministic in-memory, non-production QUIC-like loopback session that exchanges structural Application STREAM data in both directions, ACKs packets, retransmits lost stream bytes, exercises stream credit updates, and observes RESET_STREAM. M19 is next: documenting and enforcing the crypto adapter seam for future real TLS/packet protection.
+M19 is complete: FlowQ now labels plaintext packet protection as test-only and rejects it on paths that explicitly require production packet protection. The codebase remains non-production QUIC-like infrastructure; real TLS, AEAD, header protection, and interoperability are future adapter work.
