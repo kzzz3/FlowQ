@@ -716,3 +716,23 @@ decoded values into `connection_loop_config` and `session_config`.
 
 M30 does not bind these parameters to TLS extensions, authenticate negotiation, validate peer role-specific semantics, add
 real handshake state, or claim production interoperability. M31 owns the TLS handshake adapter and CRYPTO byte pump.
+
+### M31 TLS handshake adapter boundary scope
+
+M31 adds `include/flowq/quic/tls_handshake.hpp` as a narrow boundary between FlowQ's CRYPTO frames and a future external
+QUIC-capable TLS provider.
+
+- `tls_encryption_level`, `crypto_bytes`, `handshake_state`, and `tls_key_availability` describe opaque CRYPTO byte flow,
+  adapter state, and key availability without exposing TLS transcript, certificate, key schedule, HKDF, AEAD, or random
+  generation internals.
+- `tls_handshake_adapter` accepts inbound CRYPTO bytes and drains outbound CRYPTO bytes; deterministic fake adapters live in
+  unit tests only.
+- `connection_loop` routes inbound CRYPTO frames to the adapter by packet space and pumps adapter-produced CRYPTO bytes into
+  Initial, Handshake, or Application packet-space queues before flushing.
+- Under `packet_protection_policy::production_required`, Application packets are blocked until the adapter reports
+  `handshake_confirmed` and application key availability, in addition to the existing packet-protector/provider checks.
+- `session_config` forwards the adapter pointer to the connection loop while keeping the public façade value-oriented.
+
+M31 does not implement TLS 1.3, certificate validation, TLS transcript handling, key schedule, external provider wiring,
+real packet-protection key installation, authenticated transport-parameter negotiation, or interoperability. M31b owns the
+default-off external TLS provider adapter behind this boundary.

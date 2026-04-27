@@ -11,6 +11,7 @@ FlowQ is basic complete as a non-production C++20 QUIC-like library baseline. Th
 - External crypto-provider capability evidence values for future vetted provider adapters.
 - Optional OpenSSL-backed RFC 9001 Initial vector helpers when the explicit crypto backend option is enabled.
 - Structural QUIC transport parameter encode/decode helpers and config mapping for selected flow-control and connection-policy values.
+- TLS handshake adapter boundary values for opaque CRYPTO byte movement, handshake-state observation, and key-availability gating.
 - Plaintext packet protection for deterministic tests and local examples, marked test-only by capability reporting.
 - Bounded non-production UDP/ASIO session adapter for local loopback smoke paths with caller-owned sockets.
 - ASIO recovery scheduler adapter that schedules already-computed deterministic recovery deadlines.
@@ -50,6 +51,7 @@ FlowQ is basic complete as a non-production C++20 QUIC-like library baseline. Th
 - `include/flowq/quic/recovery_scheduler.hpp`
 - `include/flowq/quic/session.hpp`
 - `include/flowq/quic/stream.hpp`
+- `include/flowq/quic/tls_handshake.hpp`
 - `include/flowq/quic/transport_parameters.hpp`
 - `include/flowq/quic/udp_session.hpp`
 - `include/flowq/quic/varint.hpp`
@@ -84,9 +86,9 @@ The CI workflow in `.github/workflows/ci.yml` runs the same gate shape on a Wind
 Production QUIC work remains intentionally separate from this baseline and requires new specs and plans before implementation:
 
 - RFC 9000 packet-number truncation/reconstruction helpers, the M28 crypto-provider capability boundary, selected M29
-  RFC 9001 Initial vectors, and the M30 structural transport-parameter codec are in place, but real TLS, authenticated
-  transport-parameter negotiation, complete packet protection, short headers, and header protection integration remain
-  future work.
+  RFC 9001 Initial vectors, the M30 structural transport-parameter codec, and the M31 TLS handshake adapter boundary are
+  in place, but real TLS, certificate validation, key schedule, authenticated transport-parameter negotiation, complete
+  packet protection, short headers, and header protection integration remain future work.
 - The complete M28-M39 production-readiness route is tracked in
   `docs/superpowers/plans/2026-04-27-post-basic-production-readiness-roadmap.md`.
 - External TLS 1.3 and QUIC packet-protection adapter backed by a mature crypto library.
