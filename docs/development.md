@@ -443,3 +443,21 @@ tests and future loopback development.
 M16 is not secure or interoperable QUIC. It does not implement real 1-RTT short-header encoding, packet number
 reconstruction, key phase, TLS 1.3, AEAD, header protection, congestion control, public async APIs, sockets, or production
 interoperability.
+
+## QUIC minimal close/reset structural codec scope
+
+The M17 close/reset stage adds deterministic structural `RESET_STREAM` and `STOP_SENDING` behavior for tests and future
+loopback work.
+
+- `frame.hpp` now structurally encodes and decodes `reset_stream_frame` (`0x04`) and `stop_sending_frame` (`0x05`).
+- `stream_receive_state::reset()` records the reset application error code and final size, exposes reset queries, and rejects
+  later STREAM data after reset.
+- `stream_send_state::stop_sending()` records the stop application error code, suppresses new STREAM emission, clears queued
+  retransmission ranges, and rejects later append/finish attempts.
+- `stream_receive_set` and `stream_send_set` route reset/stop frames by stream ID.
+- `connection_loop` applies inbound reset/stop frames while preserving the existing `received_packet_event` raw-frame surface
+  for deterministic tests.
+
+M17 remains structural. It does not add an application callback policy, automatic RESET_STREAM generation in response to
+STOP_SENDING, a complete stream lifecycle state machine, application CONNECTION_CLOSE (`0x1d`), public async stream APIs,
+sockets, TLS, AEAD, header protection, or production interoperability.

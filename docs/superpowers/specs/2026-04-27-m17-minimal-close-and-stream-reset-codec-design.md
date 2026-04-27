@@ -16,6 +16,7 @@
 - Add `stop_sending_frame` codec support.
 - Add minimal receive/send stream state markers for reset or stop.
 - Route reset/stop frames through connection-owned stream state.
+- Preserve existing transport `CONNECTION_CLOSE` support without adding application close policy.
 
 ## Behavioral Rules
 
@@ -23,6 +24,8 @@
 - `STOP_SENDING` carries stream ID and application error code.
 - Reset/stop state is explicit and observable in tests.
 - Data beyond an established final size remains invalid.
+- `RESET_STREAM` records final size and application error code on receive state and rejects later stream data.
+- `STOP_SENDING` records application error code on send state and suppresses future STREAM emission for that stream.
 
 ## Non-Goals
 
@@ -30,6 +33,8 @@
 - Application callback policy.
 - Public async stream cancellation API.
 - Complex connection close/error policy.
+- Application CONNECTION_CLOSE (`0x1d`).
+- Automatic RESET_STREAM generation in response to STOP_SENDING.
 
 ## Verification
 
