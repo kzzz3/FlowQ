@@ -4,11 +4,13 @@
 #include <flowq/quic/core.hpp>
 #include <flowq/quic/packet_pipeline.hpp>
 #include <flowq/quic/stream.hpp>
+#include <flowq/quic/transport_parameters.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -36,7 +38,43 @@ struct connection_loop_config {
     std::uint64_t initial_connection_send_max_data{UINT64_MAX};
     std::size_t max_packet_payload_size{SIZE_MAX};
     packet_protection_policy protection_policy{packet_protection_policy::test_allowed};
+    std::uint64_t initial_max_stream_data_bidi_local{UINT64_MAX};
+    std::uint64_t initial_max_stream_data_bidi_remote{UINT64_MAX};
+    std::uint64_t initial_max_stream_data_uni{UINT64_MAX};
+    std::chrono::milliseconds max_idle_timeout{};
+    std::uint64_t max_udp_payload_size{1200};
+    std::uint64_t active_connection_id_limit{2};
+    bool disable_active_migration{};
 };
+
+inline void apply_transport_parameters(connection_loop_config& config, const transport_parameters& parameters) {
+    if (parameters.max_idle_timeout.has_value()) {
+        config.max_idle_timeout = std::chrono::milliseconds{*parameters.max_idle_timeout};
+    }
+    if (parameters.max_udp_payload_size.has_value()) {
+        config.max_udp_payload_size = *parameters.max_udp_payload_size;
+        if (*parameters.max_udp_payload_size <= std::numeric_limits<std::size_t>::max()) {
+            config.max_packet_payload_size = static_cast<std::size_t>(*parameters.max_udp_payload_size);
+        }
+    }
+    if (parameters.initial_max_data.has_value()) {
+        config.initial_connection_send_max_data = *parameters.initial_max_data;
+    }
+    if (parameters.initial_max_stream_data_bidi_local.has_value()) {
+        config.initial_max_stream_data_bidi_local = *parameters.initial_max_stream_data_bidi_local;
+    }
+    if (parameters.initial_max_stream_data_bidi_remote.has_value()) {
+        config.initial_max_stream_data_bidi_remote = *parameters.initial_max_stream_data_bidi_remote;
+    }
+    if (parameters.initial_max_stream_data_uni.has_value()) {
+        config.initial_max_stream_data_uni = *parameters.initial_max_stream_data_uni;
+        config.initial_stream_send_max_data = *parameters.initial_max_stream_data_uni;
+    }
+    if (parameters.active_connection_id_limit.has_value()) {
+        config.active_connection_id_limit = *parameters.active_connection_id_limit;
+    }
+    config.disable_active_migration = parameters.disable_active_migration;
+}
 
 struct received_packet_event {
     packet_number number{};

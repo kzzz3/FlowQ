@@ -73,6 +73,8 @@ TEST_CASE("QUIC session public header exposes basic client configuration") {
 
     CHECK(config.version == 1);
     CHECK(config.protection_policy == flowq::quic::packet_protection_policy::test_allowed);
+    CHECK_FALSE(config.disable_active_migration);
+    CHECK(config.active_connection_id_limit == 2);
 }
 
 TEST_CASE("QUIC session queues stream data before flush returns outbound Application datagrams") {
