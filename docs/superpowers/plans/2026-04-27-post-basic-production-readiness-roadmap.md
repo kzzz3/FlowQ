@@ -26,7 +26,8 @@
 - [x] M29: RFC 9001 Initial packet-protection vectors through vetted primitives.
 - [x] M30: Transport parameter codec and config mapping.
 - [x] M31: TLS handshake adapter boundary and CRYPTO byte pump.
-- [ ] M31b: External TLS provider adapter implementation.
+- [x] M31b-a: Default-off OpenSSL QUIC TLS provider surface.
+- [ ] M31b-b: Provider-backed local TLS handshake evidence.
 - [ ] M32: RFC-shaped short-header value model and parser shell.
 - [ ] M33: Key lifecycle gates and packet-space discard rules.
 - [ ] M34: Recovery and congestion-control production baseline.
@@ -42,7 +43,7 @@
 - M29: `docs/superpowers/plans/2026-04-27-m29-rfc9001-initial-vectors.md`
 - M30: `docs/superpowers/plans/2026-04-27-m30-transport-parameters.md`
 - M31: `docs/superpowers/plans/2026-04-27-m31-tls-handshake-adapter.md`
-- M31b: `docs/superpowers/plans/2026-04-27-m31b-external-tls-provider-adapter.md`
+- M31b-a/M31b-b: `docs/superpowers/plans/2026-04-27-m31b-external-tls-provider-adapter.md`
 - M32: `docs/superpowers/plans/2026-04-27-m32-short-header-shell.md`
 - M33: `docs/superpowers/plans/2026-04-27-m33-key-lifecycle.md`
 - M34: `docs/superpowers/plans/2026-04-27-m34-congestion-baseline.md`
@@ -150,33 +151,30 @@
 
 **Acceptance gate:** FlowQ can model TLS handshake byte flow and state but still delegates TLS internals and certificate validation to external code.
 
-## M31b: External TLS Provider Adapter Implementation
+## M31b-a: Default-Off OpenSSL QUIC TLS Provider Surface
 
-**Goal:** Implement a default-off adapter for one vetted QUIC-capable TLS provider behind the M31 handshake boundary.
+**Goal:** Add a default-off OpenSSL QUIC TLS provider surface behind the M31 handshake boundary without claiming a complete provider-backed handshake.
 
 **Files:**
 - Create: `include/flowq/quic/tls_provider_backend.hpp`
-- Create: `tests/integration/quic_tls_provider_adapter_tests.cpp`
+- Create: `tests/unit/quic_tls_provider_backend_tests.cpp`
 - Create: `cmake/FlowQTlsBackendOptions.cmake`
-- Modify: `include/flowq/quic/tls_handshake.hpp`
-- Modify: `include/flowq/quic/key_lifecycle.hpp`
 - Modify: `CMakeLists.txt`
 - Modify: `tests/CMakeLists.txt`
-- Modify: `vcpkg.json` only after choosing the vetted backend package.
+- Modify: `vcpkg.json`
 - Modify: `docs/development.md`
 - Modify: `docs/basic-complete.md`
 
 **TDD steps:**
-- [ ] Write tests proving backend absence produces a skipped or disabled provider result, not a false pass.
-- [ ] Write tests proving provider metadata exposes name, version, TLS implementation family, and enabled cipher suites.
-- [ ] Write provider-backed local handshake tests reaching `handshake_confirmed` with test certificates owned by the provider layer.
-- [ ] Write invalid certificate or invalid verification policy tests that fail closed through provider errors.
-- [ ] Verify RED before linking the backend.
-- [ ] Implement one selected provider adapter by calling provider APIs only; do not implement TLS, HKDF, AEAD, certificate validation, random generation, or key schedule inside FlowQ.
-- [ ] Connect provider handshake state to M31 and key availability events to M33.
-- [ ] Verify default build with backend disabled and provider-enabled tests when the backend is present.
+- [x] Write tests proving backend absence produces a disabled provider result, not a false pass.
+- [x] Write tests proving provider metadata exposes name, version/API availability, TLS implementation family, and enabled cipher suites when the backend is enabled.
+- [x] Verify RED before adding the provider surface.
+- [x] Add default-off OpenSSL QUIC TLS backend option and compile-time API detection.
+- [x] Implement metadata/status reporting by calling provider APIs only when enabled; do not implement TLS, HKDF, AEAD, certificate validation, random generation, or key schedule inside FlowQ.
+- [x] Verify default build with backend disabled.
+- [x] Verify provider-enabled configure/build/tests when local OpenSSL exposes OpenSSL 3.5+ QUIC TLS APIs.
 
-**Acceptance gate:** A vetted external QUIC-capable TLS provider can complete a local handshake and report key availability through FlowQ boundaries. FlowQ still does not implement TLS internals or claim production readiness.
+**Acceptance gate:** Default FlowQ remains backend-free. Enabling `FLOWQ_ENABLE_OPENSSL_QUIC_TLS` requires OpenSSL 3.5+ QUIC TLS APIs and exposes provider metadata/API availability only. Full local TLS handshake, certificate-policy validation, key lifecycle proof, and production readiness remain M31b-b/M33 work.
 
 ## M32: RFC-Shaped Short-Header Value Model and Parser Shell
 
