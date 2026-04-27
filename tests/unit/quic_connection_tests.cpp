@@ -66,6 +66,7 @@ flowq::quic::connection_loop make_loop(
         std::move(peer),
         &protector,
         &protector,
+        &protector,
         flowq::quic::packet_pipeline_config{1200},
         initial_stream_send_max_data,
         initial_connection_send_max_data,
@@ -796,6 +797,22 @@ TEST_CASE("connection loop keeps Initial and Handshake packet numbers independen
     CHECK(loop.sent_packets(flowq::quic::packet_number_space::handshake).packets()[0].packet_number == 0);
 }
 
+TEST_CASE("connection loop keeps Initial Handshake and Application packet numbers independent") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.queue_handshake({flowq::quic::frame{flowq::quic::crypto_frame{0, flowq::buffer{bytes({0xaa})}}}});
+    loop.queue_application({flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("app")}}});
+    loop.flush(at(0ms));
+
+    auto actions = loop.drain_actions();
+    REQUIRE(actions.size() == 3);
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets()[0].packet_number == 0);
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::handshake).packets()[0].packet_number == 0);
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::application).packets()[0].packet_number == 0);
+}
+
 TEST_CASE("connection loop parses and acknowledges Handshake packets") {
     flowq::quic::plaintext_packet_protector protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
@@ -826,17 +843,76 @@ TEST_CASE("connection loop parses and acknowledges Handshake packets") {
     CHECK(std::get<flowq::quic::ack_frame>(parsed_ack.frames[0]).largest_acknowledged == 0);
 }
 
-TEST_CASE("connection loop rejects unsupported application packet number space") {
+TEST_CASE("connection loop flushes queued Application frames as a structural outbound datagram") {
     flowq::quic::plaintext_packet_protector protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
 
-    CHECK_THROWS_AS((void)loop.sent_packets(flowq::quic::packet_number_space::application), std::invalid_argument);
+    loop.queue_application({flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("app")}}});
+    loop.flush(at(0ms));
 
-    loop.acknowledge(flowq::quic::packet_number_space::application);
-    auto actions = loop.drain_actions();
-    REQUIRE(actions.size() == 1);
-    REQUIRE(std::holds_alternative<flowq::quic::close_action>(actions[0]));
-    CHECK_FALSE(std::get<flowq::quic::close_action>(actions[0]).error.ok());
+    auto datagram = require_single_outbound(loop.drain_actions());
+    auto parsed = flowq::quic::parse_application_packet(datagram.payload, protector);
+    REQUIRE(parsed.ok());
+    CHECK(parsed.space == flowq::quic::packet_number_space::application);
+    CHECK(parsed.number.value == 0);
+    REQUIRE(parsed.frames.size() == 1);
+    CHECK(std::holds_alternative<flowq::quic::stream_frame>(parsed.frames[0]));
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::application).packets()[0].packet_number == 0);
+}
+
+TEST_CASE("connection loop parses and acknowledges structural Application packets") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    client.queue_application({flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("hello")}}});
+    client.flush(at(0ms));
+    auto datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer});
+    auto received_actions = server.drain_actions();
+    REQUIRE(received_actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(received_actions[0]));
+    const auto& received = std::get<flowq::quic::received_packet_event>(received_actions[0]);
+    CHECK(received.number.space == flowq::quic::packet_number_space::application);
+    CHECK(received.number.value == 0);
+    REQUIRE(received.stream_deliveries.size() == 1);
+    CHECK(as_string(received.stream_deliveries[0].result.data) == "hello");
+
+    server.acknowledge(flowq::quic::packet_number_space::application);
+    auto ack_datagram = require_single_outbound(server.drain_actions());
+    auto parsed_ack = flowq::quic::parse_application_packet(ack_datagram.payload, protector);
+    REQUIRE(parsed_ack.ok());
+    CHECK(parsed_ack.space == flowq::quic::packet_number_space::application);
+    REQUIRE(parsed_ack.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::ack_frame>(parsed_ack.frames[0]));
+    CHECK(std::get<flowq::quic::ack_frame>(parsed_ack.frames[0]).largest_acknowledged == 0);
+}
+
+TEST_CASE("connection loop scopes Application ACKs to Application sent packets") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto outbound = client.drain_actions();
+    REQUIRE(outbound.size() == 2);
+    REQUIRE(std::holds_alternative<flowq::quic::outbound_datagram>(outbound[1]));
+
+    auto app_datagram = std::get<flowq::quic::outbound_datagram>(std::move(outbound[1]));
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(app_datagram.payload), app_datagram.peer});
+    (void)server.drain_actions();
+    server.acknowledge(flowq::quic::packet_number_space::application);
+    auto ack_datagram = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+
+    const auto& initial_packets = client.sent_packets(flowq::quic::packet_number_space::initial).packets();
+    const auto& application_packets = client.sent_packets(flowq::quic::packet_number_space::application).packets();
+    REQUIRE(initial_packets.size() == 1);
+    REQUIRE(application_packets.size() == 1);
+    CHECK(initial_packets[0].state == flowq::quic::sent_packet_state::outstanding);
+    CHECK(application_packets[0].state == flowq::quic::sent_packet_state::acknowledged);
 }
 
 TEST_CASE("connection loop converts invalid inbound datagrams to close actions") {
