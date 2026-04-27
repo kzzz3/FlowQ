@@ -27,15 +27,15 @@
 
 ## Tasks
 
-- [ ] Write RED tests for CRYPTO byte buffering by Initial, Handshake, and Application encryption levels.
-- [ ] Write RED tests for adapter states: `idle`, `handshaking`, `handshake_confirmed`, and `failed`.
-- [ ] Write RED tests proving Application data cannot be sent under production-required policy before handshake confirmation and key availability.
-- [ ] Verify RED.
-- [ ] Implement `tls_handshake_adapter` interface, `handshake_state`, `crypto_bytes`, and deterministic fake adapter helpers.
-- [ ] Route CRYPTO bytes between connection/session and adapter without parsing TLS.
-- [ ] Verify GREEN with focused handshake/session tests.
-- [ ] Run full build, CTest, install, package-consumer gate.
-- [ ] Request Oracle review before key lifecycle work.
+- [x] Write RED tests for CRYPTO byte buffering by Initial, Handshake, and Application encryption levels.
+- [x] Write RED tests for adapter states: `idle`, `handshaking`, `handshake_confirmed`, and `failed`.
+- [x] Write RED tests proving Application data cannot be sent under production-required policy before handshake confirmation and key availability.
+- [x] Verify RED.
+- [x] Implement `tls_handshake_adapter` interface, `handshake_state`, `crypto_bytes`, and deterministic fake adapter helpers.
+- [x] Route CRYPTO bytes between connection/session and adapter without parsing TLS.
+- [x] Verify GREEN with focused handshake/session tests.
+- [x] Run full build, CTest, install, package-consumer gate.
+- [x] Request Oracle review before key lifecycle work.
 
 ## Acceptance Gate
 

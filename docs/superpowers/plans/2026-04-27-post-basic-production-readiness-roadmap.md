@@ -25,7 +25,7 @@
 - [x] M28: Crypto provider boundary and fail-closed packet protection contract.
 - [x] M29: RFC 9001 Initial packet-protection vectors through vetted primitives.
 - [x] M30: Transport parameter codec and config mapping.
-- [ ] M31: TLS handshake adapter boundary and CRYPTO byte pump.
+- [x] M31: TLS handshake adapter boundary and CRYPTO byte pump.
 - [ ] M31b: External TLS provider adapter implementation.
 - [ ] M32: RFC-shaped short-header value model and parser shell.
 - [ ] M33: Key lifecycle gates and packet-space discard rules.
@@ -140,13 +140,13 @@
 - Modify: `docs/development.md`
 
 **TDD steps:**
-- [ ] Write tests for CRYPTO byte buffering by Initial, Handshake, and Application encryption levels.
-- [ ] Write tests for adapter state transitions: `idle`, `handshaking`, `handshake_confirmed`, `failed`.
-- [ ] Write tests proving application data cannot be sent under production-required policy before handshake confirmation and key availability.
-- [ ] Verify RED.
-- [ ] Implement `tls_handshake_adapter` interface and deterministic fake adapter for tests.
-- [ ] Route CRYPTO frame bytes between connection/session and the adapter without implementing TLS internals.
-- [ ] Verify GREEN and full CTest.
+- [x] Write tests for CRYPTO byte buffering by Initial, Handshake, and Application encryption levels.
+- [x] Write tests for adapter state transitions: `idle`, `handshaking`, `handshake_confirmed`, `failed`.
+- [x] Write tests proving application data cannot be sent under production-required policy before handshake confirmation and key availability.
+- [x] Verify RED.
+- [x] Implement `tls_handshake_adapter` interface and deterministic fake adapter for tests.
+- [x] Route CRYPTO frame bytes between connection/session and the adapter without implementing TLS internals.
+- [x] Verify GREEN and full CTest.
 
 **Acceptance gate:** FlowQ can model TLS handshake byte flow and state but still delegates TLS internals and certificate validation to external code.
 
