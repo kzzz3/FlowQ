@@ -1,4 +1,5 @@
 #include <flowq/quic/connection.hpp>
+#include <flowq/quic/tls_handshake.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -40,6 +41,63 @@ flowq::buffer text(std::string value) {
     }
     return flowq::buffer{output};
 }
+
+class recording_tls_adapter final : public flowq::quic::tls_handshake_adapter {
+public:
+    flowq::quic::handshake_state state() const noexcept override {
+        return state_value;
+    }
+
+    flowq::quic::tls_key_availability key_availability() const noexcept override {
+        return keys;
+    }
+
+    flowq::error receive_crypto(flowq::quic::crypto_bytes bytes) override {
+        received.push_back(std::move(bytes));
+        return {};
+    }
+
+    std::vector<flowq::quic::crypto_bytes> drain_crypto() override {
+        auto output = std::move(outbound);
+        outbound.clear();
+        return output;
+    }
+
+    flowq::quic::handshake_state state_value{flowq::quic::handshake_state::idle};
+    flowq::quic::tls_key_availability keys{};
+    std::vector<flowq::quic::crypto_bytes> received;
+    std::vector<flowq::quic::crypto_bytes> outbound;
+};
+
+class provider_backed_packet_protector final : public flowq::quic::packet_protector {
+public:
+    explicit provider_backed_packet_protector(flowq::quic::protection_level level) : level_{level} {}
+
+    flowq::quic::protection_level level() const noexcept override {
+        return level_;
+    }
+
+    flowq::quic::packet_security_level security_level() const noexcept override {
+        return flowq::quic::packet_security_level::authenticated_encrypted;
+    }
+
+    flowq::quic::crypto_provider_status provider_status() const noexcept override {
+        return flowq::quic::crypto_provider_status::available(
+            flowq::quic::cipher_suite::aes_128_gcm_sha256,
+            flowq::quic::crypto_capabilities{true, true, true, true, true});
+    }
+
+    flowq::quic::packet_protection_result protect(std::span<const std::byte> plaintext) const override {
+        return {flowq::buffer{plaintext}, {}};
+    }
+
+    flowq::quic::packet_protection_result unprotect(std::span<const std::byte> protected_payload) const override {
+        return {flowq::buffer{protected_payload}, {}};
+    }
+
+private:
+    flowq::quic::protection_level level_{};
+};
 
 std::string as_string(const flowq::buffer& buffer) {
     std::string output;
@@ -157,6 +215,61 @@ TEST_CASE("connection loop parses inbound Initial packets and generates ACK pack
     REQUIRE(parsed_ack.frames.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::ack_frame>(parsed_ack.frames[0]));
     CHECK(std::get<flowq::quic::ack_frame>(parsed_ack.frames[0]).largest_acknowledged == 0);
+}
+
+TEST_CASE("connection loop feeds inbound CRYPTO frames to TLS adapter by packet space") {
+    flowq::quic::plaintext_packet_protector protector{};
+    recording_tls_adapter adapter{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    flowq::quic::connection_loop_config server_config{};
+    server_config.role = flowq::quic::connection_role::server;
+    server_config.local_connection_id = cid({0x02});
+    server_config.remote_connection_id = cid({0x01});
+    server_config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
+    server_config.initial_protector = &protector;
+    server_config.handshake_protector = &protector;
+    server_config.application_protector = &protector;
+    server_config.tls_adapter = &adapter;
+    auto server = flowq::quic::connection_loop{std::move(server_config)};
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::crypto_frame{9, text("client hello")}}});
+    client.flush();
+    auto datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer});
+
+    REQUIRE(adapter.received.size() == 1);
+    CHECK(adapter.received[0].level == flowq::quic::tls_encryption_level::initial);
+    CHECK(adapter.received[0].offset == 9);
+    CHECK(as_string(adapter.received[0].data) == "client hello");
+}
+
+TEST_CASE("connection loop pumps TLS adapter CRYPTO bytes into packet-space frames") {
+    flowq::quic::plaintext_packet_protector protector{};
+    recording_tls_adapter adapter{};
+    adapter.outbound.push_back(flowq::quic::crypto_bytes{flowq::quic::tls_encryption_level::handshake, 5, text("server flight")});
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::server;
+    config.local_connection_id = cid({0x02});
+    config.remote_connection_id = cid({0x01});
+    config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
+    config.initial_protector = &protector;
+    config.handshake_protector = &protector;
+    config.application_protector = &protector;
+    config.tls_adapter = &adapter;
+    auto loop = flowq::quic::connection_loop{std::move(config)};
+
+    loop.flush();
+
+    auto datagram = require_single_outbound(loop.drain_actions());
+    auto parsed = flowq::quic::parse_long_packet(datagram.payload, protector);
+    REQUIRE(parsed.ok());
+    CHECK(parsed.number.space == flowq::quic::packet_number_space::handshake);
+    REQUIRE(parsed.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::crypto_frame>(parsed.frames[0]));
+    const auto& crypto = std::get<flowq::quic::crypto_frame>(parsed.frames[0]);
+    CHECK(crypto.offset == 5);
+    CHECK(as_string(crypto.data) == "server flight");
 }
 
 TEST_CASE("connection loop applies inbound ACK frames to sent packet trackers") {
@@ -989,6 +1102,34 @@ TEST_CASE("connection loop rejects test-only protection when production protecti
         UINT64_MAX,
         SIZE_MAX,
         flowq::quic::packet_protection_policy::production_required);
+
+    loop.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+
+    auto actions = loop.drain_actions();
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(actions[0]));
+    CHECK_FALSE(std::get<flowq::quic::close_action>(actions[0]).error.ok());
+}
+
+TEST_CASE("connection loop blocks production Application data before TLS handshake confirmation and keys") {
+    provider_backed_packet_protector initial_protector{flowq::quic::protection_level::initial};
+    provider_backed_packet_protector handshake_protector{flowq::quic::protection_level::handshake};
+    provider_backed_packet_protector application_protector{flowq::quic::protection_level::application};
+    recording_tls_adapter adapter{};
+    adapter.state_value = flowq::quic::handshake_state::handshaking;
+    adapter.keys.application = true;
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = cid({0x01});
+    config.remote_connection_id = cid({0x02});
+    config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
+    config.initial_protector = &initial_protector;
+    config.handshake_protector = &handshake_protector;
+    config.application_protector = &application_protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::production_required;
+    config.tls_adapter = &adapter;
+    auto loop = flowq::quic::connection_loop{std::move(config)};
 
     loop.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
     loop.flush(at(0ms));

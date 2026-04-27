@@ -4,6 +4,7 @@
 #include <flowq/quic/core.hpp>
 #include <flowq/quic/packet_pipeline.hpp>
 #include <flowq/quic/stream.hpp>
+#include <flowq/quic/tls_handshake.hpp>
 #include <flowq/quic/transport_parameters.hpp>
 
 #include <algorithm>
@@ -45,6 +46,7 @@ struct connection_loop_config {
     std::uint64_t max_udp_payload_size{1200};
     std::uint64_t active_connection_id_limit{2};
     bool disable_active_migration{};
+    tls_handshake_adapter* tls_adapter{};
 };
 
 inline void apply_transport_parameters(connection_loop_config& config, const transport_parameters& parameters) {
@@ -134,6 +136,20 @@ namespace detail {
     return space == packet_number_space::handshake ? config.handshake_protector : config.initial_protector;
 }
 
+[[nodiscard]] inline tls_encryption_level tls_level_for(packet_number_space space) noexcept {
+    if (space == packet_number_space::application) {
+        return tls_encryption_level::application;
+    }
+    return space == packet_number_space::handshake ? tls_encryption_level::handshake : tls_encryption_level::initial;
+}
+
+[[nodiscard]] inline packet_number_space packet_space_for(tls_encryption_level level) noexcept {
+    if (level == tls_encryption_level::application) {
+        return packet_number_space::application;
+    }
+    return level == tls_encryption_level::handshake ? packet_number_space::handshake : packet_number_space::initial;
+}
+
 } // namespace detail
 
 class connection_loop {
@@ -218,6 +234,7 @@ public:
     }
 
     void flush(std::chrono::steady_clock::time_point sent_at) {
+        pump_tls_crypto();
         flush_space(packet_number_space::initial, initial_queue_, next_initial_packet_number_, sent_at);
         flush_space(packet_number_space::handshake, handshake_queue_, next_handshake_packet_number_, sent_at);
         flush_space(packet_number_space::application, application_queue_, next_application_packet_number_, sent_at);
@@ -439,8 +456,37 @@ private:
         next_initial_packet_number_ = value;
     }
 
+    [[nodiscard]] bool application_send_allowed() const noexcept {
+        return config_.protection_policy == packet_protection_policy::test_allowed ||
+            (config_.tls_adapter != nullptr && application_data_ready(*config_.tls_adapter));
+    }
+
+    void pump_tls_crypto() {
+        if (config_.tls_adapter == nullptr) {
+            return;
+        }
+        for (auto& item : config_.tls_adapter->drain_crypto()) {
+            auto frame = flowq::quic::frame{crypto_frame{item.offset, std::move(item.data)}};
+            switch (detail::packet_space_for(item.level)) {
+            case packet_number_space::initial:
+                initial_queue_.push_back(std::move(frame));
+                break;
+            case packet_number_space::handshake:
+                handshake_queue_.push_back(std::move(frame));
+                break;
+            case packet_number_space::application:
+                application_queue_.push_back(std::move(frame));
+                break;
+            }
+        }
+    }
+
     void flush_space(packet_number_space space, std::vector<frame>& queue, std::uint64_t& next_packet_number, std::chrono::steady_clock::time_point sent_at) {
         if (queue.empty()) {
+            return;
+        }
+        if (space == packet_number_space::application && !application_send_allowed()) {
+            actions_.emplace_back(close_action{flowq::error{flowq::error_code::protocol_error, "production Application data requires confirmed TLS handshake and application keys"}});
             return;
         }
 
@@ -602,6 +648,21 @@ private:
         return deliveries;
     }
 
+    [[nodiscard]] flowq::error receive_crypto_frames(packet_number_space space, const std::vector<frame>& frames) {
+        if (config_.tls_adapter == nullptr) {
+            return {};
+        }
+        for (const auto& item : frames) {
+            if (const auto* crypto = std::get_if<crypto_frame>(&item)) {
+                auto error = config_.tls_adapter->receive_crypto(crypto_bytes{detail::tls_level_for(space), crypto->offset, crypto->data});
+                if (!error.ok()) {
+                    return error;
+                }
+            }
+        }
+        return {};
+    }
+
     void process_parsed_packet(parsed_packet parsed, flowq::endpoint peer) {
         const auto newly_observed = received_tracker(parsed.number.space).observe(parsed.number.value);
         if (!newly_observed) {
@@ -610,6 +671,10 @@ private:
         apply_ack_frames(parsed.number.space, parsed.frames);
         apply_flow_control_frames(parsed.frames);
         if (auto error = apply_stream_control_frames(parsed.frames); !error.ok()) {
+            actions_.emplace_back(close_action{error});
+            return;
+        }
+        if (auto error = receive_crypto_frames(parsed.number.space, parsed.frames); !error.ok()) {
             actions_.emplace_back(close_action{error});
             return;
         }
