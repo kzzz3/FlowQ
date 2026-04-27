@@ -196,6 +196,51 @@ TEST_CASE("stream receive state enforces stream data credit") {
     CHECK(blocked.error.code() == flowq::error_code::flow_control_error);
 }
 
+TEST_CASE("stream receive state applies RESET_STREAM final size") {
+    flowq::quic::stream_receive_state state{};
+    REQUIRE(state.receive(stream(0, 0, "he")).ok());
+
+    auto reset = state.reset(flowq::quic::reset_stream_frame{0, 0x2a, 5});
+
+    REQUIRE(reset.ok());
+    CHECK(reset.final_size_known);
+    CHECK(reset.final_size == 5);
+    CHECK(reset.closed);
+    CHECK(state.reset_received());
+    CHECK(state.reset_error_code() == 0x2a);
+    CHECK(state.reset_final_size() == 5);
+
+    auto beyond = state.receive(stream(0, 5, "!"));
+    CHECK_FALSE(beyond.ok());
+    CHECK(beyond.error.code() == flowq::error_code::protocol_error);
+}
+
+TEST_CASE("stream receive state rejects invalid RESET_STREAM final sizes") {
+    flowq::quic::stream_receive_state delivered{};
+    REQUIRE(delivered.receive(stream(0, 0, "hello")).ok());
+
+    auto too_small = delivered.reset(flowq::quic::reset_stream_frame{0, 0x2a, 4});
+
+    CHECK_FALSE(too_small.ok());
+    CHECK(too_small.error.code() == flowq::error_code::protocol_error);
+
+    flowq::quic::stream_receive_state pending{};
+    REQUIRE(pending.receive(stream(0, 5, "!")).ok());
+
+    auto below_pending = pending.reset(flowq::quic::reset_stream_frame{0, 0x2a, 5});
+
+    CHECK_FALSE(below_pending.ok());
+    CHECK(below_pending.error.code() == flowq::error_code::protocol_error);
+
+    flowq::quic::stream_receive_state finished{};
+    REQUIRE(finished.receive(stream(0, 0, "done", true)).ok());
+
+    auto conflict = finished.reset(flowq::quic::reset_stream_frame{0, 0x2a, 5});
+
+    CHECK_FALSE(conflict.ok());
+    CHECK(conflict.error.code() == flowq::error_code::protocol_error);
+}
+
 TEST_CASE("stream receive state accepts data after receive credit increases") {
     flowq::quic::stream_receive_state state{2};
 
@@ -683,6 +728,39 @@ TEST_CASE("stream send state reports no STREAM_DATA_BLOCKED frame when unblocked
     CHECK_FALSE(unblocked.blocked_frame().has_value());
 }
 
+TEST_CASE("stream send state applies STOP_SENDING as stopped marker") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.append(text("hello")).ok());
+
+    auto stopped = state.stop_sending(flowq::quic::stop_sending_frame{0, 0x2a});
+    auto result = state.pop_frame(16);
+    auto late_append = state.append(text("late"));
+
+    REQUIRE(stopped.ok());
+    CHECK(state.stop_requested());
+    CHECK(state.stop_error_code() == 0x2a);
+    REQUIRE(result.ok());
+    CHECK_FALSE(result.has_frame);
+    CHECK_FALSE(late_append.ok());
+    CHECK(late_append.error.code() == flowq::error_code::protocol_error);
+}
+
+TEST_CASE("stream send state suppresses retransmission after STOP_SENDING") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.append(text("hello")).ok());
+    auto sent = state.pop_frame(5);
+    REQUIRE(sent.ok());
+    REQUIRE(sent.has_frame);
+    state.on_lost(sent.range);
+
+    REQUIRE(state.stop_sending(flowq::quic::stop_sending_frame{0, 0x2a}).ok());
+    auto retransmit = state.pop_frame(5);
+
+    REQUIRE(retransmit.ok());
+    CHECK_FALSE(retransmit.has_frame);
+    CHECK_FALSE(state.has_retransmittable_data());
+}
+
 TEST_CASE("stream send state retransmits lost FIN") {
     flowq::quic::stream_send_state state{0};
     REQUIRE(state.finish().ok());
@@ -793,6 +871,33 @@ TEST_CASE("stream send set routes MAX_STREAM_DATA frames by stream id") {
     CHECK(as_string(resumed.frame.data) == "llo");
     REQUIRE(still_blocked.ok());
     CHECK_FALSE(still_blocked.has_frame);
+}
+
+TEST_CASE("stream receive and send sets route reset and stop by stream id") {
+    flowq::quic::stream_receive_set receive_streams{};
+    auto reset = receive_streams.reset(flowq::quic::reset_stream_frame{4, 0x2a, 3});
+
+    REQUIRE(reset.result.ok());
+    CHECK(reset.stream_id == 4);
+    REQUIRE(receive_streams.find(4) != nullptr);
+    CHECK(receive_streams.find(4)->reset_received());
+    CHECK(receive_streams.find(4)->reset_final_size() == 3);
+    CHECK(receive_streams.find(0) == nullptr);
+
+    flowq::quic::stream_send_set send_streams{};
+    REQUIRE(send_streams.append(0, text("alpha")).ok());
+    REQUIRE(send_streams.append(4, text("beta")).ok());
+    auto stopped = send_streams.stop_sending(flowq::quic::stop_sending_frame{4, 0x2a});
+    auto first = send_streams.pop_frame(0, 16);
+    auto second = send_streams.pop_frame(4, 16);
+
+    REQUIRE(stopped.ok());
+    REQUIRE(send_streams.find(4) != nullptr);
+    CHECK(send_streams.find(4)->stop_requested());
+    REQUIRE(first.ok());
+    CHECK(first.has_frame);
+    REQUIRE(second.ok());
+    CHECK_FALSE(second.has_frame);
 }
 
 TEST_CASE("stream send set reports STREAM_DATA_BLOCKED frame for selected blocked stream") {

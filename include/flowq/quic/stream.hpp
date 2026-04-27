@@ -73,6 +73,10 @@ public:
     explicit stream_receive_state(std::uint64_t max_data = UINT64_MAX) noexcept : max_data_{max_data} {}
 
     [[nodiscard]] stream_receive_result receive(const stream_frame& frame) {
+        if (reset_received_) {
+            return failure("STREAM data received after RESET_STREAM");
+        }
+
         const auto offset = frame.offset_present ? frame.offset : 0;
         const auto frame_size = static_cast<std::uint64_t>(frame.data.size());
         if (offset > UINT64_MAX - frame_size) {
@@ -106,6 +110,20 @@ public:
         return success(drain_contiguous());
     }
 
+    [[nodiscard]] stream_receive_result reset(const reset_stream_frame& frame) {
+        if (final_size_.has_value() && *final_size_ != frame.final_size) {
+            return failure("RESET_STREAM final size conflicts with known final size");
+        }
+        if (frame.final_size < largest_received_offset()) {
+            return failure("RESET_STREAM final size is below delivered offset");
+        }
+
+        final_size_ = frame.final_size;
+        reset_received_ = true;
+        reset_error_code_ = frame.application_error_code;
+        return {{}, true, frame.final_size, true, {}};
+    }
+
     [[nodiscard]] std::uint64_t next_offset() const noexcept {
         return next_offset_;
     }
@@ -119,7 +137,19 @@ public:
     }
 
     [[nodiscard]] bool closed() const noexcept {
-        return final_size_.has_value() && next_offset_ == *final_size_;
+        return reset_received_ || (final_size_.has_value() && next_offset_ == *final_size_);
+    }
+
+    [[nodiscard]] bool reset_received() const noexcept {
+        return reset_received_;
+    }
+
+    [[nodiscard]] std::uint64_t reset_error_code() const noexcept {
+        return reset_error_code_.value_or(0);
+    }
+
+    [[nodiscard]] std::uint64_t reset_final_size() const noexcept {
+        return final_size_value();
     }
 
     void update_max_data(std::uint64_t max_data) noexcept {
@@ -136,9 +166,19 @@ private:
     std::vector<std::byte> delivered_{};
     std::map<std::uint64_t, flowq::buffer> pending_{};
     std::optional<std::uint64_t> final_size_{};
+    bool reset_received_{};
+    std::optional<std::uint64_t> reset_error_code_{};
 
     [[nodiscard]] std::uint64_t final_size_value() const noexcept {
         return final_size_.value_or(0);
+    }
+
+    [[nodiscard]] std::uint64_t largest_received_offset() const noexcept {
+        auto largest = next_offset_;
+        for (const auto& [offset, data] : pending_) {
+            largest = std::max(largest, offset + static_cast<std::uint64_t>(data.size()));
+        }
+        return largest;
     }
 
     [[nodiscard]] stream_receive_result success(flowq::buffer data) const {
@@ -276,6 +316,11 @@ public:
         return {frame.stream_id, state.receive(frame)};
     }
 
+    [[nodiscard]] stream_delivery reset(const reset_stream_frame& frame) {
+        auto& state = state_for(frame.stream_id);
+        return {frame.stream_id, state.reset(frame)};
+    }
+
     void update_max_data(std::uint64_t stream_id, std::uint64_t max_data) {
         state_for(stream_id).update_max_data(max_data);
     }
@@ -341,6 +386,9 @@ public:
         : stream_id_{stream_id}, max_data_{max_data} {}
 
     [[nodiscard]] stream_operation_result append(const flowq::buffer& data) {
+        if (stop_requested_) {
+            return {detail::stream_error("cannot append STREAM data after STOP_SENDING")};
+        }
         if (finished_) {
             return {detail::stream_error("cannot append STREAM data after FIN")};
         }
@@ -353,11 +401,18 @@ public:
     }
 
     [[nodiscard]] stream_operation_result finish() noexcept {
+        if (stop_requested_) {
+            return {detail::stream_error("cannot finish STREAM after STOP_SENDING")};
+        }
         finished_ = true;
         return {};
     }
 
     [[nodiscard]] stream_send_result pop_frame(std::size_t max_data_size) {
+        if (stop_requested_) {
+            return {};
+        }
+
         if (!lost_.empty()) {
             auto range = lost_.front();
             lost_.erase(lost_.begin());
@@ -434,6 +489,9 @@ public:
     }
 
     void on_lost(stream_send_range range) {
+        if (stop_requested_) {
+            return;
+        }
         if (!valid_sent_range(range)) {
             return;
         }
@@ -453,6 +511,16 @@ public:
         max_data_ = std::max(max_data_, max_data);
     }
 
+    [[nodiscard]] stream_operation_result stop_sending(const stop_sending_frame& frame) {
+        if (frame.stream_id != stream_id_) {
+            return {detail::stream_error("STOP_SENDING stream id does not match send state")};
+        }
+        stop_requested_ = true;
+        stop_error_code_ = frame.application_error_code;
+        lost_.clear();
+        return {};
+    }
+
     void update_max_data(const max_stream_data_frame& frame) noexcept {
         if (frame.stream_id == stream_id_) {
             update_max_data(frame.maximum_stream_data);
@@ -464,14 +532,17 @@ public:
     }
 
     [[nodiscard]] bool blocked() const noexcept {
-        return next_unsent_offset_ < bytes_.size() && next_unsent_offset_ >= max_data_;
+        return !stop_requested_ && next_unsent_offset_ < bytes_.size() && next_unsent_offset_ >= max_data_;
     }
 
     [[nodiscard]] bool has_unsent_data() const noexcept {
-        return next_unsent_offset_ < bytes_.size();
+        return !stop_requested_ && next_unsent_offset_ < bytes_.size();
     }
 
     [[nodiscard]] bool has_retransmittable_data() const noexcept {
+        if (stop_requested_) {
+            return false;
+        }
         for (const auto& range : lost_) {
             if (!is_acked(range)) {
                 return true;
@@ -503,6 +574,14 @@ public:
         return finished_ && fin_acked_;
     }
 
+    [[nodiscard]] bool stop_requested() const noexcept {
+        return stop_requested_;
+    }
+
+    [[nodiscard]] std::uint64_t stop_error_code() const noexcept {
+        return stop_error_code_.value_or(0);
+    }
+
 private:
     std::uint64_t stream_id_{};
     std::uint64_t max_data_{UINT64_MAX};
@@ -511,6 +590,8 @@ private:
     bool finished_{};
     bool fin_sent_{};
     bool fin_acked_{};
+    bool stop_requested_{};
+    std::optional<std::uint64_t> stop_error_code_{};
     std::vector<stream_send_range> lost_{};
     std::vector<stream_send_range> acked_{};
 
@@ -632,6 +713,10 @@ public:
         update_max_data(frame.stream_id, frame.maximum_stream_data);
     }
 
+    [[nodiscard]] stream_operation_result stop_sending(const stop_sending_frame& frame) {
+        return state_for(frame.stream_id).stop_sending(frame);
+    }
+
     void on_acked(std::uint64_t stream_id, stream_send_range range) {
         if (auto* state = find(stream_id)) {
             state->on_acked(range);
@@ -663,6 +748,11 @@ public:
     }
 
     [[nodiscard]] stream_send_state* find(std::uint64_t stream_id) noexcept {
+        const auto found = streams_.find(stream_id);
+        return found == streams_.end() ? nullptr : &found->second;
+    }
+
+    [[nodiscard]] const stream_send_state* find(std::uint64_t stream_id) const noexcept {
         const auto found = streams_.find(stream_id);
         return found == streams_.end() ? nullptr : &found->second;
     }
