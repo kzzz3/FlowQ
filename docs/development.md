@@ -161,3 +161,25 @@ and back.
 M4a intentionally defers real TLS, AEAD, header protection, short headers, key lifecycle, connection state, stream
 state, flow control, congestion control, and public API design. Test-only protectors may transform bytes
 deterministically, but production paths must not label plaintext as protected.
+
+## QUIC minimal connection-loop scope
+
+The M4b connection-loop stage adds a small, pure single-connection coordinator in `flowq::quic::connection`. It
+connects M4a packet assembly/parsing with M3 ACK tracking without taking ownership of sockets, ASIO timers, TLS, or
+application stream semantics.
+
+- `connection_loop` owns local/remote connection IDs, a peer endpoint, independent Initial and Handshake packet-number
+  counters, per-space sent-packet trackers, and per-space received-packet trackers.
+- Callers queue Initial or Handshake frame vectors, then call `flush()` to produce deterministic `outbound_datagram`
+  actions through `assemble_long_packet`. Packet numbers start at zero in each space and advance independently.
+- Inbound datagrams are parsed through `parse_long_packet`, recorded in the matching received tracker, surfaced as
+  `received_packet_event` actions, and scanned for ACK frames that update the matching sent tracker.
+- `acknowledge(space)` emits an ACK-only Initial or Handshake packet from the recorded received-packet ranges when that
+  space has received packets.
+- Parse or assembly failures become `close_action` values instead of exceptions, preserving the protocol-core action
+  seam.
+
+M4b remains structural and deliberately incomplete. It does not implement TLS handshake progression, real AEAD/header
+protection, short headers, Application Data, packet-number reconstruction, Retry validation, stream state, stream
+reassembly, retransmission queues, flow control, congestion control, pacing, key discard, migration, listener demux, or
+ASIO event-loop integration.
