@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <initializer_list>
 #include <span>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -23,11 +24,30 @@ flowq::quic::connection_id cid(std::initializer_list<unsigned int> values) {
     return flowq::quic::connection_id{flowq::buffer{bytes(values)}};
 }
 
+flowq::buffer text(std::string value) {
+    std::vector<std::byte> output;
+    output.reserve(value.size());
+    for (auto character : value) {
+        output.push_back(static_cast<std::byte>(static_cast<unsigned char>(character)));
+    }
+    return flowq::buffer{output};
+}
+
+std::string as_string(const flowq::buffer& buffer) {
+    std::string output;
+    output.reserve(buffer.size());
+    for (std::size_t index = 0; index < buffer.size(); ++index) {
+        output.push_back(static_cast<char>(buffer.data()[index]));
+    }
+    return output;
+}
+
 flowq::quic::connection_loop make_loop(
     flowq::quic::connection_id local,
     flowq::quic::connection_id remote,
     flowq::endpoint peer,
-    const flowq::quic::packet_protector& protector) {
+    const flowq::quic::packet_protector& protector,
+    std::uint64_t initial_stream_send_max_data = UINT64_MAX) {
     return flowq::quic::connection_loop{flowq::quic::connection_loop_config{
         flowq::quic::connection_role::client,
         1,
@@ -36,7 +56,8 @@ flowq::quic::connection_loop make_loop(
         std::move(peer),
         &protector,
         &protector,
-        flowq::quic::packet_pipeline_config{1200}
+        flowq::quic::packet_pipeline_config{1200},
+        initial_stream_send_max_data
     }};
 }
 
@@ -112,6 +133,69 @@ TEST_CASE("connection loop applies inbound ACK frames to sent packet trackers") 
     const auto& packets = client.sent_packets(flowq::quic::packet_number_space::initial).packets();
     REQUIRE(packets.size() == 1);
     CHECK(packets[0].state == flowq::quic::sent_packet_state::acknowledged);
+}
+
+TEST_CASE("connection loop routes inbound STREAM frames to receive streams") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("hello")}}});
+    client.flush();
+    auto outbound = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(outbound.payload), outbound.peer});
+    auto actions = server.drain_actions();
+
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(actions[0]));
+    const auto& event = std::get<flowq::quic::received_packet_event>(actions[0]);
+    REQUIRE(event.stream_deliveries.size() == 1);
+    CHECK(event.stream_deliveries[0].stream_id == 0);
+    REQUIRE(event.stream_deliveries[0].result.ok());
+    CHECK(as_string(event.stream_deliveries[0].result.data) == "hello");
+}
+
+TEST_CASE("connection loop schedules outbound STREAM frames from connection stream state") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+
+    REQUIRE(loop.append_stream_data(0, text("hello")).ok());
+    auto scheduled = loop.schedule_stream_frames(order, 4, 16);
+
+    REQUIRE(scheduled.ok());
+    REQUIRE(scheduled.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(scheduled.frames[0]));
+    const auto& stream = std::get<flowq::quic::stream_frame>(scheduled.frames[0]);
+    CHECK(stream.stream_id == 0);
+    CHECK(as_string(stream.data) == "hello");
+}
+
+TEST_CASE("connection loop applies inbound MAX_STREAM_DATA to stream send state") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, 2);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(client.append_stream_data(0, text("hello")).ok());
+    auto prefix = client.schedule_stream_frames(order, 1, 16);
+    REQUIRE(prefix.ok());
+    REQUIRE(prefix.frames.size() == 1);
+    CHECK(as_string(std::get<flowq::quic::stream_frame>(prefix.frames[0]).data) == "he");
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::max_stream_data_frame{0, 5}}});
+    server.flush();
+    auto credit = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(credit.payload), credit.peer});
+    (void)client.drain_actions();
+    auto suffix = client.schedule_stream_frames(order, 1, 16);
+
+    REQUIRE(suffix.ok());
+    REQUIRE(suffix.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(suffix.frames[0]));
+    const auto& stream = std::get<flowq::quic::stream_frame>(suffix.frames[0]);
+    CHECK(stream.offset == 2);
+    CHECK(as_string(stream.data) == "llo");
 }
 
 TEST_CASE("connection loop ignores duplicate received packet frames") {

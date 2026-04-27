@@ -3,6 +3,7 @@
 #include <flowq/endpoint.hpp>
 #include <flowq/quic/core.hpp>
 #include <flowq/quic/packet_pipeline.hpp>
+#include <flowq/quic/stream.hpp>
 
 #include <cstdint>
 #include <stdexcept>
@@ -26,12 +27,14 @@ struct connection_loop_config {
     const packet_protector* initial_protector{};
     const packet_protector* handshake_protector{};
     packet_pipeline_config pipeline{};
+    std::uint64_t initial_stream_send_max_data{UINT64_MAX};
 };
 
 struct received_packet_event {
     packet_number number{};
     std::vector<frame> frames;
     flowq::endpoint peer;
+    std::vector<stream_delivery> stream_deliveries;
 };
 
 using connection_loop_action = std::variant<outbound_datagram, received_packet_event, close_action>;
@@ -66,7 +69,8 @@ public:
     explicit connection_loop(connection_loop_config config)
         : config_{std::move(config)},
           initial_sent_{packet_number_space::initial},
-          handshake_sent_{packet_number_space::handshake} {}
+          handshake_sent_{packet_number_space::handshake},
+          send_streams_{config_.initial_stream_send_max_data} {}
 
     void queue_initial(std::vector<frame> frames) {
         initial_queue_ = std::move(frames);
@@ -74,6 +78,17 @@ public:
 
     void queue_handshake(std::vector<frame> frames) {
         handshake_queue_ = std::move(frames);
+    }
+
+    [[nodiscard]] stream_operation_result append_stream_data(std::uint64_t stream_id, const flowq::buffer& data) {
+        return send_streams_.append(stream_id, data);
+    }
+
+    [[nodiscard]] stream_frame_schedule_result schedule_stream_frames(
+        std::span<const std::uint64_t> stream_ids,
+        std::size_t max_frames,
+        std::size_t max_stream_data_size) {
+        return send_streams_.pop_frames(stream_ids, max_frames, max_stream_data_size);
     }
 
     void flush() {
@@ -101,7 +116,9 @@ public:
             return;
         }
         apply_ack_frames(parsed.number.space, parsed.frames);
-        actions_.emplace_back(received_packet_event{parsed.number, std::move(parsed.frames), std::move(datagram.peer)});
+        apply_stream_credit_frames(parsed.frames);
+        auto stream_deliveries = receive_stream_frames(parsed.frames);
+        actions_.emplace_back(received_packet_event{parsed.number, std::move(parsed.frames), std::move(datagram.peer), std::move(stream_deliveries)});
     }
 
     void acknowledge(packet_number_space space) {
@@ -163,6 +180,8 @@ private:
     received_packet_tracker handshake_received_{};
     sent_packet_tracker initial_sent_;
     sent_packet_tracker handshake_sent_;
+    stream_receive_set receive_streams_{};
+    stream_send_set send_streams_{};
 
     [[nodiscard]] static packet_number_space packet_space_for(const packet_header& header) noexcept {
         return std::holds_alternative<handshake_header>(header) ? packet_number_space::handshake : packet_number_space::initial;
@@ -218,6 +237,24 @@ private:
                 (void)sent_tracker(space).on_ack_received(*ack);
             }
         }
+    }
+
+    void apply_stream_credit_frames(const std::vector<frame>& frames) {
+        for (const auto& item : frames) {
+            if (const auto* credit = std::get_if<max_stream_data_frame>(&item)) {
+                send_streams_.update_max_data(*credit);
+            }
+        }
+    }
+
+    [[nodiscard]] std::vector<stream_delivery> receive_stream_frames(const std::vector<frame>& frames) {
+        std::vector<stream_delivery> deliveries;
+        for (const auto& item : frames) {
+            if (const auto* stream = std::get_if<stream_frame>(&item)) {
+                deliveries.push_back(receive_streams_.receive(*stream));
+            }
+        }
+        return deliveries;
     }
 };
 
