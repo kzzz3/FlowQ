@@ -271,3 +271,24 @@ M8 remains a codec-only milestone. It does not apply decoded `MAX_STREAM_DATA` t
 frames from M7 blocked state, implement connection-level flow-control accounting, integrate with `connection_loop`, add
 packet-type legality checks, support short headers or Application Data packets, implement TLS/AEAD/header protection,
 congestion control, RESET_STREAM, STOP_SENDING, stream scheduling, or public APIs.
+
+## QUIC STREAM flow-control signal-seam scope
+
+The M9 STREAM flow-control signal stage connects the M7 stream send-credit core to the M8 structural flow-control frame
+values without adding packet scheduling or connection policy. It is a pure stream-scope adapter seam in
+`include/flowq/quic/stream.hpp`.
+
+- `stream_send_state::update_max_data(const max_stream_data_frame&)` applies peer stream credit when the frame stream ID
+  matches the send state, while mismatched frames remain inert.
+- `stream_send_set::update_max_data(const max_stream_data_frame&)` routes peer stream-credit updates by `stream_id`.
+- Stale or lower `MAX_STREAM_DATA` values remain harmless because stream send credit is still monotonic.
+- `stream_send_state::blocked_frame()` returns `stream_data_blocked_frame{stream_id, maximum_stream_data}` only when
+  unsent bytes are blocked by the current stream credit limit.
+- `stream_send_set::blocked_frame(stream_id)` reports blocked state for an existing selected stream and returns no frame
+  for absent streams.
+
+M9 remains a signal seam, not connection integration. It does not apply `MAX_DATA` or `DATA_BLOCKED`, implement
+connection-level flow-control accounting, receive peer `STREAM_DATA_BLOCKED` as policy, schedule or retransmit control
+frames, integrate with `connection_loop`, add packet-type legality checks, support short headers or Application Data
+packets, implement TLS/AEAD/header protection, congestion control, RESET_STREAM, STOP_SENDING, stream scheduling, or
+public APIs.
