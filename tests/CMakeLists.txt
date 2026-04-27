@@ -9,6 +9,7 @@ add_executable(
     unit/execution_tests.cpp
     unit/protocol_core_tests.cpp
     unit/quic_ack_loss_tests.cpp
+    unit/quic_connection_tests.cpp
     unit/quic_frame_tests.cpp
     unit/quic_packet_header_tests.cpp
     unit/quic_packet_pipeline_tests.cpp
