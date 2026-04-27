@@ -23,6 +23,13 @@ target_include_directories(
 find_package(asio CONFIG REQUIRED)
 find_package(stdexec CONFIG REQUIRED)
 
+include(cmake/FlowQCryptoBackendOptions.cmake)
+
+set(FLOWQ_CONFIG_FIND_OPENSSL "")
+if(FLOWQ_ENABLE_OPENSSL_CRYPTO)
+    set(FLOWQ_CONFIG_FIND_OPENSSL "find_dependency(OpenSSL COMPONENTS Crypto)")
+endif()
+
 target_link_libraries(
     flowq
     INTERFACE

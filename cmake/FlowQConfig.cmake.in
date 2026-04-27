@@ -4,6 +4,7 @@ include(CMakeFindDependencyMacro)
 
 find_dependency(asio CONFIG)
 find_dependency(stdexec CONFIG)
+@FLOWQ_CONFIG_FIND_OPENSSL@
 
 include("${CMAKE_CURRENT_LIST_DIR}/FlowQTargets.cmake")
 
