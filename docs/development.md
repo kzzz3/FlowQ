@@ -753,3 +753,24 @@ M31b-a adds a default-off provider metadata and API-availability surface in `inc
 M31b-a does not complete a TLS handshake, validate certificates, process TLS transcripts, install packet-protection keys,
 export raw secrets, bind transport parameters into TLS, or claim interoperability. Provider-backed local handshake evidence
 is deferred to M31b-b after the key lifecycle and packet-protection integration risks are narrower.
+
+### M32 short-header shell scope
+
+M32 extends `include/flowq/quic/packet_header.hpp` and `include/flowq/quic/packet_pipeline.hpp` with an RFC-shaped
+short-header value model and explicit parser shell.
+
+- `short_header` records the first byte, destination connection ID, fixed bit, spin bit, key phase, packet-number length,
+  truncated packet number, and opaque protected payload bytes.
+- `decode_short_header(input, destination_connection_id_length)` requires caller-provided DCID length because short headers
+  do not carry a destination connection ID length field.
+- `decode_packet_header(input)` still rejects short headers so long-header parsing cannot accidentally consume 1-RTT packet
+  bytes without short-header context.
+- `parse_short_packet(...)` is a test-mode shell that parses opaque short-header structure and frame bytes only when normal
+  production packet-protection policy is not requested.
+- Under `packet_protection_policy::production_required`, short-header parsing fails closed until a future header-protection
+  context and 1-RTT packet protection path exist.
+- The existing structural Application envelope (`0x50` marker, length-prefixed DCID, fixed 4-byte packet number) remains
+  separate and non-production.
+
+M32 does not remove QUIC header protection, reconstruct full packet numbers from protected headers, perform 1-RTT AEAD,
+install keys, or claim interoperability with real QUIC endpoints.

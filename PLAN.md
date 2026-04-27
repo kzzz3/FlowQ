@@ -33,7 +33,7 @@ FlowQ is a modern C++ protocol library that builds a deterministic, testable, no
 - [x] M31: Add TLS handshake adapter boundary and CRYPTO byte pump.
 - [x] M31b-a: Add default-off OpenSSL QUIC TLS provider surface.
 - [ ] M31b-b: Add provider-backed local TLS handshake evidence.
-- [ ] M32: Add RFC-shaped short-header value model and parser shell.
+- [x] M32: Add RFC-shaped short-header value model and parser shell.
 - [ ] M33: Add key lifecycle gates and packet-space discard rules.
 - [ ] M34: Add recovery and congestion-control production baseline.
 - [ ] M35: Add connection ID routing, version negotiation, Retry, and address-validation preparation.
@@ -100,7 +100,7 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 
 - [ ] External TLS/crypto adapter implementation track.
 - [x] M27 packet-number truncation/reconstruction helper foundation.
-- [ ] M31b-b-M33 local TLS handshake evidence, short-header, and key-lifecycle foundations.
+- [ ] M31b-b/M33 local TLS handshake evidence and key-lifecycle foundations.
 - [ ] M34-M36 congestion-control, connection routing, and production-shaped endpoint foundations.
 - [ ] M37-M39 diagnostics, fuzzing, interop harness, and production release evidence gates.
 - [ ] HTTP/3 and WebTransport backlog tracks after transport production-readiness evidence.
@@ -111,7 +111,7 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 - **Reset/stop scope risk**: M17 reset/stop behavior is structural and test-visible only; future work must avoid treating it as a complete stream lifecycle or application cancellation API.
 - **Loopback scope risk**: M18 proves deterministic in-memory session behavior only; future work must not present it as socket, TLS, or interoperable QUIC support.
 - **Security claim risk**: M19 adds explicit protector capability reporting and production-required rejection for test-only protection; future docs must continue to avoid describing plaintext/test protection as secure QUIC.
-- **Scope creep risk**: real short-header packet number reconstruction, TLS, AEAD, header protection, congestion control, and production/interoperable UDP public APIs remain deferred beyond this baseline; M22 covers only a bounded non-production UDP/ASIO smoke adapter.
+- **Scope creep risk**: full protected short-header parsing, TLS, AEAD, header protection, congestion control, and production/interoperable UDP public APIs remain deferred beyond this baseline; M22 covers only a bounded non-production UDP/ASIO smoke adapter.
 - **Library surface risk**: M20-M23 must expose a usable QUIC library façade without leaking raw internal frame queues as the primary consumer API.
 - **Packaging risk**: M24-M26 must prove examples and CMake package consumption build from documented commands, not only from the monorepo test binary.
 - **Tooling risk**: local LSP diagnostics currently cannot run because `clangd` is not installed in this environment; MSVC build and CTest are the executable verification gates.
@@ -122,3 +122,4 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 - **Transport-parameter risk**: M30 encodes, decodes, preserves unknown parameters, and maps selected values into config only; TLS extension binding and authenticated negotiation remain future work.
 - **TLS handshake boundary risk**: M31 routes opaque CRYPTO bytes and observes handshake/key state only; external provider wiring, certificate validation, TLS transcript handling, and real key schedule remain M31b/future work.
 - **TLS provider surface risk**: M31b-a adds only default-off OpenSSL QUIC TLS API detection and provider metadata; complete TLS handshakes, certificate-policy validation, and key lifecycle proof remain future work.
+- **Short-header shell risk**: M32 models RFC-shaped short headers and a test-mode parser shell only; header-protection removal, packet-number reconstruction from protected headers, 1-RTT AEAD, and interoperability remain future work.
