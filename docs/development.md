@@ -480,3 +480,24 @@ deterministic tests. The loopback harness lives in `tests/integration/quic_loopb
 
 M18 is still intentionally local and unsafe. It does not add real UDP sockets, TLS 1.3, AEAD, header protection, real QUIC
 short headers, address validation, congestion control, HTTP/3, public async stream APIs, or production interoperability.
+
+## QUIC crypto adapter seam scope
+
+The M19 crypto adapter seam makes packet-protection capability explicit without implementing production cryptography. It
+keeps FlowQ's deterministic tests usable while preventing plaintext/test protection from satisfying paths that explicitly
+require production packet protection.
+
+- `packet_security_level` distinguishes `test_only` protectors from `authenticated_encrypted` adapters.
+- `plaintext_packet_protector` remains available for deterministic tests, reports `protection_level::none`, and reports
+  `packet_security_level::test_only`.
+- `packet_protection_policy::production_required` makes packet assembly/parsing reject test-only protectors with a structured
+  protocol error. Existing tests and loopback paths use the default `test_allowed` policy intentionally.
+- `connection_loop_config::protection_policy` forwards the same policy to Initial, Handshake, and structural Application
+  assembly/parsing so future production-facing configurations cannot silently reuse plaintext protection.
+- Fake adapter tests prove the seam can accept an external authenticated/encrypted implementation through the existing
+  `packet_protector` interface.
+
+Real QUIC security still requires an external TLS 1.3 and crypto backend. A future adapter must own TLS handshake/key
+material, encryption-level keys, AEAD packet protection, header protection, packet-number reconstruction, key phase/key
+updates, test vectors, and interoperability work. M19 does not implement TLS, AEAD, header protection, certificate
+validation, real short headers, UDP APIs, or production interoperability.

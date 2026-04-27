@@ -24,7 +24,7 @@
 - Modify: `tests/unit/quic_packet_pipeline_tests.cpp`
 - Modify: `include/flowq/quic/packet_pipeline.hpp`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Assert the plaintext/null protector reports a test-only capability and that production-required paths reject it unless a test mode flag is explicit.
 
@@ -36,15 +36,15 @@ CHECK_FALSE(result.ok());
 CHECK(result.error.code() == flowq::error_code::protocol_error);
 ```
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Expected: the current packet protector does not expose this explicit capability contract.
 
-- [ ] **Step 3: Implement capability reporting**
+- [x] **Step 3: Implement capability reporting**
 
 Add a small enum and query method to the protection seam. Preserve existing tests by marking plaintext protection as test-only and updating callers that intentionally use it.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Expected: packet pipeline tests pass.
 
@@ -54,19 +54,19 @@ Expected: packet pipeline tests pass.
 - Modify: `include/flowq/quic/packet_pipeline.hpp`
 - Modify: `docs/development.md`
 
-- [ ] **Step 1: Write compile-time contract tests**
+- [x] **Step 1: Write compile-time contract tests**
 
 Add a small fake external adapter in tests that implements the required interface and proves packet pipeline code can call it through the seam.
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Expected: the refined adapter interface is not yet present.
 
-- [ ] **Step 3: Implement interface shape**
+- [x] **Step 3: Implement interface shape**
 
 Define the adapter methods required for future integration: current protection level, protect, unprotect, and capability/security reporting. Do not add AEAD, TLS handshake, key schedule, or header-protection code.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Expected: fake external adapter tests pass.
 
@@ -75,11 +75,11 @@ Expected: fake external adapter tests pass.
 **Files:**
 - Modify: `docs/development.md`
 
-- [ ] **Step 1: Update docs**
+- [x] **Step 1: Update docs**
 
 Document that M19 is an adapter seam only. State that real QUIC security requires a mature external TLS/crypto library, test vectors, and interop work in later milestones.
 
-- [ ] **Step 2: Full verification**
+- [x] **Step 2: Full verification**
 
 Run:
 
