@@ -736,3 +736,20 @@ QUIC-capable TLS provider.
 M31 does not implement TLS 1.3, certificate validation, TLS transcript handling, key schedule, external provider wiring,
 real packet-protection key installation, authenticated transport-parameter negotiation, or interoperability. M31b owns the
 default-off external TLS provider adapter behind this boundary.
+
+### M31b-a OpenSSL QUIC TLS provider surface scope
+
+M31b-a adds a default-off provider metadata and API-availability surface in `include/flowq/quic/tls_provider_backend.hpp`.
+
+- `tls_provider_metadata` and `tls_provider_backend_status` report provider family, name, version, QUIC TLS API
+  availability, and evidence-bound cipher-suite support without constructing a fake TLS handshake adapter.
+- The default build reports the OpenSSL QUIC TLS backend as disabled and does not require `OpenSSL::SSL`.
+- Enabling `FLOWQ_ENABLE_OPENSSL_QUIC_TLS=ON` requires `OpenSSL::SSL`, `OpenSSL::Crypto`, OpenSSL 3.5+, and the
+  `SSL_set_quic_tls_cbs` QUIC TLS API at configure time.
+- The vcpkg feature `openssl-quic-tls` adds the `openssl` package for explicitly enabled provider-surface builds.
+- Installed package config asks consumers for OpenSSL SSL/Crypto only when FlowQ was configured with the OpenSSL QUIC TLS
+  backend enabled.
+
+M31b-a does not complete a TLS handshake, validate certificates, process TLS transcripts, install packet-protection keys,
+export raw secrets, bind transport parameters into TLS, or claim interoperability. Provider-backed local handshake evidence
+is deferred to M31b-b after the key lifecycle and packet-protection integration risks are narrower.
