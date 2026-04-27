@@ -420,6 +420,60 @@ TEST_CASE("stream send state drops queued lost data after ACK") {
     CHECK_FALSE(result.has_frame);
 }
 
+TEST_CASE("stream send state suppresses FIN retransmission after late ACK") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.finish().ok());
+    auto sent = state.pop_frame(0);
+    REQUIRE(sent.ok());
+    REQUIRE(sent.has_frame);
+    REQUIRE(sent.range.fin);
+
+    state.on_lost(sent.range);
+    state.on_acked(sent.range);
+    auto result = state.pop_frame(0);
+
+    REQUIRE(result.ok());
+    CHECK_FALSE(result.has_frame);
+    CHECK(state.closed());
+}
+
+TEST_CASE("stream send state suppresses FIN retransmission after partial lost data retransmission late ACK") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.append(text("hello")).ok());
+    REQUIRE(state.finish().ok());
+    auto sent = state.pop_frame(5);
+    REQUIRE(sent.ok());
+    REQUIRE(sent.has_frame);
+    REQUIRE(sent.range.fin);
+
+    state.on_lost(sent.range);
+    auto partial = state.pop_frame(2);
+    REQUIRE(partial.ok());
+    REQUIRE(partial.has_frame);
+    CHECK(as_string(partial.frame.data) == "he");
+    CHECK_FALSE(partial.range.fin);
+
+    state.on_acked(sent.range);
+    auto result = state.pop_frame(5);
+
+    REQUIRE(result.ok());
+    CHECK_FALSE(result.has_frame);
+    CHECK(state.closed());
+}
+
+TEST_CASE("stream send state ignores loss for unsent empty FIN") {
+    flowq::quic::stream_send_state state{0};
+    REQUIRE(state.finish().ok());
+
+    state.on_lost(flowq::quic::stream_send_range{0, 0, true});
+    auto result = state.pop_frame(0);
+
+    REQUIRE(result.ok());
+    REQUIRE(result.has_frame);
+    CHECK(result.range.fin);
+    CHECK_FALSE(result.retransmission);
+}
+
 TEST_CASE("stream send state drops queued lost fragments covered by a larger ACK") {
     flowq::quic::stream_send_state state{0};
     REQUIRE(state.append(text("hello")).ok());

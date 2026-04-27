@@ -319,6 +319,7 @@ struct stream_send_result {
     stream_send_range range{};
     bool has_frame{};
     flowq::error error{};
+    bool retransmission{};
 
     [[nodiscard]] bool ok() const noexcept {
         return error.ok();
@@ -376,7 +377,9 @@ public:
             if (range.fin) {
                 fin_sent_ = true;
             }
-            return make_frame(range);
+            auto result = make_frame(range);
+            result.retransmission = true;
+            return result;
         }
 
         if (next_unsent_offset_ < bytes_.size() && max_data_size > 0) {
@@ -407,7 +410,13 @@ public:
     }
 
     void on_acked(stream_send_range range) {
-        if (range.fin && (!fin_sent_ || next_unsent_offset_ != bytes_.size())) {
+        if (!valid_sent_range(range)) {
+            return;
+        }
+        if (range.fin && !fin_sent_ && !covers_lost_fin(range)) {
+            range.fin = false;
+        }
+        if (range.fin && (!finished_ || range.offset + range.length != bytes_.size())) {
             range.fin = false;
         }
         acked_.push_back(range);
@@ -425,6 +434,12 @@ public:
     }
 
     void on_lost(stream_send_range range) {
+        if (!valid_sent_range(range)) {
+            return;
+        }
+        if (range.fin && !fin_sent_) {
+            return;
+        }
         if (is_acked(range)) {
             return;
         }
@@ -454,6 +469,15 @@ public:
 
     [[nodiscard]] bool has_unsent_data() const noexcept {
         return next_unsent_offset_ < bytes_.size();
+    }
+
+    [[nodiscard]] bool has_retransmittable_data() const noexcept {
+        for (const auto& range : lost_) {
+            if (!is_acked(range)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     [[nodiscard]] std::optional<stream_data_blocked_frame> blocked_frame() const noexcept {
@@ -499,12 +523,37 @@ private:
         return false;
     }
 
+    [[nodiscard]] bool covers_lost_fin(stream_send_range range) const noexcept {
+        for (const auto& lost : lost_) {
+            if (lost.fin && range_covers(range, lost)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     [[nodiscard]] static bool range_covers(stream_send_range covering, stream_send_range covered) noexcept {
         const auto covering_end = covering.offset + covering.length;
         const auto covered_end = covered.offset + covered.length;
         const auto bytes_covered = covering.offset <= covered.offset && covering_end >= covered_end;
         const auto fin_covered = !covered.fin || covering.fin;
         return bytes_covered && fin_covered;
+    }
+
+    [[nodiscard]] bool valid_sent_range(stream_send_range range) const noexcept {
+        if (range.offset > static_cast<std::uint64_t>(bytes_.size())) {
+            return false;
+        }
+        if (range.length > static_cast<std::uint64_t>(bytes_.size()) - range.offset) {
+            return false;
+        }
+        if (range.offset + range.length > next_unsent_offset_) {
+            return false;
+        }
+        if (range.fin && (!finished_ || range.offset + range.length != bytes_.size())) {
+            return false;
+        }
+        return true;
     }
 
     [[nodiscard]] stream_send_result make_frame(stream_send_range range) const {
@@ -583,6 +632,18 @@ public:
         update_max_data(frame.stream_id, frame.maximum_stream_data);
     }
 
+    void on_acked(std::uint64_t stream_id, stream_send_range range) {
+        if (auto* state = find(stream_id)) {
+            state->on_acked(range);
+        }
+    }
+
+    void on_lost(std::uint64_t stream_id, stream_send_range range) {
+        if (auto* state = find(stream_id)) {
+            state->on_lost(range);
+        }
+    }
+
     [[nodiscard]] std::optional<stream_data_blocked_frame> blocked_frame(std::uint64_t stream_id) const noexcept {
         const auto found = streams_.find(stream_id);
         if (found == streams_.end()) {
@@ -594,6 +655,16 @@ public:
     [[nodiscard]] bool has_unsent_data(std::uint64_t stream_id) const noexcept {
         const auto found = streams_.find(stream_id);
         return found != streams_.end() && found->second.has_unsent_data();
+    }
+
+    [[nodiscard]] bool has_retransmittable_data(std::uint64_t stream_id) const noexcept {
+        const auto found = streams_.find(stream_id);
+        return found != streams_.end() && found->second.has_retransmittable_data();
+    }
+
+    [[nodiscard]] stream_send_state* find(std::uint64_t stream_id) noexcept {
+        const auto found = streams_.find(stream_id);
+        return found == streams_.end() ? nullptr : &found->second;
     }
 
 private:
