@@ -22,6 +22,7 @@ add_executable(
     unit/quic_recovery_scheduler_tests.cpp
     unit/quic_session_tests.cpp
     unit/quic_stream_tests.cpp
+    unit/quic_tls_handshake_tests.cpp
     unit/quic_transport_parameters_tests.cpp
     unit/quic_varint_tests.cpp
     unit/timer_tests.cpp
