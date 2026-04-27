@@ -24,6 +24,16 @@ enum class protection_level {
     application
 };
 
+enum class packet_security_level {
+    test_only,
+    authenticated_encrypted
+};
+
+enum class packet_protection_policy {
+    test_allowed,
+    production_required
+};
+
 enum class long_packet_type {
     initial,
     handshake
@@ -52,6 +62,7 @@ public:
     virtual ~packet_protector() = default;
 
     [[nodiscard]] virtual protection_level level() const noexcept = 0;
+    [[nodiscard]] virtual packet_security_level security_level() const noexcept = 0;
     [[nodiscard]] virtual packet_protection_result protect(std::span<const std::byte> plaintext) const = 0;
     [[nodiscard]] virtual packet_protection_result unprotect(std::span<const std::byte> protected_payload) const = 0;
 };
@@ -60,6 +71,10 @@ class plaintext_packet_protector final : public packet_protector {
 public:
     [[nodiscard]] protection_level level() const noexcept override {
         return protection_level::none;
+    }
+
+    [[nodiscard]] packet_security_level security_level() const noexcept override {
+        return packet_security_level::test_only;
     }
 
     [[nodiscard]] packet_protection_result protect(std::span<const std::byte> plaintext) const override {
@@ -81,6 +96,7 @@ struct packet_build_request {
     std::vector<frame> frames;
     const packet_protector* protector{};
     packet_pipeline_config config{};
+    packet_protection_policy protection_policy{packet_protection_policy::test_allowed};
 };
 
 struct application_packet_build_request {
@@ -89,6 +105,7 @@ struct application_packet_build_request {
     std::vector<frame> frames;
     const packet_protector* protector{};
     packet_pipeline_config config{};
+    packet_protection_policy protection_policy{packet_protection_policy::test_allowed};
 };
 
 struct assembled_packet {
@@ -172,6 +189,17 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     return level == protection_level::none || level == protection_level::application;
 }
 
+[[nodiscard]] inline bool production_protection_satisfied(const packet_protector& protector, packet_protection_policy policy) noexcept {
+    return policy == packet_protection_policy::test_allowed || protector.security_level() == packet_security_level::authenticated_encrypted;
+}
+
+[[nodiscard]] inline flowq::error validate_protection_policy(const packet_protector& protector, packet_protection_policy policy) {
+    if (!production_protection_satisfied(protector, policy)) {
+        return pipeline_error("production packet protection requires authenticated encrypted adapter");
+    }
+    return {};
+}
+
 [[nodiscard]] inline packet_number_space space_for_header(const packet_header& header) {
     return std::holds_alternative<initial_header>(header) ? packet_number_space::initial : packet_number_space::handshake;
 }
@@ -229,6 +257,9 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     }
     if (!detail::protection_level_matches(request.type, request.protector->level())) {
         return {{}, request.number, request.protector->level(), detail::pipeline_error("packet protector level does not match packet type")};
+    }
+    if (auto error = detail::validate_protection_policy(*request.protector, request.protection_policy); !error.ok()) {
+        return {{}, request.number, request.protector->level(), error};
     }
 
     std::vector<std::byte> frame_bytes;
@@ -303,6 +334,9 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     if (!detail::application_protection_level_matches(request.protector->level())) {
         return {{}, request.number, request.protector->level(), detail::pipeline_error("packet protector level does not match structural Application packet")};
     }
+    if (auto error = detail::validate_protection_policy(*request.protector, request.protection_policy); !error.ok()) {
+        return {{}, request.number, request.protector->level(), error};
+    }
 
     std::vector<std::byte> frame_bytes;
     for (const auto& frame : request.frames) {
@@ -346,9 +380,15 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     return {std::move(encoded.payload), request.number, request.protector->level(), {}};
 }
 
-[[nodiscard]] inline parsed_packet parse_long_packet(std::span<const std::byte> datagram, const packet_protector* protector) {
+[[nodiscard]] inline parsed_packet parse_long_packet(
+    std::span<const std::byte> datagram,
+    const packet_protector* protector,
+    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
     if (protector == nullptr) {
         return {{}, {}, {}, protection_level::none, {}, detail::pipeline_error("packet protector is required")};
+    }
+    if (auto error = detail::validate_protection_policy(*protector, protection_policy); !error.ok()) {
+        return {{}, {}, {}, protector->level(), {}, error};
     }
 
     auto decoded_header = decode_packet_header(datagram);
@@ -380,9 +420,15 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     return {std::move(decoded_header.header), number, number.space, protector->level(), std::move(decoded_frames.frames), {}};
 }
 
-[[nodiscard]] inline parsed_packet parse_application_packet(std::span<const std::byte> datagram, const packet_protector* protector) {
+[[nodiscard]] inline parsed_packet parse_application_packet(
+    std::span<const std::byte> datagram,
+    const packet_protector* protector,
+    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
     if (protector == nullptr) {
         return {{}, {}, {}, protection_level::none, {}, detail::pipeline_error("packet protector is required")};
+    }
+    if (auto error = detail::validate_protection_policy(*protector, protection_policy); !error.ok()) {
+        return {{}, {}, {}, protector->level(), {}, error};
     }
     if (!detail::application_protection_level_matches(protector->level())) {
         return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("packet protector level does not match structural Application packet")};
@@ -428,20 +474,32 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     return {structural_application_header{std::byte{0x50}, std::move(destination_connection_id), length, std::move(protected_payload)}, number, number.space, protector->level(), std::move(decoded_frames.frames), {}};
 }
 
-[[nodiscard]] inline parsed_packet parse_long_packet(const flowq::buffer& datagram, const packet_protector& protector) {
-    return parse_long_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, &protector);
+[[nodiscard]] inline parsed_packet parse_long_packet(
+    const flowq::buffer& datagram,
+    const packet_protector& protector,
+    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
+    return parse_long_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, &protector, protection_policy);
 }
 
-[[nodiscard]] inline parsed_packet parse_long_packet(const flowq::buffer& datagram, const packet_protector* protector) {
-    return parse_long_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, protector);
+[[nodiscard]] inline parsed_packet parse_long_packet(
+    const flowq::buffer& datagram,
+    const packet_protector* protector,
+    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
+    return parse_long_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, protector, protection_policy);
 }
 
-[[nodiscard]] inline parsed_packet parse_application_packet(const flowq::buffer& datagram, const packet_protector& protector) {
-    return parse_application_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, &protector);
+[[nodiscard]] inline parsed_packet parse_application_packet(
+    const flowq::buffer& datagram,
+    const packet_protector& protector,
+    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
+    return parse_application_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, &protector, protection_policy);
 }
 
-[[nodiscard]] inline parsed_packet parse_application_packet(const flowq::buffer& datagram, const packet_protector* protector) {
-    return parse_application_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, protector);
+[[nodiscard]] inline parsed_packet parse_application_packet(
+    const flowq::buffer& datagram,
+    const packet_protector* protector,
+    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
+    return parse_application_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, protector, protection_policy);
 }
 
 } // namespace flowq::quic

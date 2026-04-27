@@ -36,6 +36,10 @@ public:
         return level_;
     }
 
+    flowq::quic::packet_security_level security_level() const noexcept override {
+        return flowq::quic::packet_security_level::authenticated_encrypted;
+    }
+
     flowq::quic::packet_protection_result protect(std::span<const std::byte> plaintext) const override {
         ++protect_calls;
         return {transform(plaintext), {}};
@@ -347,4 +351,67 @@ TEST_CASE("packet pipeline calls transforming protector") {
     CHECK(parsed.protection == flowq::quic::protection_level::initial);
     REQUIRE(parsed.frames.size() == 1);
     CHECK(std::holds_alternative<flowq::quic::ping_frame>(parsed.frames[0]));
+}
+
+TEST_CASE("packet protectors report explicit security capability") {
+    flowq::quic::plaintext_packet_protector plaintext{};
+    xor_packet_protector external_adapter{};
+
+    CHECK(plaintext.security_level() == flowq::quic::packet_security_level::test_only);
+    CHECK(external_adapter.security_level() == flowq::quic::packet_security_level::authenticated_encrypted);
+}
+
+TEST_CASE("packet pipeline rejects test-only protectors when production protection is required") {
+    flowq::quic::plaintext_packet_protector plaintext{};
+    flowq::quic::packet_build_request initial_request{
+        flowq::quic::long_packet_type::initial,
+        1,
+        cid({0xaa}),
+        cid({0xbb}),
+        {},
+        flowq::quic::packet_number{flowq::quic::packet_number_space::initial, 1},
+        {flowq::quic::frame{flowq::quic::ping_frame{}}},
+        &plaintext,
+        flowq::quic::packet_pipeline_config{1200},
+        flowq::quic::packet_protection_policy::production_required
+    };
+
+    auto initial = flowq::quic::assemble_long_packet(initial_request);
+    CHECK_FALSE(initial.ok());
+    CHECK(initial.error.code() == flowq::error_code::protocol_error);
+
+    flowq::quic::application_packet_build_request application_request{
+        cid({0xaa}),
+        flowq::quic::packet_number{flowq::quic::packet_number_space::application, 1},
+        {flowq::quic::frame{flowq::quic::ping_frame{}}},
+        &plaintext,
+        flowq::quic::packet_pipeline_config{1200},
+        flowq::quic::packet_protection_policy::production_required
+    };
+
+    auto application = flowq::quic::assemble_application_packet(application_request);
+    CHECK_FALSE(application.ok());
+    CHECK(application.error.code() == flowq::error_code::protocol_error);
+}
+
+TEST_CASE("packet pipeline accepts authenticated encrypted adapter when production protection is required") {
+    xor_packet_protector protector{flowq::quic::protection_level::application};
+    flowq::quic::application_packet_build_request request{
+        cid({0xaa}),
+        flowq::quic::packet_number{flowq::quic::packet_number_space::application, 2},
+        {flowq::quic::frame{flowq::quic::ping_frame{}}},
+        &protector,
+        flowq::quic::packet_pipeline_config{1200},
+        flowq::quic::packet_protection_policy::production_required
+    };
+
+    auto assembled = flowq::quic::assemble_application_packet(request);
+    REQUIRE(assembled.ok());
+
+    auto parsed = flowq::quic::parse_application_packet(
+        assembled.datagram,
+        &protector,
+        flowq::quic::packet_protection_policy::production_required);
+    REQUIRE(parsed.ok());
+    CHECK(parsed.protection == flowq::quic::protection_level::application);
 }

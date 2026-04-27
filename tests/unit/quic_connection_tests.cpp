@@ -57,7 +57,8 @@ flowq::quic::connection_loop make_loop(
     const flowq::quic::packet_protector& protector,
     std::uint64_t initial_stream_send_max_data = UINT64_MAX,
     std::uint64_t initial_connection_send_max_data = UINT64_MAX,
-    std::size_t max_packet_payload_size = SIZE_MAX) {
+    std::size_t max_packet_payload_size = SIZE_MAX,
+    flowq::quic::packet_protection_policy protection_policy = flowq::quic::packet_protection_policy::test_allowed) {
     return flowq::quic::connection_loop{flowq::quic::connection_loop_config{
         flowq::quic::connection_role::client,
         1,
@@ -70,7 +71,8 @@ flowq::quic::connection_loop make_loop(
         flowq::quic::packet_pipeline_config{1200},
         initial_stream_send_max_data,
         initial_connection_send_max_data,
-        max_packet_payload_size
+        max_packet_payload_size,
+        protection_policy
     }};
 }
 
@@ -969,6 +971,27 @@ TEST_CASE("connection loop converts invalid inbound datagrams to close actions")
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
 
     loop.on_datagram(flowq::quic::inbound_datagram{flowq::buffer{bytes({0xc0})}, flowq::endpoint{"peer", 9999, ""}});
+
+    auto actions = loop.drain_actions();
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(actions[0]));
+    CHECK_FALSE(std::get<flowq::quic::close_action>(actions[0]).error.ok());
+}
+
+TEST_CASE("connection loop rejects test-only protection when production protection is required") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(
+        cid({0x01}),
+        cid({0x02}),
+        flowq::endpoint{"server", 4433, "hq-interop"},
+        protector,
+        UINT64_MAX,
+        UINT64_MAX,
+        SIZE_MAX,
+        flowq::quic::packet_protection_policy::production_required);
+
+    loop.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
 
     auto actions = loop.drain_actions();
     REQUIRE(actions.size() == 1);

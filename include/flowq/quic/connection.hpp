@@ -35,6 +35,7 @@ struct connection_loop_config {
     std::uint64_t initial_stream_send_max_data{UINT64_MAX};
     std::uint64_t initial_connection_send_max_data{UINT64_MAX};
     std::size_t max_packet_payload_size{SIZE_MAX};
+    packet_protection_policy protection_policy{packet_protection_policy::test_allowed};
 };
 
 struct received_packet_event {
@@ -225,7 +226,7 @@ public:
 
     void on_datagram(inbound_datagram datagram) {
         if (!datagram.payload.empty() && datagram.payload.data()[0] == std::byte{0x50}) {
-            auto parsed = parse_application_packet(datagram.payload, detail::protector_for(packet_number_space::application, config_));
+            auto parsed = parse_application_packet(datagram.payload, detail::protector_for(packet_number_space::application, config_), config_.protection_policy);
             if (!parsed.ok()) {
                 actions_.emplace_back(close_action{parsed.error});
                 return;
@@ -242,7 +243,7 @@ public:
 
         const auto space = packet_space_for(header.header);
         const auto* protector = detail::protector_for(space, config_);
-        auto parsed = parse_long_packet(datagram.payload, protector);
+        auto parsed = parse_long_packet(datagram.payload, protector, config_.protection_policy);
         if (!parsed.ok()) {
             actions_.emplace_back(close_action{parsed.error});
             return;
@@ -363,7 +364,8 @@ private:
                 packet_number{space, packet_number_value},
                 frames,
                 detail::protector_for(space, config_),
-                config_.pipeline
+                config_.pipeline,
+                config_.protection_policy
             });
         }
         return assemble_long_packet(packet_build_request{
@@ -375,7 +377,8 @@ private:
             packet_number{space, packet_number_value},
             frames,
             detail::protector_for(space, config_),
-            config_.pipeline
+            config_.pipeline,
+            config_.protection_policy
         });
     }
 
