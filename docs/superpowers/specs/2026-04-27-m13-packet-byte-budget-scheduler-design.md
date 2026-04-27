@@ -15,14 +15,16 @@
 - Encode each candidate frame to measure its size.
 - Preserve candidate order.
 - Stop before the first non-fitting frame.
-- Return selected frames, encoded size, and remaining candidates or remaining budget according to existing result style.
-- Integrate at the connection scheduling boundary after M11/M12.
+- Return selected frames, encoded size, and the next unselected candidate index using existing result style.
+- Integrate at the queued Initial/Handshake connection flushing boundary after M11/M12.
 
 ## Behavioral Rules
 
 - Frames are atomic and never partially selected.
-- A frame that cannot fit in an empty budget yields an empty successful selection or an explicit too-large result, whichever tests define.
+- A frame that cannot fit in an empty helper selection yields an empty successful selection; connection flushing turns that
+  case into a close action rather than emitting an empty packet.
 - Budget means frame payload bytes only, not UDP datagram size.
+- Connection flushing preserves unselected queued frames for later flush calls.
 
 ## Non-Goals
 

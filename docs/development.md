@@ -355,3 +355,24 @@ M12 remains a structural flow-control seam. It does not implement receive-window
 `STREAMS_BLOCKED`, encoded packet byte-budget fitting, Application Data packets, short headers, TLS, AEAD/header
 protection, congestion control, pacing, blocked-frame deduplication, RESET_STREAM, STOP_SENDING, public async stream APIs,
 sockets, or production interoperability.
+
+## QUIC packet byte-budget scheduler scope
+
+The M13 packet byte-budget scheduler stage adds a pure encoded-frame payload budget helper and applies it to queued
+Initial/Handshake frame flushing in `connection_loop`.
+
+- `select_frames_for_payload_budget()` measures each candidate with the existing structural frame encoder, preserves input
+  order, selects only complete frames, and stops before the first frame that would exceed the caller's payload budget.
+- The helper reports the selected frames, their total encoded size, the next unselected candidate index, and any frame
+  encode error using the existing result-style `ok()` convention.
+- Exact-fit frames are selected. A first non-fitting frame produces a successful empty helper selection so callers can
+  decide their own policy.
+- `connection_loop_config::max_packet_payload_size` lets tests cap queued Initial/Handshake frame payload bytes before
+  packet assembly.
+- `flush_space()` assembles only the selected prefix and leaves non-selected queued frames for a later flush, preserving
+  packet-number ordering and avoiding partial frame emission.
+
+M13 budgets encoded frame payload bytes only. It does not account for long-header bytes, fixed packet-number metadata,
+packet protection overhead, UDP datagram PMTU, Initial minimum-size padding, coalescing, congestion control, pacing,
+Application Data packets, short headers, TLS, AEAD/header protection, public async stream APIs, sockets, or production
+interoperability.
