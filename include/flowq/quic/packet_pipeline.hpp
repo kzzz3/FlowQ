@@ -3,6 +3,7 @@
 #include <flowq/buffer.hpp>
 #include <flowq/error.hpp>
 #include <flowq/quic/ack_loss.hpp>
+#include <flowq/quic/crypto_provider.hpp>
 #include <flowq/quic/frame.hpp>
 #include <flowq/quic/packet_header.hpp>
 
@@ -63,6 +64,9 @@ public:
 
     [[nodiscard]] virtual protection_level level() const noexcept = 0;
     [[nodiscard]] virtual packet_security_level security_level() const noexcept = 0;
+    [[nodiscard]] virtual crypto_provider_status provider_status() const noexcept {
+        return crypto_provider_status::unavailable();
+    }
     [[nodiscard]] virtual packet_protection_result protect(std::span<const std::byte> plaintext) const = 0;
     [[nodiscard]] virtual packet_protection_result unprotect(std::span<const std::byte> protected_payload) const = 0;
 };
@@ -190,18 +194,27 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
 }
 
 [[nodiscard]] inline bool production_protection_satisfied(const packet_protector& protector, packet_protection_policy policy) noexcept {
-    return policy == packet_protection_policy::test_allowed || protector.security_level() == packet_security_level::authenticated_encrypted;
+    return policy == packet_protection_policy::test_allowed ||
+        (protector.security_level() == packet_security_level::authenticated_encrypted && protector.provider_status().production_ready());
 }
 
 [[nodiscard]] inline flowq::error validate_protection_policy(const packet_protector& protector, packet_protection_policy policy) {
     if (!production_protection_satisfied(protector, policy)) {
-        return pipeline_error("production packet protection requires authenticated encrypted adapter");
+        return pipeline_error("production packet protection requires authenticated encrypted external crypto provider");
     }
     return {};
 }
 
 [[nodiscard]] inline packet_number_space space_for_header(const packet_header& header) {
     return std::holds_alternative<initial_header>(header) ? packet_number_space::initial : packet_number_space::handshake;
+}
+
+[[nodiscard]] inline protection_level expected_protection_for_header(const packet_header& header) {
+    return std::holds_alternative<initial_header>(header) ? protection_level::initial : protection_level::handshake;
+}
+
+[[nodiscard]] inline bool protection_level_matches_header(const packet_header& header, protection_level level) {
+    return level == protection_level::none || level == expected_protection_for_header(header);
 }
 
 [[nodiscard]] inline const flowq::buffer* protected_payload_for(const packet_header& header) {
@@ -397,6 +410,9 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     }
     if (!std::holds_alternative<initial_header>(decoded_header.header) && !std::holds_alternative<handshake_header>(decoded_header.header)) {
         return {std::move(decoded_header.header), {}, {}, protector->level(), {}, detail::pipeline_error("unsupported packet type for frame parsing")};
+    }
+    if (!detail::protection_level_matches_header(decoded_header.header, protector->level())) {
+        return {std::move(decoded_header.header), {}, {}, protector->level(), {}, detail::pipeline_error("packet protector level does not match decoded long-header packet type")};
     }
 
     const auto* protected_payload = detail::protected_payload_for(decoded_header.header);
