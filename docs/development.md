@@ -314,3 +314,22 @@ M10 remains below packet scheduling and connection integration. It does not impl
 `MAX_DATA`, `DATA_BLOCKED`, connection-level flow control, `connection_loop` integration, packet-type legality,
 Application Data packets, short headers, TLS, AEAD/header protection, congestion control, RESET_STREAM, STOP_SENDING,
 prioritization policy beyond caller order, blocked-frame deduplication, or public APIs.
+
+## QUIC connection/STREAM integration seam scope
+
+The M11 connection/STREAM integration stage connects the structural connection loop to the pure STREAM cores without
+introducing real Application Data packet protection or public stream APIs.
+
+- `connection_loop` owns `stream_receive_set` and `stream_send_set` instances in addition to its existing packet trackers.
+- Inbound decoded `STREAM` frames are routed into `stream_receive_set` only after duplicate packet suppression, preserving
+  existing packet-event behavior while exposing ordered `stream_delivery` values on `received_packet_event`.
+- Inbound decoded `MAX_STREAM_DATA` frames update connection-owned stream send credit through the existing M9 stream signal
+  seam.
+- `append_stream_data()` and `schedule_stream_frames()` are synchronous connection helpers that delegate to the M6/M10
+  stream send core. They return structural frame values only and do not queue or flush packets by themselves.
+- `connection_loop_config::initial_stream_send_max_data` lets tests model peer stream credit at connection construction
+  time without adding transport-parameter negotiation.
+
+M11 remains a structural integration seam. It does not implement Application packet space, short headers, real TLS,
+AEAD/header protection, connection-level `MAX_DATA` / `DATA_BLOCKED`, packet byte-budget fitting, congestion control,
+RESET_STREAM, STOP_SENDING, public async stream APIs, sockets, or production interoperability.
