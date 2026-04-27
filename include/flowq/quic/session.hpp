@@ -37,6 +37,7 @@ struct session_config {
     std::uint64_t max_udp_payload_size{1200};
     std::uint64_t active_connection_id_limit{2};
     bool disable_active_migration{};
+    tls_handshake_adapter* tls_adapter{};
 };
 
 inline void apply_transport_parameters(session_config& config, const transport_parameters& parameters) {
@@ -153,7 +154,8 @@ private:
             config.max_idle_timeout,
             config.max_udp_payload_size,
             config.active_connection_id_limit,
-            config.disable_active_migration
+            config.disable_active_migration,
+            config.tls_adapter
         };
     }
 

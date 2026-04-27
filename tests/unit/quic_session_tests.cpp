@@ -1,10 +1,12 @@
 #include <flowq/quic/session.hpp>
+#include <flowq/quic/tls_handshake.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
 #include <cstddef>
 #include <initializer_list>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,6 +41,63 @@ flowq::buffer text(std::string value) {
     }
     return flowq::buffer{output};
 }
+
+class recording_tls_adapter final : public flowq::quic::tls_handshake_adapter {
+public:
+    flowq::quic::handshake_state state() const noexcept override {
+        return state_value;
+    }
+
+    flowq::quic::tls_key_availability key_availability() const noexcept override {
+        return keys;
+    }
+
+    flowq::error receive_crypto(flowq::quic::crypto_bytes bytes) override {
+        received.push_back(std::move(bytes));
+        return {};
+    }
+
+    std::vector<flowq::quic::crypto_bytes> drain_crypto() override {
+        auto output = std::move(outbound);
+        outbound.clear();
+        return output;
+    }
+
+    flowq::quic::handshake_state state_value{flowq::quic::handshake_state::idle};
+    flowq::quic::tls_key_availability keys{};
+    std::vector<flowq::quic::crypto_bytes> received;
+    std::vector<flowq::quic::crypto_bytes> outbound;
+};
+
+class provider_backed_packet_protector final : public flowq::quic::packet_protector {
+public:
+    explicit provider_backed_packet_protector(flowq::quic::protection_level level) : level_{level} {}
+
+    flowq::quic::protection_level level() const noexcept override {
+        return level_;
+    }
+
+    flowq::quic::packet_security_level security_level() const noexcept override {
+        return flowq::quic::packet_security_level::authenticated_encrypted;
+    }
+
+    flowq::quic::crypto_provider_status provider_status() const noexcept override {
+        return flowq::quic::crypto_provider_status::available(
+            flowq::quic::cipher_suite::aes_128_gcm_sha256,
+            flowq::quic::crypto_capabilities{true, true, true, true, true});
+    }
+
+    flowq::quic::packet_protection_result protect(std::span<const std::byte> plaintext) const override {
+        return {flowq::buffer{plaintext}, {}};
+    }
+
+    flowq::quic::packet_protection_result unprotect(std::span<const std::byte> protected_payload) const override {
+        return {flowq::buffer{protected_payload}, {}};
+    }
+
+private:
+    flowq::quic::protection_level level_{};
+};
 
 std::string as_string(const flowq::buffer& buffer) {
     std::string output;
@@ -75,6 +134,33 @@ TEST_CASE("QUIC session public header exposes basic client configuration") {
     CHECK(config.protection_policy == flowq::quic::packet_protection_policy::test_allowed);
     CHECK_FALSE(config.disable_active_migration);
     CHECK(config.active_connection_id_limit == 2);
+    CHECK(config.tls_adapter == nullptr);
+}
+
+TEST_CASE("QUIC session blocks production Application data before TLS handshake confirmation and keys") {
+    provider_backed_packet_protector initial_protector{flowq::quic::protection_level::initial};
+    provider_backed_packet_protector handshake_protector{flowq::quic::protection_level::handshake};
+    provider_backed_packet_protector application_protector{flowq::quic::protection_level::application};
+    recording_tls_adapter adapter{};
+    adapter.state_value = flowq::quic::handshake_state::handshake_confirmed;
+    adapter.keys.application = false;
+    auto config = make_config(
+        cid({0x01}),
+        cid({0x02}),
+        flowq::endpoint{"server", 4433, "hq-interop"},
+        application_protector);
+    config.initial_protector = &initial_protector;
+    config.handshake_protector = &handshake_protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::production_required;
+    config.tls_adapter = &adapter;
+    auto session = flowq::quic::session{std::move(config)};
+
+    REQUIRE(session.append_stream_data(0, text("hello")).ok());
+    REQUIRE(session.queue_stream_data({0}).ok());
+    auto result = session.flush(at(0ms));
+
+    CHECK_FALSE(result.ok());
+    REQUIRE(result.closes.size() == 1);
 }
 
 TEST_CASE("QUIC session queues stream data before flush returns outbound Application datagrams") {
