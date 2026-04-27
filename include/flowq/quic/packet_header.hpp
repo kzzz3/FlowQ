@@ -144,7 +144,7 @@ inline void append_u32(std::vector<std::byte>& output, std::uint32_t value) {
     return true;
 }
 
-[[nodiscard]] inline bool read_varint_at(std::span<const std::byte> input, std::size_t& offset, std::uint64_t& value) {
+[[nodiscard]] inline bool read_packet_varint_at(std::span<const std::byte> input, std::size_t& offset, std::uint64_t& value) {
     const auto result = decode_varint(input.subspan(offset));
     if (!result.ok()) {
         return false;
@@ -191,7 +191,7 @@ inline void append_u32(std::vector<std::byte>& output, std::uint32_t value) {
     std::span<const std::byte> input,
     std::size_t offset) {
     std::uint64_t token_length = 0;
-    if (!read_varint_at(input, offset, token_length)) {
+    if (!read_packet_varint_at(input, offset, token_length)) {
         return {{}, packet_error("truncated Initial token length")};
     }
     if (token_length > input.size() - offset) {
@@ -202,7 +202,7 @@ inline void append_u32(std::vector<std::byte>& output, std::uint32_t value) {
     offset += static_cast<std::size_t>(token_length);
 
     std::uint64_t length = 0;
-    if (!read_varint_at(input, offset, length)) {
+    if (!read_packet_varint_at(input, offset, length)) {
         return {{}, packet_error("truncated Initial length")};
     }
     if (length != input.size() - offset) {
@@ -221,7 +221,7 @@ inline void append_u32(std::vector<std::byte>& output, std::uint32_t value) {
     std::span<const std::byte> input,
     std::size_t offset) {
     std::uint64_t length = 0;
-    if (!read_varint_at(input, offset, length)) {
+    if (!read_packet_varint_at(input, offset, length)) {
         return {{}, packet_error("truncated Handshake length")};
     }
     if (length != input.size() - offset) {
