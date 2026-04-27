@@ -23,7 +23,7 @@
 
 - [x] M27: RFC 9000 packet-number truncation and reconstruction helpers.
 - [x] M28: Crypto provider boundary and fail-closed packet protection contract.
-- [ ] M29: RFC 9001 Initial packet-protection vectors through vetted primitives.
+- [x] M29: RFC 9001 Initial packet-protection vectors through vetted primitives.
 - [ ] M30: Transport parameter codec and config mapping.
 - [ ] M31: TLS handshake adapter boundary and CRYPTO byte pump.
 - [ ] M31b: External TLS provider adapter implementation.
@@ -390,4 +390,4 @@ Implement one milestone at a time. For each milestone:
 
 ## Current Recommendation
 
-The next executable milestone is M29. It should use the M28 provider boundary for selected RFC 9001 vectors through vetted primitives. It should not add hand-written AES, ChaCha20, Poly1305, HKDF, TLS 1.3, certificate validation, random generation, or key schedule code inside FlowQ.
+The next executable milestone is M30. It should add structural transport-parameter encoding/decoding and config mapping without binding those parameters into TLS extensions yet.

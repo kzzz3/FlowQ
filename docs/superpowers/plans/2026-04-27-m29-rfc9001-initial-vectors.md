@@ -23,17 +23,17 @@
 
 ## Tasks
 
-- [ ] Select one vetted backend for the first vector implementation and record why it is acceptable on Windows/vcpkg.
-- [ ] Write RED tests for RFC 9001 Initial salt and client/server Initial secret derivation inputs.
-- [ ] Write RED tests for selected RFC 9001 key, IV, and header-protection-key outputs.
-- [ ] Write RED tests proving altered associated data or ciphertext is rejected by vector-backed open.
-- [ ] Verify RED before linking a backend adapter.
-- [ ] Add a default-off CMake option for the selected backend.
-- [ ] Add provider calls to external HKDF, AEAD seal/open, and header-protection primitives.
-- [ ] Keep plaintext protector separate and test-only.
-- [ ] Verify GREEN with vector tests and full CTest.
-- [ ] Run install/package-consumer gate with backend disabled and, where available, backend enabled.
-- [ ] Request Oracle security review.
+- [x] Select one vetted backend for the first vector implementation and record why it is acceptable on Windows/vcpkg.
+- [x] Write RED tests for RFC 9001 Initial salt and client/server Initial secret derivation inputs.
+- [x] Write RED tests for selected RFC 9001 key, IV, and header-protection-key outputs.
+- [x] Write RED tests proving altered associated data or ciphertext is rejected by vector-backed open.
+- [x] Verify RED before linking a backend adapter.
+- [x] Add a default-off CMake option for the selected backend.
+- [x] Add provider calls to external HKDF, AEAD seal/open, and header-protection primitives.
+- [x] Keep plaintext protector separate and test-only.
+- [x] Verify GREEN with vector tests and full CTest.
+- [x] Run install/package-consumer gate with backend disabled and, where available, backend enabled.
+- [x] Request Oracle security review.
 
 ## Acceptance Gate
 
