@@ -184,6 +184,37 @@ TEST_CASE("QUIC frame codec round trips flow-control frame values") {
     }
 }
 
+TEST_CASE("QUIC frame codec round trips RESET_STREAM and STOP_SENDING structurally") {
+    {
+        flowq::quic::reset_stream_frame frame{4, 0x42, 12};
+        auto encoded = flowq::quic::encode_frame(frame);
+        REQUIRE(encoded.ok());
+
+        auto decoded = flowq::quic::decode_frames(encoded.payload);
+        REQUIRE(decoded.ok());
+        REQUIRE(decoded.frames.size() == 1);
+        REQUIRE(std::holds_alternative<flowq::quic::reset_stream_frame>(decoded.frames[0]));
+        const auto& reset = std::get<flowq::quic::reset_stream_frame>(decoded.frames[0]);
+        CHECK(reset.stream_id == 4);
+        CHECK(reset.application_error_code == 0x42);
+        CHECK(reset.final_size == 12);
+    }
+
+    {
+        flowq::quic::stop_sending_frame frame{4, 0x42};
+        auto encoded = flowq::quic::encode_frame(frame);
+        REQUIRE(encoded.ok());
+
+        auto decoded = flowq::quic::decode_frames(encoded.payload);
+        REQUIRE(decoded.ok());
+        REQUIRE(decoded.frames.size() == 1);
+        REQUIRE(std::holds_alternative<flowq::quic::stop_sending_frame>(decoded.frames[0]));
+        const auto& stop = std::get<flowq::quic::stop_sending_frame>(decoded.frames[0]);
+        CHECK(stop.stream_id == 4);
+        CHECK(stop.application_error_code == 0x42);
+    }
+}
+
 TEST_CASE("QUIC frame codec decodes mixed old and new frames") {
     auto decoded = flowq::quic::decode_frames(bytes({
         0x00,
@@ -226,6 +257,26 @@ TEST_CASE("QUIC frame codec decodes mixed flow-control frames") {
     CHECK(std::holds_alternative<flowq::quic::stream_frame>(decoded.frames[5]));
 }
 
+TEST_CASE("QUIC frame codec decodes mixed close reset and stream frames") {
+    auto decoded = flowq::quic::decode_frames(bytes({
+        0x01,
+        0x04, 0x04, 0x2a, 0x0c,
+        0x05, 0x04, 0x2a,
+        0x1c, 0x00, 0x00, 0x00,
+        0x0a, 0x01, 0x01, 0xee
+    }));
+
+    REQUIRE(decoded.ok());
+    REQUIRE(decoded.frames.size() == 5);
+    CHECK(std::holds_alternative<flowq::quic::ping_frame>(decoded.frames[0]));
+    REQUIRE(std::holds_alternative<flowq::quic::reset_stream_frame>(decoded.frames[1]));
+    CHECK(std::get<flowq::quic::reset_stream_frame>(decoded.frames[1]).final_size == 12);
+    REQUIRE(std::holds_alternative<flowq::quic::stop_sending_frame>(decoded.frames[2]));
+    CHECK(std::get<flowq::quic::stop_sending_frame>(decoded.frames[2]).application_error_code == 0x2a);
+    CHECK(std::holds_alternative<flowq::quic::connection_close_frame>(decoded.frames[3]));
+    CHECK(std::holds_alternative<flowq::quic::stream_frame>(decoded.frames[4]));
+}
+
 TEST_CASE("QUIC frame codec reports empty unknown and truncated frames") {
     CHECK_FALSE(flowq::quic::decode_frames(std::span<const std::byte>{}).ok());
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x1f})).ok());
@@ -263,6 +314,16 @@ TEST_CASE("QUIC frame codec rejects malformed flow-control frames") {
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x15})).ok());
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x15, 0x08})).ok());
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x15, 0x08, 0x40})).ok());
+}
+
+TEST_CASE("QUIC frame codec rejects malformed RESET_STREAM and STOP_SENDING frames") {
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x04})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x04, 0x04})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x04, 0x04, 0x42})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x04, 0x40})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x05})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x05, 0x04})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x05, 0x40})).ok());
 }
 
 TEST_CASE("QUIC frame codec leaves stream-count flow-control frames unsupported in M8") {

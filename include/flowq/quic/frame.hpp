@@ -29,6 +29,17 @@ struct connection_close_frame {
     std::string reason;
 };
 
+struct reset_stream_frame {
+    std::uint64_t stream_id{};
+    std::uint64_t application_error_code{};
+    std::uint64_t final_size{};
+};
+
+struct stop_sending_frame {
+    std::uint64_t stream_id{};
+    std::uint64_t application_error_code{};
+};
+
 struct ack_range {
     std::uint64_t gap{};
     std::uint64_t length{};
@@ -77,6 +88,8 @@ using frame = std::variant<
     padding_frame,
     ping_frame,
     connection_close_frame,
+    reset_stream_frame,
+    stop_sending_frame,
     ack_frame,
     crypto_frame,
     stream_frame,
@@ -130,6 +143,23 @@ namespace detail {
         output.push_back(static_cast<std::byte>(static_cast<unsigned char>(character)));
     }
 
+    return {flowq::buffer{output}, {}};
+}
+
+[[nodiscard]] inline frame_encode_result encode_reset_stream(const reset_stream_frame& frame) {
+    std::vector<std::byte> output;
+    if (!append_varint(output, 0x04) || !append_varint(output, frame.stream_id) || !append_varint(output, frame.application_error_code) ||
+        !append_varint(output, frame.final_size)) {
+        return {{}, codec_error("failed to encode RESET_STREAM frame")};
+    }
+    return {flowq::buffer{output}, {}};
+}
+
+[[nodiscard]] inline frame_encode_result encode_stop_sending(const stop_sending_frame& frame) {
+    std::vector<std::byte> output;
+    if (!append_varint(output, 0x05) || !append_varint(output, frame.stream_id) || !append_varint(output, frame.application_error_code)) {
+        return {{}, codec_error("failed to encode STOP_SENDING frame")};
+    }
     return {flowq::buffer{output}, {}};
 }
 
@@ -229,6 +259,14 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
     return detail::encode_connection_close(frame);
 }
 
+[[nodiscard]] inline frame_encode_result encode_frame(const reset_stream_frame& frame) {
+    return detail::encode_reset_stream(frame);
+}
+
+[[nodiscard]] inline frame_encode_result encode_frame(const stop_sending_frame& frame) {
+    return detail::encode_stop_sending(frame);
+}
+
 [[nodiscard]] inline frame_encode_result encode_frame(const ack_frame& frame) {
     return detail::encode_ack(frame);
 }
@@ -312,6 +350,28 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
 
         if (type == 0x03) {
             return {{}, codec_error("ACK ECN frame is unsupported in M2c")};
+        }
+
+        if (type == 0x04) {
+            std::uint64_t stream_id = 0;
+            std::uint64_t application_error_code = 0;
+            std::uint64_t final_size = 0;
+            if (!detail::read_varint_at(input, offset, stream_id) || !detail::read_varint_at(input, offset, application_error_code) ||
+                !detail::read_varint_at(input, offset, final_size)) {
+                return {{}, codec_error("truncated RESET_STREAM frame")};
+            }
+            frames.emplace_back(reset_stream_frame{stream_id, application_error_code, final_size});
+            continue;
+        }
+
+        if (type == 0x05) {
+            std::uint64_t stream_id = 0;
+            std::uint64_t application_error_code = 0;
+            if (!detail::read_varint_at(input, offset, stream_id) || !detail::read_varint_at(input, offset, application_error_code)) {
+                return {{}, codec_error("truncated STOP_SENDING frame")};
+            }
+            frames.emplace_back(stop_sending_frame{stream_id, application_error_code});
+            continue;
         }
 
         if (type == 0x06) {
