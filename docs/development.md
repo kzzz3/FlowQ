@@ -204,3 +204,23 @@ can consume.
 M5a intentionally keeps STREAM behavior below connection/application policy. It does not implement flow-control windows,
 `MAX_DATA`, `MAX_STREAM_DATA`, `RESET_STREAM`, `STOP_SENDING`, stream scheduling, prioritization, retransmission queues,
 send buffering, short headers, Application Data packet handling, TLS, or public stream APIs.
+
+## QUIC STREAM send-core scope
+
+The M6 STREAM send stage extends `include/flowq/quic/stream.hpp` with a pure send-side stream core under `flowq::quic`.
+It turns immutable application bytes into structural STREAM frames that existing packet assembly code can encode later.
+
+- `stream_send_state` owns one stream's appended bytes, assigns stable offsets starting at zero, and emits
+  `stream_frame` values with explicit lengths.
+- Generated frames omit the offset field only for offset zero; non-zero offsets are encoded explicitly.
+- `finish()` fixes the stream final size to the number of appended bytes. The final data frame or an empty FIN frame
+  carries the FIN marker without changing that final size.
+- `on_lost(range)` makes an emitted range retransmittable with the same bytes and offset; `on_acked(range)` suppresses
+  later retransmission for acknowledged information.
+- `stream_send_set` routes append/finish/pop operations to independent per-stream send states.
+- Send frames are compatible with the M5a receive core, so tests can feed generated STREAM frames directly into
+  reassembly and observe ordered bytes.
+
+M6 remains below packet scheduling and connection policy. It does not implement flow-control credit, packet-to-stream
+range mapping in `connection_loop`, congestion control, prioritization, RESET_STREAM, STOP_SENDING, short headers,
+Application Data packet handling, TLS, or public stream APIs.
