@@ -32,12 +32,14 @@ M18 is the practical “basic usable FlowQ” point: deterministic loopback sess
 
 M19 is a safety/documentation boundary after that point. It prepares for real security integration but does not make FlowQ interoperable or secure by itself.
 
-## Explicitly Deferred Beyond M19
+## Historical Deferrals After M19
+
+This roadmap is historical through M19. The post-M19 basic library completion track supersedes it for M20-M26 planning while preserving the same non-production security boundary.
 
 - Real TLS 1.3 handshake integration.
 - AEAD and header protection backed by a mature external library.
 - Production short-header packet number reconstruction.
-- UDP listener/client public APIs.
+- Production or interoperable UDP listener/client public APIs. A bounded non-production UDP/ASIO smoke adapter is planned later as part of the post-M19 basic library track.
 - Congestion control, pacing, ECN, migration, Retry integrity, address validation, 0-RTT, HTTP/3, WebTransport, multipath, and production interoperability.
 
 ## Documentation Matrix

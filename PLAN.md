@@ -19,6 +19,27 @@ FlowQ is a modern C++ protocol library that builds a deterministic, testable, no
 - [x] M17: Add minimal close/reset structural codecs and stream effects.
 - [x] M18: Prove a basic in-memory QUIC-like loopback session.
 - [x] M19: Document and enforce the crypto adapter seam for future real TLS/packet protection.
+- [x] M20: Freeze basic-complete QUIC library scope and public API contract.
+- [x] M21: Add a public QUIC session façade over the deterministic connection loop.
+- [x] M22: Add a non-production UDP/ASIO session adapter.
+- [x] M23: Add ASIO recovery timer scheduling integration.
+- [x] M24: Add library examples and public smoke tests.
+- [x] M25: Add CMake install/export packaging and package-consumer test.
+- [x] M26: Add CI and declare the basic complete non-production library baseline.
+- [x] M27: Add RFC 9000 packet-number truncation and reconstruction helpers.
+- [x] M28: Add crypto provider boundary and fail-closed packet protection contract.
+- [ ] M29: Pass selected RFC 9001 Initial packet-protection vectors through vetted primitives.
+- [ ] M30: Add structural transport parameter codec and config mapping.
+- [ ] M31: Add TLS handshake adapter boundary and CRYPTO byte pump.
+- [ ] M31b: Add default-off external TLS provider adapter integration.
+- [ ] M32: Add RFC-shaped short-header value model and parser shell.
+- [ ] M33: Add key lifecycle gates and packet-space discard rules.
+- [ ] M34: Add recovery and congestion-control production baseline.
+- [ ] M35: Add connection ID routing, version negotiation, Retry, and address-validation preparation.
+- [ ] M36: Add production-shaped UDP endpoint lifecycle and public API hardening.
+- [ ] M37: Add diagnostics, qlog-style events, fuzzing, and sanitizer gates.
+- [ ] M38: Add opt-in interop harness against mature QUIC implementations.
+- [ ] M39: Add production release evidence gate and status wording review.
 
 ## Tech Stack and Architecture Decisions
 
@@ -61,12 +82,38 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 
 - [x] M19 crypto adapter seam and explicit unsafe test-protection boundary.
 
+### Phase 5: Basic QUIC Library Surface
+
+- [x] M20 basic-complete scope freeze.
+- [x] M21 public session façade.
+- [x] M22 UDP/ASIO session adapter.
+- [x] M23 recovery timer scheduling adapter.
+
+### Phase 6: Library Productization
+
+- [x] M24 examples and smoke tests.
+- [x] M25 install/export packaging.
+- [x] M26 CI and basic-complete release documentation.
+
+### Phase 7: Post-Basic Production QUIC Tracks
+
+- [ ] External TLS/crypto adapter implementation track.
+- [x] M27 packet-number truncation/reconstruction helper foundation.
+- [ ] M29-M33 crypto vectors, transport-parameter, TLS adapter, short-header, and key-lifecycle foundations.
+- [ ] M34-M36 congestion-control, connection routing, and production-shaped endpoint foundations.
+- [ ] M37-M39 diagnostics, fuzzing, interop harness, and production release evidence gates.
+- [ ] HTTP/3 and WebTransport backlog tracks after transport production-readiness evidence.
+
 ## Risk Assessment
 
 - **Application packet modeling risk**: M16 now has independent Application packet counters and trackers; future changes must preserve this and avoid aliasing Application state into Initial or Handshake.
 - **Reset/stop scope risk**: M17 reset/stop behavior is structural and test-visible only; future work must avoid treating it as a complete stream lifecycle or application cancellation API.
 - **Loopback scope risk**: M18 proves deterministic in-memory session behavior only; future work must not present it as socket, TLS, or interoperable QUIC support.
 - **Security claim risk**: M19 adds explicit protector capability reporting and production-required rejection for test-only protection; future docs must continue to avoid describing plaintext/test protection as secure QUIC.
-- **Scope creep risk**: real short-header packet number reconstruction, TLS, AEAD, header protection, congestion control, and UDP public APIs remain deferred beyond this baseline.
+- **Scope creep risk**: real short-header packet number reconstruction, TLS, AEAD, header protection, congestion control, and production/interoperable UDP public APIs remain deferred beyond this baseline; M22 covers only a bounded non-production UDP/ASIO smoke adapter.
+- **Library surface risk**: M20-M23 must expose a usable QUIC library façade without leaking raw internal frame queues as the primary consumer API.
+- **Packaging risk**: M24-M26 must prove examples and CMake package consumption build from documented commands, not only from the monorepo test binary.
 - **Tooling risk**: local LSP diagnostics currently cannot run because `clangd` is not installed in this environment; MSVC build and CTest are the executable verification gates.
 - **Documentation drift risk**: this `PLAN.md`, `README.md`, `docs/development.md`, and milestone docs must be updated together when implementation scope evolves.
+- **Production wording risk**: M28-M39 must keep status evidence-bound; no single milestone is enough to claim production readiness, security, or interoperability.
+- **Crypto provider boundary risk**: M28 adds external provider capability evidence only; future work must not treat provider-shaped values as an in-tree crypto backend or a production security claim.

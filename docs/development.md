@@ -501,3 +501,177 @@ Real QUIC security still requires an external TLS 1.3 and crypto backend. A futu
 material, encryption-level keys, AEAD packet protection, header protection, packet-number reconstruction, key phase/key
 updates, test vectors, and interoperability work. M19 does not implement TLS, AEAD, header protection, certificate
 validation, real short headers, UDP APIs, or production interoperability.
+
+## QUIC basic-complete library scope freeze
+
+The M20 scope-freeze stage defines what remains before FlowQ can be called a basic complete non-production QUIC-like C++
+library baseline. It is a documentation and roadmap milestone only; it does not add the public session façade, UDP adapter,
+examples, packaging, or CI yet.
+
+- M18 was the basic usable in-memory loopback proof.
+- M19 made packet-protection capability explicit and kept plaintext protection test-only.
+- M20 freezes the basic-complete library target: public session API, bounded non-production UDP/ASIO smoke path, recovery
+  scheduler adapter, examples, CMake install/export packaging, CI, and release-scope documentation.
+- M21-M26 implement that target in order: session façade, UDP adapter, recovery scheduler, examples, package export, and CI
+  plus basic-complete docs.
+- Production QUIC remains out of scope for the basic-complete baseline: real TLS 1.3, AEAD, header protection, RFC-valid
+  short-header packet-number reconstruction, congestion control, HTTP/3, and interoperability are future tracks.
+
+When this scope changes, update `README.md`, `PLAN.md`, `docs/development.md`, the M20 scope spec, and the post-M19
+completion plan together so the repository keeps a single coherent roadmap.
+
+## QUIC public session façade scope
+
+M21 adds a small synchronous public façade over `flowq::quic::connection_loop`. It gives library consumers a stable value API
+for common stream actions without requiring them to build raw frame queues directly.
+
+- `include/flowq/quic/events.hpp` defines public session result values, including stream deliveries and outbound datagrams.
+- `include/flowq/quic/session.hpp` defines `session_config` and `session`; `session_config` mirrors the connection-loop
+  inputs needed by the current deterministic pipeline: role, version, connection IDs, peer endpoint, protector pointers,
+  packet pipeline settings, flow-control limits, payload budget, and packet-protection policy.
+- `session::append_stream_data` appends user data to a stream send state; `session::queue_stream_data` schedules stream IDs
+  into the Application queue; `session::flush` is the explicit step that assembles queued frames into outbound datagrams.
+- `session::on_datagram` translates received connection-loop packet events into public stream-delivery values, while
+  `session::acknowledge` returns ACK datagrams through the same public result shape.
+- Recovery timer values remain exposed as deterministic connection-loop values for later scheduling work. Application PTO is
+  not armed before handshake confirmation, matching the existing ACK/loss rules.
+
+M21 still does not add UDP sockets, ASIO receive loops, TLS 1.3, AEAD, header protection, congestion control, HTTP/3, or
+production interoperability. M22 is responsible only for a bounded non-production UDP/ASIO smoke adapter over this façade.
+
+## QUIC non-production UDP session adapter scope
+
+M22 adds a bounded ASIO UDP adapter for local smoke testing over the public `flowq::quic::session` façade. It is socket
+plumbing around the deterministic session model, not a production QUIC transport.
+
+- `include/flowq/quic/udp_session.hpp` defines `udp_session_config` and `udp_session`.
+- `udp_session` binds an externally owned `asio::ip::udp::socket&`; callers keep ownership of the socket, executor, and
+  lifecycle.
+- `udp_session::send_pending` flushes the wrapped session and asynchronously sends the resulting datagrams to the configured
+  ASIO peer endpoint while keeping datagram bytes alive until completion.
+- `udp_session::async_receive_once` receives one UDP datagram, converts the sender endpoint into a `flowq::endpoint`, and
+  passes the payload into `session::on_datagram`.
+- The integration smoke test uses two loopback UDP sockets and plaintext/test-only packet protection to deliver one structural
+  Application stream payload.
+
+M22 intentionally does not add DNS resolution, connection establishment semantics, TLS 1.3, AEAD, header protection,
+congestion control, HTTP/3, or interoperability claims. M23 handles timer scheduling separately.
+
+## QUIC recovery scheduler adapter scope
+
+M23 adds an ASIO scheduling adapter for recovery timer values that are already computed by the deterministic QUIC session and
+connection-loop code. The adapter does not implement new recovery, PTO, congestion-control, or packet-loss algorithms.
+
+- `include/flowq/quic/recovery_scheduler.hpp` defines `schedule_recovery` and `recovery_scheduler_result`.
+- `schedule_recovery(context, session, now)` reads `session.next_recovery_timer(now)` once when the operation starts.
+- If the session has no timer, the operation completes immediately with an empty successful result.
+- If a timer exists, the adapter arms an `asio::steady_timer` for the timer's existing absolute deadline and calls
+  `session.on_recovery_timer(timer.space, timer.deadline)` when ASIO reports expiry.
+- Cancellation maps to `set_stopped`, matching the existing timer sender behavior.
+
+M23 keeps recovery semantics in `connection_loop` and `session`. It does not add UDP behavior, production timer policy,
+congestion control, or QUIC interoperability guarantees.
+
+## QUIC examples and public smoke tests scope
+
+M24 adds buildable examples and public smoke tests for the existing non-production QUIC-like library surface.
+
+- `examples/in_memory_loopback.cpp` demonstrates two `quic::session` objects exchanging one structural Application stream
+  payload entirely in memory with plaintext/test-only packet protection.
+- `examples/udp_stream_echo.cpp` demonstrates two local UDP sockets connected through `quic::udp_session` for a bounded
+  loopback smoke path.
+- `examples/protection_policy.cpp` demonstrates that `packet_protection_policy::test_allowed` accepts plaintext/test-only
+  protection while `packet_protection_policy::production_required` rejects it.
+- The default Windows preset builds the example targets and CTest runs them as smoke tests when tests are enabled.
+- `tests/integration/example_build_tests.cpp` keeps example-facing public API snippets compiling under Catch2.
+
+The examples are not production QUIC, not interoperability tests, and do not implement TLS 1.3, AEAD, header protection,
+congestion control, HTTP/3, DNS resolution, or production UDP transport semantics. M25 packaging and M26 CI/release docs
+remain separate milestones.
+
+## CMake install and package-consumer scope
+
+M25 makes FlowQ consumable as a CMake package while keeping CI/release declaration work for M26.
+
+- `CMakeLists.txt` installs the public `include/` tree and exports the `flowq` interface target as `FlowQ::flowq`.
+- `cmake/FlowQConfig.cmake.in` loads FlowQ's public Asio and stdexec dependencies before including `FlowQTargets.cmake`.
+- `FlowQConfigVersion.cmake` is generated with the project version and marked architecture-independent because FlowQ is a
+  header-only interface library.
+- `tests/package-consumer/` is an external-style CMake project that uses `find_package(FlowQ CONFIG REQUIRED)`, links
+  `FlowQ::flowq`, includes `<flowq/quic/session.hpp>`, constructs a `session_config`, and exits without opening sockets.
+
+Local M25 verification commands:
+
+```powershell
+$env:VCPKG_ROOT = "D:/vcpkg"
+cmake --build --preset windows-msvc-vcpkg
+cmake --install build/windows-msvc-vcpkg --config Debug --prefix build/install-flowq
+cmake -S tests/package-consumer -B build/package-consumer -G "Visual Studio 18 2026" -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_PREFIX_PATH="F:/Project/FlowQ/build/install-flowq"
+cmake --build build/package-consumer --config Debug
+```
+
+Consumers should configure with a vcpkg toolchain or otherwise provide compatible Asio and stdexec CMake packages. M25 does
+not add CI automation; M26 owns the reproducible workflow and basic-complete release documentation.
+
+## CI and basic-complete baseline
+
+M26 adds the reproducible CI gate and declares FlowQ's basic-complete non-production baseline.
+
+- `.github/workflows/ci.yml` runs on a Windows MSVC/vcpkg runner and executes the same gate expected locally: configure,
+  build, CTest, install, package-consumer configure/build, and package-consumer execution.
+- `docs/basic-complete.md` is the release-scope baseline document. It lists what FlowQ supports today, what remains
+  explicitly unsupported, the public header surface, examples, build/test gates, and the future production QUIC backlog.
+- CI does not publish packages, deploy artifacts, require secrets, or claim production QUIC readiness.
+- The CI package-consumer step verifies that the installed `FlowQ::flowq` target can be found from a separate CMake project
+  when the same vcpkg toolchain is available.
+
+The baseline remains non-production. It does not implement TLS 1.3, AEAD, header protection, congestion control, HTTP/3,
+DNS resolution, interoperability, or production UDP transport semantics. Plaintext packet protection remains test-only, and
+`packet_protection_policy::production_required` continues to reject test-only protection.
+
+## Post-basic production-readiness roadmap
+
+After M26, FlowQ moves toward production-readiness in separately reviewable milestones. This does not change the current
+status: FlowQ remains non-production until TLS/crypto, short headers, congestion control, and interoperability have executable
+evidence.
+
+- M27 adds RFC 9000 packet-number helpers for length selection, truncation, and reconstruction.
+- M28 should define a provider boundary for vetted crypto libraries; FlowQ must not implement AES, ChaCha20, Poly1305,
+  HKDF, TLS 1.3, certificate validation, or random number generation by hand.
+- M29 should use that provider boundary to pass selected RFC 9001 packet-protection vectors.
+- M30+ should cover transport parameters, TLS handshake adapter state, RFC-shaped short headers, congestion control, and
+  interoperability harnesses as separate milestones.
+- The complete route from M28 through M39 is documented in
+  `docs/superpowers/plans/2026-04-27-post-basic-production-readiness-roadmap.md`.
+
+### M27 packet-number helper scope
+
+M27 adds pure packet-number arithmetic helpers in `include/flowq/quic/packet_header.hpp`:
+
+- `select_packet_number_length(packet_number, largest_acknowledged)` selects a 1-4 byte packet-number encoding window large
+  enough for QUIC reconstruction around the largest acknowledged packet.
+- `encode_packet_number(packet_number, length, output)` writes the selected least significant packet-number bytes in
+  network byte order.
+- `decode_packet_number(truncated_packet_number, length, largest_received)` reconstructs the full packet number around
+  `largest_received + 1` using the RFC 9000 window algorithm.
+
+These helpers do not decode real short headers, apply header protection, perform AEAD, or make FlowQ production-ready. They
+are a deterministic prerequisite for future short-header and header-protection milestones.
+
+### M28 crypto provider boundary scope
+
+M28 adds a provider-capability boundary in `include/flowq/quic/crypto_provider.hpp` and tightens the packet-protection
+policy gate in `include/flowq/quic/packet_pipeline.hpp`.
+
+- `cipher_suite`, `crypto_capabilities`, and `crypto_provider_status` describe evidence supplied by an external crypto/TLS
+  provider without implementing cryptographic primitives inside FlowQ.
+- `packet_protector::provider_status()` defaults to unavailable, so existing test adapters and plaintext protection cannot
+  accidentally satisfy `packet_protection_policy::production_required`.
+- `production_required` now requires both `packet_security_level::authenticated_encrypted` and production-ready provider
+  capabilities covering HKDF, AEAD seal/open, header protection, and TLS key-schedule ownership.
+- `plaintext_packet_protector` remains `packet_security_level::test_only` and remains valid only under the default
+  `test_allowed` policy used by deterministic tests and local smoke examples.
+
+M28 does not add OpenSSL, BoringSSL, AWS-LC, Schannel, QuicTLS, TLS 1.3, AEAD, HKDF, header-protection implementation,
+certificate validation, random generation, key schedule, packet-protection vectors, short headers, or interoperability
+claims. It is a fail-closed boundary milestone only.
