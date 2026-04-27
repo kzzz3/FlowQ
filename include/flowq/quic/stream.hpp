@@ -452,6 +452,10 @@ public:
         return next_unsent_offset_ < bytes_.size() && next_unsent_offset_ >= max_data_;
     }
 
+    [[nodiscard]] bool has_unsent_data() const noexcept {
+        return next_unsent_offset_ < bytes_.size();
+    }
+
     [[nodiscard]] std::optional<stream_data_blocked_frame> blocked_frame() const noexcept {
         if (!blocked()) {
             return std::nullopt;
@@ -585,6 +589,11 @@ public:
             return std::nullopt;
         }
         return found->second.blocked_frame();
+    }
+
+    [[nodiscard]] bool has_unsent_data(std::uint64_t stream_id) const noexcept {
+        const auto found = streams_.find(stream_id);
+        return found != streams_.end() && found->second.has_unsent_data();
     }
 
 private:

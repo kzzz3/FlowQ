@@ -47,7 +47,8 @@ flowq::quic::connection_loop make_loop(
     flowq::quic::connection_id remote,
     flowq::endpoint peer,
     const flowq::quic::packet_protector& protector,
-    std::uint64_t initial_stream_send_max_data = UINT64_MAX) {
+    std::uint64_t initial_stream_send_max_data = UINT64_MAX,
+    std::uint64_t initial_connection_send_max_data = UINT64_MAX) {
     return flowq::quic::connection_loop{flowq::quic::connection_loop_config{
         flowq::quic::connection_role::client,
         1,
@@ -57,7 +58,8 @@ flowq::quic::connection_loop make_loop(
         &protector,
         &protector,
         flowq::quic::packet_pipeline_config{1200},
-        initial_stream_send_max_data
+        initial_stream_send_max_data,
+        initial_connection_send_max_data
     }};
 }
 
@@ -196,6 +198,92 @@ TEST_CASE("connection loop applies inbound MAX_STREAM_DATA to stream send state"
     const auto& stream = std::get<flowq::quic::stream_frame>(suffix.frames[0]);
     CHECK(stream.offset == 2);
     CHECK(as_string(stream.data) == "llo");
+}
+
+TEST_CASE("connection loop applies MAX_DATA to aggregate stream send credit") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, UINT64_MAX, 2);
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(loop.append_stream_data(0, text("hello")).ok());
+
+    auto prefix = loop.schedule_stream_frames(order, 4, 16);
+    loop.update_max_data(flowq::quic::max_data_frame{1});
+    auto stale = loop.schedule_stream_frames(order, 4, 16);
+    loop.update_max_data(flowq::quic::max_data_frame{5});
+    auto suffix = loop.schedule_stream_frames(order, 4, 16);
+
+    REQUIRE(prefix.ok());
+    REQUIRE(prefix.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(prefix.frames[0]));
+    const auto& first = std::get<flowq::quic::stream_frame>(prefix.frames[0]);
+    CHECK(first.offset == 0);
+    CHECK(as_string(first.data) == "he");
+    REQUIRE(stale.ok());
+    REQUIRE(stale.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::data_blocked_frame>(stale.frames[0]));
+    CHECK(std::get<flowq::quic::data_blocked_frame>(stale.frames[0]).maximum_data == 2);
+    REQUIRE(suffix.ok());
+    REQUIRE(suffix.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(suffix.frames[0]));
+    const auto& second = std::get<flowq::quic::stream_frame>(suffix.frames[0]);
+    CHECK(second.offset == 2);
+    CHECK(as_string(second.data) == "llo");
+}
+
+TEST_CASE("connection loop applies inbound MAX_DATA frames to aggregate stream send credit") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, UINT64_MAX, 2);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(client.append_stream_data(0, text("hello")).ok());
+    REQUIRE(client.schedule_stream_frames(order, 1, 16).frames.size() == 1);
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::max_data_frame{5}}});
+    server.flush();
+    auto credit = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(credit.payload), credit.peer});
+    (void)client.drain_actions();
+    auto suffix = client.schedule_stream_frames(order, 1, 16);
+
+    REQUIRE(suffix.ok());
+    REQUIRE(suffix.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(suffix.frames[0]));
+    const auto& stream = std::get<flowq::quic::stream_frame>(suffix.frames[0]);
+    CHECK(stream.offset == 2);
+    CHECK(as_string(stream.data) == "llo");
+}
+
+TEST_CASE("connection loop emits DATA_BLOCKED when aggregate stream credit is exhausted") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, UINT64_MAX, 2);
+    const std::vector<std::uint64_t> order{0, 4};
+    REQUIRE(loop.append_stream_data(0, text("hello")).ok());
+    REQUIRE(loop.append_stream_data(4, text("beta")).ok());
+    REQUIRE(loop.schedule_stream_frames(order, 1, 16).frames.size() == 1);
+
+    auto blocked = loop.schedule_stream_frames(order, 1, 16);
+
+    REQUIRE(blocked.ok());
+    REQUIRE(blocked.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::data_blocked_frame>(blocked.frames[0]));
+    CHECK(std::get<flowq::quic::data_blocked_frame>(blocked.frames[0]).maximum_data == 2);
+}
+
+TEST_CASE("connection loop preserves STREAM_DATA_BLOCKED when stream credit is exhausted first") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, 2, 5);
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(loop.append_stream_data(0, text("hello")).ok());
+    REQUIRE(loop.schedule_stream_frames(order, 1, 16).frames.size() == 1);
+
+    auto blocked = loop.schedule_stream_frames(order, 1, 16);
+
+    REQUIRE(blocked.ok());
+    REQUIRE(blocked.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_data_blocked_frame>(blocked.frames[0]));
+    const auto& frame = std::get<flowq::quic::stream_data_blocked_frame>(blocked.frames[0]);
+    CHECK(frame.stream_id == 0);
+    CHECK(frame.maximum_stream_data == 2);
 }
 
 TEST_CASE("connection loop ignores duplicate received packet frames") {

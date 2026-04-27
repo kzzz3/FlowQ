@@ -5,6 +5,8 @@
 #include <flowq/quic/packet_pipeline.hpp>
 #include <flowq/quic/stream.hpp>
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 #include <utility>
@@ -28,6 +30,7 @@ struct connection_loop_config {
     const packet_protector* handshake_protector{};
     packet_pipeline_config pipeline{};
     std::uint64_t initial_stream_send_max_data{UINT64_MAX};
+    std::uint64_t initial_connection_send_max_data{UINT64_MAX};
 };
 
 struct received_packet_event {
@@ -70,7 +73,8 @@ public:
         : config_{std::move(config)},
           initial_sent_{packet_number_space::initial},
           handshake_sent_{packet_number_space::handshake},
-          send_streams_{config_.initial_stream_send_max_data} {}
+          send_streams_{config_.initial_stream_send_max_data},
+          connection_send_max_data_{config_.initial_connection_send_max_data} {}
 
     void queue_initial(std::vector<frame> frames) {
         initial_queue_ = std::move(frames);
@@ -88,7 +92,47 @@ public:
         std::span<const std::uint64_t> stream_ids,
         std::size_t max_frames,
         std::size_t max_stream_data_size) {
-        return send_streams_.pop_frames(stream_ids, max_frames, max_stream_data_size);
+        stream_frame_schedule_result result{};
+        result.frames.reserve(std::min(max_frames, stream_ids.size()));
+        if (max_frames == 0) {
+            return result;
+        }
+
+        for (const auto stream_id : stream_ids) {
+            if (result.frames.size() == max_frames) {
+                break;
+            }
+
+            const auto remaining_credit = connection_send_max_data_ - connection_data_sent_;
+            if (remaining_credit == 0) {
+                if (send_streams_.has_unsent_data(stream_id)) {
+                    result.frames.push_back(frame{data_blocked_frame{connection_send_max_data_}});
+                    break;
+                }
+                continue;
+            }
+
+            const auto stream_limit = std::min(max_stream_data_size, static_cast<std::size_t>(remaining_credit));
+            const std::uint64_t selected_stream[]{stream_id};
+            auto stream_result = send_streams_.pop_frames(selected_stream, 1, stream_limit);
+            if (!stream_result.ok()) {
+                result.error = stream_result.error;
+                return result;
+            }
+            if (stream_result.frames.empty()) {
+                continue;
+            }
+
+            if (const auto* stream = std::get_if<stream_frame>(&stream_result.frames.front())) {
+                connection_data_sent_ += stream->data.size();
+            }
+            result.frames.push_back(std::move(stream_result.frames.front()));
+        }
+        return result;
+    }
+
+    void update_max_data(const max_data_frame& frame) noexcept {
+        connection_send_max_data_ = std::max(connection_send_max_data_, frame.maximum_data);
     }
 
     void flush() {
@@ -116,7 +160,7 @@ public:
             return;
         }
         apply_ack_frames(parsed.number.space, parsed.frames);
-        apply_stream_credit_frames(parsed.frames);
+        apply_flow_control_frames(parsed.frames);
         auto stream_deliveries = receive_stream_frames(parsed.frames);
         actions_.emplace_back(received_packet_event{parsed.number, std::move(parsed.frames), std::move(datagram.peer), std::move(stream_deliveries)});
     }
@@ -182,6 +226,8 @@ private:
     sent_packet_tracker handshake_sent_;
     stream_receive_set receive_streams_{};
     stream_send_set send_streams_{};
+    std::uint64_t connection_send_max_data_{UINT64_MAX};
+    std::uint64_t connection_data_sent_{};
 
     [[nodiscard]] static packet_number_space packet_space_for(const packet_header& header) noexcept {
         return std::holds_alternative<handshake_header>(header) ? packet_number_space::handshake : packet_number_space::initial;
@@ -239,10 +285,12 @@ private:
         }
     }
 
-    void apply_stream_credit_frames(const std::vector<frame>& frames) {
+    void apply_flow_control_frames(const std::vector<frame>& frames) {
         for (const auto& item : frames) {
             if (const auto* credit = std::get_if<max_stream_data_frame>(&item)) {
                 send_streams_.update_max_data(*credit);
+            } else if (const auto* credit = std::get_if<max_data_frame>(&item)) {
+                update_max_data(*credit);
             }
         }
     }
