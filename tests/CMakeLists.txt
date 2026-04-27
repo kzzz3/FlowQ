@@ -2,6 +2,7 @@ find_package(Catch2 3 CONFIG REQUIRED)
 
 add_executable(
     flowq_unit_tests
+    integration/quic_loopback_tests.cpp
     unit/buffer_tests.cpp
     unit/context_tests.cpp
     unit/endpoint_tests.cpp
