@@ -23,14 +23,14 @@
 
 ## Tasks
 
-- [ ] Write RED tests for installing Initial, Handshake, 0-RTT, and 1-RTT send/receive availability as value events.
-- [ ] Write RED tests for discarding Initial keys after Handshake keys are available.
-- [ ] Write RED tests for discarding Handshake keys after handshake confirmation.
-- [ ] Write RED tests proving ACK/loss state tied to discarded packet spaces is ignored or removed safely.
-- [ ] Verify RED.
-- [ ] Implement `key_lifecycle_state`, `encryption_level`, key availability events, and discard decisions.
-- [ ] Integrate lifecycle gates into connection/session paths.
-- [ ] Verify GREEN, full CTest, install, and package-consumer.
+- [x] Write RED tests for installing Initial, Handshake, 0-RTT, and 1-RTT send/receive availability as value events.
+- [x] Write RED tests for discarding Initial keys after Handshake keys are available.
+- [x] Write RED tests for discarding Handshake keys after handshake confirmation.
+- [x] Write RED tests proving ACK/loss state tied to discarded packet spaces is ignored or removed safely.
+- [x] Verify RED.
+- [x] Implement `key_lifecycle_state`, `encryption_level`, key availability events, and discard decisions.
+- [x] Integrate lifecycle gates into connection/session paths.
+- [x] Verify GREEN, full CTest, install, and package-consumer.
 - [ ] Request Oracle review.
 
 ## Acceptance Gate
