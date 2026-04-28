@@ -29,7 +29,7 @@
 - [x] M31b-a: Default-off OpenSSL QUIC TLS provider surface.
 - [ ] M31b-b: Provider-backed local TLS handshake evidence.
 - [x] M32: RFC-shaped short-header value model and parser shell.
-- [ ] M33: Key lifecycle gates and packet-space discard rules.
+- [x] M33: Key lifecycle gates and packet-space discard rules.
 - [ ] M34: Recovery and congestion-control production baseline.
 - [ ] M35: Connection ID routing, version negotiation, Retry, and address-validation preparation.
 - [ ] M36: Production UDP endpoint lifecycle and public API hardening.
@@ -215,13 +215,13 @@ M32 depends on M31b for production-path packet protection and key availability e
 - Modify: `docs/development.md`
 
 **TDD steps:**
-- [ ] Write tests for installing Initial, Handshake, and 1-RTT send/receive key availability as value events.
-- [ ] Write tests for discarding Initial keys after Handshake keys become available.
-- [ ] Write tests for discarding Handshake keys after handshake confirmation.
-- [ ] Write tests proving lost-packet and ACK state tied to discarded packet spaces is removed or ignored safely.
-- [ ] Verify RED.
-- [ ] Implement key lifecycle values and connection/session gating.
-- [ ] Verify GREEN and full CTest.
+- [x] Write tests for installing Initial, Handshake, and 1-RTT send/receive key availability as value events.
+- [x] Write tests for discarding Initial keys after Handshake keys become available.
+- [x] Write tests for discarding Handshake keys after handshake confirmation.
+- [x] Write tests proving lost-packet and ACK state tied to discarded packet spaces is removed or ignored safely.
+- [x] Verify RED.
+- [x] Implement key lifecycle values and connection/session gating.
+- [x] Verify GREEN and full CTest.
 
 **Acceptance gate:** Key lifecycle policy is deterministic and testable; external TLS still provides real secrets and key material.
 
