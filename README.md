@@ -82,6 +82,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - `include/flowq/quic/core.hpp`: deterministic protocol action seam.
 - `include/flowq/quic/crypto_provider.hpp`: external crypto-provider capability evidence values.
 - `include/flowq/quic/initial_keys.hpp`: optional OpenSSL-backed RFC 9001 Initial vector helpers.
+- `include/flowq/quic/key_lifecycle.hpp`: deterministic key availability and packet-space discard state.
 - `include/flowq/quic/tls_handshake.hpp`: TLS handshake adapter boundary for opaque CRYPTO byte flow and state observation.
 - `include/flowq/quic/tls_provider_backend.hpp`: default-off OpenSSL QUIC TLS provider metadata and API-availability surface.
 - `include/flowq/quic/transport_parameters.hpp`: structural QUIC transport parameter codec and config mapping helpers.
@@ -127,7 +128,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 
 ## Current Status
 
-M32 is complete: FlowQ can model RFC-shaped short-header fields and parse a test-mode short-header shell while keeping the structural Application envelope separate. FlowQ remains a non-production C++20 QUIC-like library baseline; complete TLS handshakes, certificate validation, key schedule, header protection removal, 1-RTT AEAD, authenticated transport-parameter negotiation, full packet protection, congestion control, interoperability, HTTP/3, and WebTransport remain future work.
+M33 is complete: FlowQ can track deterministic key availability events and discard Initial/Handshake packet spaces when later TLS lifecycle evidence makes them obsolete. FlowQ remains a non-production C++20 QUIC-like library baseline; complete TLS handshakes, certificate validation, key schedule, key updates, header protection removal, 1-RTT AEAD, authenticated transport-parameter negotiation, full packet protection, congestion control, interoperability, HTTP/3, and WebTransport remain future work.
 
 The completed plan `docs/superpowers/plans/2026-04-27-post-m19-basic-quic-library-completion.md` covers M20-M26 through this baseline. Post-basic production QUIC work remains separate: real TLS 1.3, AEAD, header protection, short-header packet-number reconstruction, congestion control, interoperability, HTTP/3, and WebTransport.
 

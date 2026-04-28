@@ -34,7 +34,7 @@ FlowQ is a modern C++ protocol library that builds a deterministic, testable, no
 - [x] M31b-a: Add default-off OpenSSL QUIC TLS provider surface.
 - [ ] M31b-b: Add provider-backed local TLS handshake evidence.
 - [x] M32: Add RFC-shaped short-header value model and parser shell.
-- [ ] M33: Add key lifecycle gates and packet-space discard rules.
+- [x] M33: Add key lifecycle gates and packet-space discard rules.
 - [ ] M34: Add recovery and congestion-control production baseline.
 - [ ] M35: Add connection ID routing, version negotiation, Retry, and address-validation preparation.
 - [ ] M36: Add production-shaped UDP endpoint lifecycle and public API hardening.
@@ -100,7 +100,7 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 
 - [ ] External TLS/crypto adapter implementation track.
 - [x] M27 packet-number truncation/reconstruction helper foundation.
-- [ ] M31b-b/M33 local TLS handshake evidence and key-lifecycle foundations.
+- [ ] M31b-b local TLS handshake evidence and follow-up key export foundations.
 - [ ] M34-M36 congestion-control, connection routing, and production-shaped endpoint foundations.
 - [ ] M37-M39 diagnostics, fuzzing, interop harness, and production release evidence gates.
 - [ ] HTTP/3 and WebTransport backlog tracks after transport production-readiness evidence.
@@ -123,3 +123,4 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 - **TLS handshake boundary risk**: M31 routes opaque CRYPTO bytes and observes handshake/key state only; external provider wiring, certificate validation, TLS transcript handling, and real key schedule remain M31b/future work.
 - **TLS provider surface risk**: M31b-a adds only default-off OpenSSL QUIC TLS API detection and provider metadata; complete TLS handshakes, certificate-policy validation, and key lifecycle proof remain future work.
 - **Short-header shell risk**: M32 models RFC-shaped short headers and a test-mode parser shell only; header-protection removal, packet-number reconstruction from protected headers, 1-RTT AEAD, and interoperability remain future work.
+- **Key lifecycle risk**: M33 tracks deterministic availability and packet-space discard gates only; external TLS/crypto must still supply real secrets, key material, key updates, and packet-protection installation.
