@@ -244,6 +244,26 @@ TEST_CASE("QUIC session acknowledges received Application datagrams") {
     CHECK(acked.datagrams[0].peer.host == "client");
 }
 
+TEST_CASE("QUIC session forwards packet-space discard gates") {
+    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::key_lifecycle_state lifecycle{};
+    lifecycle.discard(flowq::quic::packet_number_space::initial);
+
+    auto config = make_config(
+        cid({0x01}),
+        cid({0x02}),
+        flowq::endpoint{"server", 4433, "hq-interop"},
+        protector);
+    config.key_lifecycle = lifecycle;
+    auto session = flowq::quic::session{std::move(config)};
+
+    auto acked = session.acknowledge(flowq::quic::packet_number_space::initial);
+
+    REQUIRE(acked.ok());
+    CHECK(acked.datagrams.empty());
+    CHECK(acked.closes.empty());
+}
+
 TEST_CASE("QUIC session does not arm Application recovery timer before handshake confirmation") {
     flowq::quic::plaintext_packet_protector protector{};
     auto session = flowq::quic::session{make_config(

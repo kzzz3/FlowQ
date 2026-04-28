@@ -54,17 +54,34 @@ public:
 
     flowq::error receive_crypto(flowq::quic::crypto_bytes bytes) override {
         received.push_back(std::move(bytes));
+        if (install_handshake_keys_on_receive) {
+            state_value = flowq::quic::handshake_state::handshaking;
+            keys.handshake = true;
+        }
+        if (confirm_handshake_on_receive) {
+            state_value = flowq::quic::handshake_state::handshake_confirmed;
+            keys.handshake = true;
+            keys.application = true;
+        }
         return {};
     }
 
     std::vector<flowq::quic::crypto_bytes> drain_crypto() override {
         auto output = std::move(outbound);
         outbound.clear();
+        if (confirm_handshake_on_drain) {
+            state_value = flowq::quic::handshake_state::handshake_confirmed;
+            keys.handshake = true;
+            keys.application = true;
+        }
         return output;
     }
 
     flowq::quic::handshake_state state_value{flowq::quic::handshake_state::idle};
     flowq::quic::tls_key_availability keys{};
+    bool install_handshake_keys_on_receive{};
+    bool confirm_handshake_on_receive{};
+    bool confirm_handshake_on_drain{};
     std::vector<flowq::quic::crypto_bytes> received;
     std::vector<flowq::quic::crypto_bytes> outbound;
 };
@@ -215,6 +232,174 @@ TEST_CASE("connection loop parses inbound Initial packets and generates ACK pack
     REQUIRE(parsed_ack.frames.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::ack_frame>(parsed_ack.frames[0]));
     CHECK(std::get<flowq::quic::ack_frame>(parsed_ack.frames[0]).largest_acknowledged == 0);
+}
+
+TEST_CASE("connection loop ignores discarded Initial packet space") {
+    flowq::quic::plaintext_packet_protector protector{};
+    flowq::endpoint server_peer{"server", 4433, "hq-interop"};
+    flowq::endpoint client_peer{"client", 1111, "hq-interop"};
+    auto client = make_loop(cid({0x01}), cid({0x02}), server_peer, protector);
+
+    flowq::quic::key_lifecycle_state lifecycle{};
+    lifecycle.discard(flowq::quic::packet_number_space::initial);
+    flowq::quic::connection_loop_config server_config{};
+    server_config.role = flowq::quic::connection_role::server;
+    server_config.local_connection_id = cid({0x02});
+    server_config.remote_connection_id = cid({0x01});
+    server_config.peer = client_peer;
+    server_config.initial_protector = &protector;
+    server_config.handshake_protector = &protector;
+    server_config.application_protector = &protector;
+    server_config.key_lifecycle = lifecycle;
+    auto server = flowq::quic::connection_loop{std::move(server_config)};
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer});
+    CHECK(server.drain_actions().empty());
+
+    server.acknowledge(flowq::quic::packet_number_space::initial);
+    CHECK(server.drain_actions().empty());
+}
+
+TEST_CASE("connection loop does not flush or recover discarded packet spaces") {
+    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::key_lifecycle_state lifecycle{};
+    lifecycle.discard(flowq::quic::packet_number_space::initial);
+
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = cid({0x01});
+    config.remote_connection_id = cid({0x02});
+    config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
+    config.initial_protector = &protector;
+    config.handshake_protector = &protector;
+    config.application_protector = &protector;
+    config.key_lifecycle = lifecycle;
+    auto loop = flowq::quic::connection_loop{std::move(config)};
+
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+
+    CHECK(loop.drain_actions().empty());
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets().empty());
+    CHECK_FALSE(loop.next_recovery_timer(at(0ms)).has_value());
+}
+
+TEST_CASE("connection loop applies TLS key lifecycle discard decisions") {
+    flowq::quic::plaintext_packet_protector protector{};
+    recording_tls_adapter adapter{};
+    adapter.state_value = flowq::quic::handshake_state::handshaking;
+    adapter.keys.handshake = true;
+
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = cid({0x01});
+    config.remote_connection_id = cid({0x02});
+    config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
+    config.initial_protector = &protector;
+    config.handshake_protector = &protector;
+    config.application_protector = &protector;
+    config.tls_adapter = &adapter;
+    auto loop = flowq::quic::connection_loop{std::move(config)};
+
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.queue_handshake({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+
+    auto actions = loop.drain_actions();
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::outbound_datagram>(actions[0]));
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets().empty());
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::handshake).packets().size() == 1);
+
+    recording_tls_adapter confirmed_adapter{};
+    confirmed_adapter.state_value = flowq::quic::handshake_state::handshake_confirmed;
+    confirmed_adapter.keys.handshake = true;
+    confirmed_adapter.keys.application = true;
+    flowq::quic::connection_loop_config confirmed_config{};
+    confirmed_config.role = flowq::quic::connection_role::client;
+    confirmed_config.local_connection_id = cid({0x01});
+    confirmed_config.remote_connection_id = cid({0x02});
+    confirmed_config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
+    confirmed_config.initial_protector = &protector;
+    confirmed_config.handshake_protector = &protector;
+    confirmed_config.application_protector = &protector;
+    confirmed_config.tls_adapter = &confirmed_adapter;
+    auto confirmed_loop = flowq::quic::connection_loop{std::move(confirmed_config)};
+
+    confirmed_loop.queue_handshake({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    confirmed_loop.flush(at(0ms));
+
+    CHECK(confirmed_loop.drain_actions().empty());
+    CHECK(confirmed_loop.sent_packets(flowq::quic::packet_number_space::handshake).packets().empty());
+}
+
+TEST_CASE("connection loop refreshes key lifecycle after inbound TLS CRYPTO changes") {
+    flowq::quic::plaintext_packet_protector protector{};
+    recording_tls_adapter adapter{};
+    adapter.install_handshake_keys_on_receive = true;
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+
+    flowq::quic::connection_loop_config server_config{};
+    server_config.role = flowq::quic::connection_role::server;
+    server_config.local_connection_id = cid({0x02});
+    server_config.remote_connection_id = cid({0x01});
+    server_config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
+    server_config.initial_protector = &protector;
+    server_config.handshake_protector = &protector;
+    server_config.application_protector = &protector;
+    server_config.tls_adapter = &adapter;
+    auto server = flowq::quic::connection_loop{std::move(server_config)};
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    server.flush(at(0ms));
+    auto server_initial = require_single_outbound(server.drain_actions());
+    REQUIRE(server.next_recovery_timer(at(1ms)).has_value());
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::crypto_frame{0, text("client hello")}}});
+    client.flush(at(2ms));
+    auto client_crypto = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(client_crypto.payload), client_crypto.peer});
+
+    auto received_actions = server.drain_actions();
+    REQUIRE(received_actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(received_actions[0]));
+    CHECK_FALSE(server.next_recovery_timer(at(3ms)).has_value());
+    CHECK(server.sent_packets(flowq::quic::packet_number_space::initial).packets().empty());
+    server.acknowledge(flowq::quic::packet_number_space::initial);
+    CHECK(server.drain_actions().empty());
+    (void)server_initial;
+}
+
+TEST_CASE("connection loop refreshes key lifecycle after draining TLS CRYPTO") {
+    flowq::quic::plaintext_packet_protector protector{};
+    recording_tls_adapter adapter{};
+    adapter.state_value = flowq::quic::handshake_state::handshaking;
+    adapter.keys.handshake = true;
+    adapter.outbound.push_back(flowq::quic::crypto_bytes{flowq::quic::tls_encryption_level::handshake, 0, text("final flight")});
+    adapter.confirm_handshake_on_drain = true;
+
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::server;
+    config.local_connection_id = cid({0x02});
+    config.remote_connection_id = cid({0x01});
+    config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
+    config.initial_protector = &protector;
+    config.handshake_protector = &protector;
+    config.application_protector = &protector;
+    config.tls_adapter = &adapter;
+    auto loop = flowq::quic::connection_loop{std::move(config)};
+
+    loop.queue_handshake({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+
+    CHECK(loop.drain_actions().empty());
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::handshake).packets().empty());
+    CHECK_FALSE(loop.next_recovery_timer(at(1ms)).has_value());
 }
 
 TEST_CASE("connection loop feeds inbound CRYPTO frames to TLS adapter by packet space") {

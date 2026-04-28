@@ -2,6 +2,7 @@
 
 #include <flowq/endpoint.hpp>
 #include <flowq/quic/core.hpp>
+#include <flowq/quic/key_lifecycle.hpp>
 #include <flowq/quic/packet_pipeline.hpp>
 #include <flowq/quic/stream.hpp>
 #include <flowq/quic/tls_handshake.hpp>
@@ -47,6 +48,7 @@ struct connection_loop_config {
     std::uint64_t active_connection_id_limit{2};
     bool disable_active_migration{};
     tls_handshake_adapter* tls_adapter{};
+    key_lifecycle_state key_lifecycle{};
 };
 
 inline void apply_transport_parameters(connection_loop_config& config, const transport_parameters& parameters) {
@@ -234,7 +236,9 @@ public:
     }
 
     void flush(std::chrono::steady_clock::time_point sent_at) {
+        refresh_key_lifecycle();
         pump_tls_crypto();
+        refresh_key_lifecycle();
         flush_space(packet_number_space::initial, initial_queue_, next_initial_packet_number_, sent_at);
         flush_space(packet_number_space::handshake, handshake_queue_, next_handshake_packet_number_, sent_at);
         flush_space(packet_number_space::application, application_queue_, next_application_packet_number_, sent_at);
@@ -244,7 +248,8 @@ public:
         recovery_rtt_.update(sample);
     }
 
-    [[nodiscard]] std::optional<connection_recovery_timer> next_recovery_timer(std::chrono::steady_clock::time_point now) const {
+    [[nodiscard]] std::optional<connection_recovery_timer> next_recovery_timer(std::chrono::steady_clock::time_point now) {
+        refresh_key_lifecycle();
         auto selected = recovery_timer_for(packet_number_space::initial, now);
         auto handshake = recovery_timer_for(packet_number_space::handshake, now);
         if (handshake.has_value() && (!selected.has_value() || handshake->deadline < selected->deadline)) {
@@ -260,6 +265,11 @@ public:
     [[nodiscard]] connection_recovery_result on_recovery_timer(packet_number_space space, std::chrono::steady_clock::time_point now) {
         connection_recovery_result result{space, {}, {}};
         if (!detail::is_connection_loop_space(space)) {
+            return result;
+        }
+        refresh_key_lifecycle();
+        if (packet_space_discarded(space)) {
+            clear_packet_space(space);
             return result;
         }
 
@@ -280,7 +290,12 @@ public:
     }
 
     void on_datagram(inbound_datagram datagram) {
+        refresh_key_lifecycle();
         if (!datagram.payload.empty() && datagram.payload.data()[0] == std::byte{0x50}) {
+            if (packet_space_discarded(packet_number_space::application)) {
+                clear_packet_space(packet_number_space::application);
+                return;
+            }
             auto parsed = parse_application_packet(datagram.payload, detail::protector_for(packet_number_space::application, config_), config_.protection_policy);
             if (!parsed.ok()) {
                 actions_.emplace_back(close_action{parsed.error});
@@ -297,6 +312,10 @@ public:
         }
 
         const auto space = packet_space_for(header.header);
+        if (packet_space_discarded(space)) {
+            clear_packet_space(space);
+            return;
+        }
         const auto* protector = detail::protector_for(space, config_);
         auto parsed = parse_long_packet(datagram.payload, protector, config_.protection_policy);
         if (!parsed.ok()) {
@@ -310,6 +329,11 @@ public:
     void acknowledge(packet_number_space space) {
         if (!detail::is_connection_loop_space(space)) {
             actions_.emplace_back(close_action{flowq::error{flowq::error_code::protocol_error, "unsupported packet number space for M4b connection loop"}});
+            return;
+        }
+        refresh_key_lifecycle();
+        if (packet_space_discarded(space)) {
+            clear_packet_space(space);
             return;
         }
 
@@ -458,7 +482,19 @@ private:
 
     [[nodiscard]] bool application_send_allowed() const noexcept {
         return config_.protection_policy == packet_protection_policy::test_allowed ||
-            (config_.tls_adapter != nullptr && application_data_ready(*config_.tls_adapter));
+            (config_.tls_adapter != nullptr && application_data_ready(*config_.tls_adapter) &&
+             config_.key_lifecycle.available(encryption_level::one_rtt, key_direction::send));
+    }
+
+    void refresh_key_lifecycle() {
+        if (config_.tls_adapter != nullptr) {
+            config_.key_lifecycle.observe_tls(config_.tls_adapter->state(), config_.tls_adapter->key_availability());
+        }
+        clear_discarded_packet_spaces();
+    }
+
+    [[nodiscard]] bool packet_space_discarded(packet_number_space space) const noexcept {
+        return config_.key_lifecycle.discarded(space);
     }
 
     void pump_tls_crypto() {
@@ -466,8 +502,12 @@ private:
             return;
         }
         for (auto& item : config_.tls_adapter->drain_crypto()) {
+            const auto space = detail::packet_space_for(item.level);
+            if (packet_space_discarded(space)) {
+                continue;
+            }
             auto frame = flowq::quic::frame{crypto_frame{item.offset, std::move(item.data)}};
-            switch (detail::packet_space_for(item.level)) {
+            switch (space) {
             case packet_number_space::initial:
                 initial_queue_.push_back(std::move(frame));
                 break;
@@ -483,6 +523,10 @@ private:
 
     void flush_space(packet_number_space space, std::vector<frame>& queue, std::uint64_t& next_packet_number, std::chrono::steady_clock::time_point sent_at) {
         if (queue.empty()) {
+            return;
+        }
+        if (packet_space_discarded(space)) {
+            clear_packet_space(space);
             return;
         }
         if (space == packet_number_space::application && !application_send_allowed()) {
@@ -560,6 +604,9 @@ private:
     }
 
     [[nodiscard]] std::optional<connection_recovery_timer> recovery_timer_for(packet_number_space space, std::chrono::steady_clock::time_point now) const {
+        if (packet_space_discarded(space)) {
+            return std::nullopt;
+        }
         std::optional<std::chrono::steady_clock::time_point> last_ack_eliciting_sent_at;
         std::optional<std::chrono::steady_clock::time_point> earliest_loss_time;
         const auto largest = largest_acknowledged(space);
@@ -598,6 +645,55 @@ private:
 
     [[nodiscard]] std::optional<std::uint64_t> largest_acknowledged(packet_number_space space) const noexcept {
         return space == packet_number_space::application ? largest_application_acknowledged_ : (space == packet_number_space::handshake ? largest_handshake_acknowledged_ : largest_initial_acknowledged_);
+    }
+
+    void clear_discarded_packet_spaces() {
+        if (packet_space_discarded(packet_number_space::initial)) {
+            clear_packet_space(packet_number_space::initial);
+        }
+        if (packet_space_discarded(packet_number_space::handshake)) {
+            clear_packet_space(packet_number_space::handshake);
+        }
+        if (packet_space_discarded(packet_number_space::application)) {
+            clear_packet_space(packet_number_space::application);
+        }
+    }
+
+    void clear_packet_space(packet_number_space space) {
+        queue_for(space).clear();
+        received_tracker(space).clear();
+        sent_tracker(space).clear();
+        largest_acknowledged_ref(space).reset();
+        recovery_packets_.erase(
+            std::remove_if(
+                recovery_packets_.begin(),
+                recovery_packets_.end(),
+                [space](const recovery_packet& packet) {
+                    return packet.space == space;
+                }),
+            recovery_packets_.end());
+        sent_stream_ranges_.erase(
+            std::remove_if(
+                sent_stream_ranges_.begin(),
+                sent_stream_ranges_.end(),
+                [space](const sent_packet_stream_ranges& packet) {
+                    return packet.space == space;
+                }),
+            sent_stream_ranges_.end());
+    }
+
+    [[nodiscard]] std::vector<frame>& queue_for(packet_number_space space) noexcept {
+        if (space == packet_number_space::application) {
+            return application_queue_;
+        }
+        return space == packet_number_space::handshake ? handshake_queue_ : initial_queue_;
+    }
+
+    [[nodiscard]] std::optional<std::uint64_t>& largest_acknowledged_ref(packet_number_space space) noexcept {
+        if (space == packet_number_space::application) {
+            return largest_application_acknowledged_;
+        }
+        return space == packet_number_space::handshake ? largest_handshake_acknowledged_ : largest_initial_acknowledged_;
     }
 
     void mark_recovery_packets(packet_number_space space, const std::vector<std::uint64_t>& packet_numbers, sent_packet_state state) noexcept {
@@ -678,6 +774,7 @@ private:
             actions_.emplace_back(close_action{error});
             return;
         }
+        refresh_key_lifecycle();
         auto stream_deliveries = receive_stream_frames(parsed.frames);
         actions_.emplace_back(received_packet_event{parsed.number, std::move(parsed.frames), std::move(peer), std::move(stream_deliveries)});
     }

@@ -304,6 +304,10 @@ public:
         return packets_.empty();
     }
 
+    void clear() noexcept {
+        packets_.clear();
+    }
+
     [[nodiscard]] ack_frame to_ack_frame(std::uint64_t ack_delay = 0) const {
         if (packets_.empty()) {
             return {};
@@ -383,6 +387,10 @@ public:
 
     [[nodiscard]] const std::vector<sent_packet>& packets() const noexcept {
         return packets_;
+    }
+
+    void clear() noexcept {
+        packets_.clear();
     }
 
     void mark_lost(std::uint64_t packet_number) noexcept {

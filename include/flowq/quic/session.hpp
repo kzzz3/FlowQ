@@ -38,6 +38,7 @@ struct session_config {
     std::uint64_t active_connection_id_limit{2};
     bool disable_active_migration{};
     tls_handshake_adapter* tls_adapter{};
+    key_lifecycle_state key_lifecycle{};
 };
 
 inline void apply_transport_parameters(session_config& config, const transport_parameters& parameters) {
@@ -121,7 +122,7 @@ public:
         return drain_receive_actions();
     }
 
-    [[nodiscard]] std::optional<connection_recovery_timer> next_recovery_timer(std::chrono::steady_clock::time_point now) const {
+    [[nodiscard]] std::optional<connection_recovery_timer> next_recovery_timer(std::chrono::steady_clock::time_point now) {
         return loop_.next_recovery_timer(now);
     }
 
@@ -155,7 +156,8 @@ private:
             config.max_udp_payload_size,
             config.active_connection_id_limit,
             config.disable_active_migration,
-            config.tls_adapter
+            config.tls_adapter,
+            config.key_lifecycle
         };
     }
 
