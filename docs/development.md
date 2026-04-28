@@ -774,3 +774,21 @@ short-header value model and explicit parser shell.
 
 M32 does not remove QUIC header protection, reconstruct full packet numbers from protected headers, perform 1-RTT AEAD,
 install keys, or claim interoperability with real QUIC endpoints.
+
+### M33 key lifecycle and packet-space discard scope
+
+M33 adds `include/flowq/quic/key_lifecycle.hpp` as a deterministic value layer for key availability and packet-space
+discard decisions.
+
+- `encryption_level`, `key_direction`, `key_availability_event`, and `key_lifecycle_state` model availability for Initial,
+  Handshake, 0-RTT, and 1-RTT send/receive directions without storing key bytes or secrets.
+- `key_lifecycle_state::observe_tls(...)` converts `tls_key_availability` plus handshake state into deterministic lifecycle
+  state: Handshake keys discard Initial space, and handshake confirmation discards Handshake space.
+- `connection_loop_config` and `session_config` carry lifecycle state into connection/session paths.
+- Discarded packet spaces clear queued frames, received-packet ACK state, sent-packet state, recovery packets, largest ACKed
+  records, and sent stream range ledgers for that packet space.
+- Late inbound packets, ACK generation, flushes, and recovery timers for discarded Initial or Handshake spaces are ignored
+  safely instead of producing stale datagrams.
+
+M33 does not derive, store, export, or install TLS secrets or packet-protection keys. Key schedule, key update, AEAD,
+header protection, and provider-backed key export remain future work.

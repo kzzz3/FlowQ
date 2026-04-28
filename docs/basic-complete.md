@@ -14,6 +14,7 @@ FlowQ is basic complete as a non-production C++20 QUIC-like library baseline. Th
 - TLS handshake adapter boundary values for opaque CRYPTO byte movement, handshake-state observation, and key-availability gating.
 - Default-off OpenSSL QUIC TLS provider metadata/API-availability surface when explicitly enabled and supported by the local OpenSSL package.
 - RFC-shaped short-header value model and test-mode parser shell that keep protected payload bytes opaque and separate from the structural Application envelope.
+- Deterministic key availability and packet-space discard gates for Initial, Handshake, 0-RTT value state, and 1-RTT value state.
 - Plaintext packet protection for deterministic tests and local examples, marked test-only by capability reporting.
 - Bounded non-production UDP/ASIO session adapter for local loopback smoke paths with caller-owned sockets.
 - ASIO recovery scheduler adapter that schedules already-computed deterministic recovery deadlines.
@@ -48,6 +49,7 @@ FlowQ is basic complete as a non-production C++20 QUIC-like library baseline. Th
 - `include/flowq/quic/events.hpp`
 - `include/flowq/quic/frame.hpp`
 - `include/flowq/quic/initial_keys.hpp`
+- `include/flowq/quic/key_lifecycle.hpp`
 - `include/flowq/quic/packet_header.hpp`
 - `include/flowq/quic/packet_pipeline.hpp`
 - `include/flowq/quic/recovery_scheduler.hpp`
@@ -90,9 +92,9 @@ Production QUIC work remains intentionally separate from this baseline and requi
 
 - RFC 9000 packet-number truncation/reconstruction helpers, the M28 crypto-provider capability boundary, selected M29
   RFC 9001 Initial vectors, the M30 structural transport-parameter codec, the M31 TLS handshake adapter boundary, the
-  M31b-a default-off OpenSSL QUIC TLS provider surface, and the M32 short-header shell are in place, but complete TLS
-  handshakes, certificate validation, key schedule, authenticated transport-parameter negotiation, complete packet
-  protection, header-protection removal, 1-RTT AEAD, and interoperability remain future work.
+  M31b-a default-off OpenSSL QUIC TLS provider surface, the M32 short-header shell, and M33 key lifecycle gates are in
+  place, but complete TLS handshakes, certificate validation, key schedule, key updates, authenticated transport-parameter
+  negotiation, complete packet protection, header-protection removal, 1-RTT AEAD, and interoperability remain future work.
 - The complete M28-M39 production-readiness route is tracked in
   `docs/superpowers/plans/2026-04-27-post-basic-production-readiness-roadmap.md`.
 - External TLS 1.3 and QUIC packet-protection adapter backed by a mature crypto library.
