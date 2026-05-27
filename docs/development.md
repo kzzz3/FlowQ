@@ -812,3 +812,15 @@ NewReno-style behavior.
 
 M34 does not add pacing timers, ECN support, or production performance tuning. Loss detection remains per packet-number space;
 congestion state is path-level and shared across all packet spaces.
+
+### M35 connection routing, version negotiation, and retry scope
+
+M35 adds `include/flowq/quic/connection_routing.hpp` as deterministic server-side routing and protocol negotiation helpers.
+
+- `routing_table` maps destination connection IDs to connection handles with `add()`, `lookup()`, `retire()`, and `active_count()`.
+- `version_supported()` checks whether a client-chosen version is in the server's supported set.
+- `build_version_negotiation()` constructs a Version Negotiation packet payload from destination/source CIDs and supported versions.
+- `retry_token_validator` provides `validate_token_shape()` for checking non-empty retry tokens.
+- `retry_integrity_provider` provides `compute_integrity_tag()` and `verify_integrity_tag()` as deterministic stubs for retry packet integrity delegation.
+
+M35 does not implement a production server listener, real retry integrity (AEAD-based), or full address-validation state machines. Connection ID routing is a value-type helper; actual server-side dispatch, stateful retry, and CID lifecycle management remain future work.

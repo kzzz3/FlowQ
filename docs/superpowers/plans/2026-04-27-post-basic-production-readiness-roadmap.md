@@ -31,7 +31,7 @@
 - [x] M32: RFC-shaped short-header value model and parser shell.
 - [x] M33: Key lifecycle gates and packet-space discard rules.
 - [x] M34: Recovery and congestion-control production baseline.
-- [ ] M35: Connection ID routing, version negotiation, Retry, and address-validation preparation.
+- [x] M35: Connection ID routing, version negotiation, Retry, and address-validation preparation.
 - [ ] M36: Production UDP endpoint lifecycle and public API hardening.
 - [ ] M37: Diagnostics, qlog-style events, fuzzing, and sanitizer gates.
 - [ ] M38: Interop harness against mature QUIC implementations.
@@ -265,12 +265,12 @@ M32 depends on M31b for production-path packet protection and key availability e
 - Modify: `docs/development.md`
 
 **TDD steps:**
-- [ ] Write tests for destination connection ID lookup, unknown connection ID handling, and connection ID retirement bookkeeping.
-- [ ] Write tests for Version Negotiation packet selection from supported versions.
-- [ ] Write tests for Retry token validation interface shape and Retry integrity delegation to crypto provider.
-- [ ] Verify RED.
-- [ ] Implement routing table value types and version/retry decision helpers.
-- [ ] Verify GREEN and full CTest.
+- [x] Write tests for destination connection ID lookup, unknown connection ID handling, and connection ID retirement bookkeeping.
+- [x] Write tests for Version Negotiation packet selection from supported versions.
+- [x] Write tests for Retry token validation interface shape and Retry integrity delegation to crypto provider.
+- [x] Verify RED.
+- [x] Implement routing table value types and version/retry decision helpers.
+- [x] Verify GREEN and full CTest.
 
 **Acceptance gate:** Routing and Retry preparation is deterministic; no production server listener is claimed.
 
