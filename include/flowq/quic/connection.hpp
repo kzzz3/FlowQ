@@ -37,13 +37,13 @@ struct connection_loop_config {
     const packet_protector* handshake_protector{};
     const packet_protector* application_protector{};
     packet_pipeline_config pipeline{};
-    std::uint64_t initial_stream_send_max_data{UINT64_MAX};
-    std::uint64_t initial_connection_send_max_data{UINT64_MAX};
-    std::size_t max_packet_payload_size{SIZE_MAX};
+    std::uint64_t initial_stream_send_max_data{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t initial_connection_send_max_data{std::numeric_limits<std::uint64_t>::max()};
+    std::size_t max_packet_payload_size{std::numeric_limits<std::size_t>::max()};
     packet_protection_policy protection_policy{packet_protection_policy::test_allowed};
-    std::uint64_t initial_max_stream_data_bidi_local{UINT64_MAX};
-    std::uint64_t initial_max_stream_data_bidi_remote{UINT64_MAX};
-    std::uint64_t initial_max_stream_data_uni{UINT64_MAX};
+    std::uint64_t initial_max_stream_data_bidi_local{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t initial_max_stream_data_bidi_remote{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t initial_max_stream_data_uni{std::numeric_limits<std::uint64_t>::max()};
     std::chrono::milliseconds max_idle_timeout{};
     std::uint64_t max_udp_payload_size{1200};
     std::uint64_t active_connection_id_limit{2};
@@ -416,7 +416,7 @@ private:
     sent_packet_tracker application_sent_;
     stream_receive_set receive_streams_{};
     stream_send_set send_streams_{};
-    std::uint64_t connection_send_max_data_{UINT64_MAX};
+    std::uint64_t connection_send_max_data_{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t connection_data_sent_{};
     rtt_estimator recovery_rtt_{};
     pto_config recovery_pto_config_{};

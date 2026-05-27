@@ -99,6 +99,19 @@ struct evp_pkey_context {
     evp_pkey_context(const evp_pkey_context&) = delete;
     evp_pkey_context& operator=(const evp_pkey_context&) = delete;
 
+    evp_pkey_context(evp_pkey_context&& other) noexcept : value{other.value} {
+        other.value = nullptr;
+    }
+
+    evp_pkey_context& operator=(evp_pkey_context&& other) noexcept {
+        if (this != &other) {
+            EVP_PKEY_CTX_free(value);
+            value = other.value;
+            other.value = nullptr;
+        }
+        return *this;
+    }
+
     ~evp_pkey_context() {
         EVP_PKEY_CTX_free(value);
     }
@@ -111,6 +124,19 @@ struct evp_cipher_context {
 
     evp_cipher_context(const evp_cipher_context&) = delete;
     evp_cipher_context& operator=(const evp_cipher_context&) = delete;
+
+    evp_cipher_context(evp_cipher_context&& other) noexcept : value{other.value} {
+        other.value = nullptr;
+    }
+
+    evp_cipher_context& operator=(evp_cipher_context&& other) noexcept {
+        if (this != &other) {
+            EVP_CIPHER_CTX_free(value);
+            value = other.value;
+            other.value = nullptr;
+        }
+        return *this;
+    }
 
     ~evp_cipher_context() {
         EVP_CIPHER_CTX_free(value);
@@ -321,6 +347,8 @@ struct evp_cipher_context {
     if (ciphertext_size > 0 && EVP_DecryptUpdate(context.value, reinterpret_cast<unsigned char*>(output.data()), &written, reinterpret_cast<const unsigned char*>(protected_payload.data()), static_cast<int>(ciphertext_size)) <= 0) {
         return {{}, initial_key_error("OpenSSL AES-GCM open failed")};
     }
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast): OpenSSL EVP_CTRL_GCM_SET_TAG takes void* non-const
+    // but only reads the tag bytes. This const_cast is required by the OpenSSL API deficiency.
     if (EVP_CIPHER_CTX_ctrl(context.value, EVP_CTRL_GCM_SET_TAG, 16, const_cast<unsigned char*>(reinterpret_cast<const unsigned char*>(protected_payload.data() + static_cast<std::ptrdiff_t>(ciphertext_size)))) <= 0) {
         return {{}, initial_key_error("OpenSSL AES-GCM tag setup failed")};
     }

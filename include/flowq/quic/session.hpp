@@ -24,15 +24,15 @@ struct session_config {
     const packet_protector* handshake_protector{};
     const packet_protector* application_protector{};
     packet_pipeline_config pipeline{};
-    std::uint64_t initial_stream_send_max_data{UINT64_MAX};
-    std::uint64_t initial_connection_send_max_data{UINT64_MAX};
-    std::size_t max_packet_payload_size{SIZE_MAX};
+    std::uint64_t initial_stream_send_max_data{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t initial_connection_send_max_data{std::numeric_limits<std::uint64_t>::max()};
+    std::size_t max_packet_payload_size{std::numeric_limits<std::size_t>::max()};
     packet_protection_policy protection_policy{packet_protection_policy::test_allowed};
     std::size_t max_stream_frames{8};
     std::size_t max_stream_data_size{1200};
-    std::uint64_t initial_max_stream_data_bidi_local{UINT64_MAX};
-    std::uint64_t initial_max_stream_data_bidi_remote{UINT64_MAX};
-    std::uint64_t initial_max_stream_data_uni{UINT64_MAX};
+    std::uint64_t initial_max_stream_data_bidi_local{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t initial_max_stream_data_bidi_remote{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t initial_max_stream_data_uni{std::numeric_limits<std::uint64_t>::max()};
     std::chrono::milliseconds max_idle_timeout{};
     std::uint64_t max_udp_payload_size{1200};
     std::uint64_t active_connection_id_limit{2};
@@ -69,6 +69,9 @@ inline void apply_transport_parameters(session_config& config, const transport_p
     }
     config.disable_active_migration = parameters.disable_active_migration;
 }
+
+// Note: apply_transport_parameters for session_config is defined above.
+// The connection_loop_config variant is in connection.hpp.
 
 class session {
 public:
