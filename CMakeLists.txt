@@ -8,6 +8,7 @@ include(CMakePackageConfigHelpers)
 option(FLOWQ_BUILD_TESTS "Build FlowQ tests" ON)
 option(FLOWQ_BUILD_EXAMPLES "Build FlowQ examples" ON)
 option(FLOWQ_BUILD_FUZZ "Build FlowQ fuzz targets (requires libFuzzer)" OFF)
+option(FLOWQ_BUILD_INTEROP "Build FlowQ interop harness" OFF)
 
 add_library(flowq INTERFACE)
 add_library(FlowQ::flowq ALIAS flowq)
@@ -110,4 +111,17 @@ if(FLOWQ_BUILD_FUZZ)
     target_link_libraries(flowq_frame_codec_fuzz PRIVATE FlowQ::flowq)
     target_compile_options(flowq_frame_codec_fuzz PRIVATE -fsanitize=fuzzer,address)
     target_link_options(flowq_frame_codec_fuzz PRIVATE -fsanitize=fuzzer,address)
+endif()
+
+if(FLOWQ_BUILD_INTEROP)
+    find_package(Catch2 3 CONFIG REQUIRED)
+
+    add_executable(flowq_interop_tests tests/interop/flowq_endpoint_driver.cpp)
+    target_link_libraries(flowq_interop_tests PRIVATE FlowQ::flowq Catch2::Catch2WithMain)
+    target_compile_definitions(flowq_interop_tests PRIVATE
+        INTEROP_SCENARIOS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/interop/scenarios"
+    )
+
+    include(Catch)
+    catch_discover_tests(flowq_interop_tests)
 endif()

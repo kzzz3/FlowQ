@@ -1,0 +1,34 @@
+{
+    "name": "loss_recovery",
+    "description": "Packet loss recovery and retransmission",
+    "peer_requirements": {
+        "binary": "ngtcp2",
+        "min_version": "0.9.0"
+    },
+    "flowq_requirements": {
+        "tls_backend": "provider-backed",
+        "min_version": "0.1.0"
+    },
+    "steps": [
+        {
+            "action": "establish_connection",
+            "expect": "handshake_confirmed"
+        },
+        {
+            "action": "client_send_stream_data",
+            "data": "test data for loss recovery",
+            "expect": "server_received"
+        },
+        {
+            "action": "simulate_loss",
+            "packet_number": 2,
+            "expect": "retransmission_detected"
+        },
+        {
+            "action": "wait_for_recovery",
+            "expect": "data_delivered"
+        }
+    ],
+    "timeout_ms": 15000,
+    "skip_if_missing": ["peer_binary", "tls_backend"]
+}

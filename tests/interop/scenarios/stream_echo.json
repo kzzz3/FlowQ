@@ -1,0 +1,30 @@
+{
+    "name": "stream_echo",
+    "description": "Bidirectional stream data exchange",
+    "peer_requirements": {
+        "binary": "ngtcp2",
+        "min_version": "0.9.0"
+    },
+    "flowq_requirements": {
+        "tls_backend": "provider-backed",
+        "min_version": "0.1.0"
+    },
+    "steps": [
+        {
+            "action": "establish_connection",
+            "expect": "handshake_confirmed"
+        },
+        {
+            "action": "client_send_stream_data",
+            "data": "hello world",
+            "expect": "server_echo_response"
+        },
+        {
+            "action": "server_send_stream_data",
+            "data": "echo: hello world",
+            "expect": "client_received"
+        }
+    ],
+    "timeout_ms": 10000,
+    "skip_if_missing": ["peer_binary", "tls_backend"]
+}
