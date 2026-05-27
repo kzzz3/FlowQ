@@ -6,6 +6,18 @@
 
 FlowQ is a modern C++ QUIC-like protocol library that builds deterministic protocol primitives first, then layers connection behavior and loopback tests without claiming production QUIC security.
 
+## Documentation
+
+📖 **[Full Documentation](docs/README.md)** - Complete documentation index
+
+### Quick Links
+
+- [Getting Started](docs/guides/getting-started.md) - First steps with FlowQ
+- [Building](docs/guides/building.md) - Build instructions and options
+- [Testing](docs/guides/testing.md) - Running and writing tests
+- [Architecture](docs/reference/architecture.md) - System design overview
+- [Contributing](docs/guides/contributing.md) - Development workflow
+
 ## Design Overview
 
 FlowQ is intentionally staged:
