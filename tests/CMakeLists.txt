@@ -31,6 +31,7 @@ add_executable(
     unit/quic_tls_provider_backend_tests.cpp
     unit/quic_transport_parameters_tests.cpp
     unit/quic_varint_tests.cpp
+    unit/quic_zero_rtt_tests.cpp
     unit/timer_tests.cpp
     unit/udp_tests.cpp
 )
