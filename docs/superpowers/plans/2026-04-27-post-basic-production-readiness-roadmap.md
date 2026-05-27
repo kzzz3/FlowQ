@@ -33,7 +33,7 @@
 - [x] M34: Recovery and congestion-control production baseline.
 - [x] M35: Connection ID routing, version negotiation, Retry, and address-validation preparation.
 - [x] M36: Production UDP endpoint lifecycle and public API hardening.
-- [ ] M37: Diagnostics, qlog-style events, fuzzing, and sanitizer gates.
+- [x] M37: Diagnostics, qlog-style events, fuzzing, and sanitizer gates.
 - [ ] M38: Interop harness against mature QUIC implementations.
 - [ ] M39: Production release evidence gate and status wording review.
 
@@ -313,13 +313,13 @@ M32 depends on M31b for production-path packet protection and key availability e
 - Modify: `docs/development.md`
 
 **TDD steps:**
-- [ ] Write tests for qlog-style event values for packet sent, packet received, packet lost, key updated, congestion state changed, and transport parameter decoded.
-- [ ] Write tests proving diagnostics can be disabled without changing protocol behavior.
-- [ ] Add fuzz targets for packet header and frame codec entry points.
-- [ ] Add sanitizer-capable CI workflow for supported hosted runners.
-- [ ] Verify RED for new diagnostics APIs.
-- [ ] Implement diagnostics event sink interface and compile fuzz targets.
-- [ ] Verify GREEN, full CTest, and CI workflow syntax via local CMake configure where possible.
+- [x] Write tests for qlog-style event values for packet sent, packet received, packet lost, key updated, congestion state changed, and transport parameter decoded.
+- [x] Write tests proving diagnostics can be disabled without changing protocol behavior.
+- [x] Add fuzz targets for packet header and frame codec entry points.
+- [x] Add sanitizer-capable CI workflow for supported hosted runners.
+- [x] Verify RED for new diagnostics APIs.
+- [x] Implement diagnostics event sink interface and compile fuzz targets.
+- [x] Verify GREEN, full CTest, and CI workflow syntax via local CMake configure where possible.
 
 **Acceptance gate:** Diagnostics and robustness workflows exist; no interop or production security claim is made from fuzzing alone.
 
