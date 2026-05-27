@@ -3,6 +3,7 @@ find_package(Catch2 3 CONFIG REQUIRED)
 add_executable(
     flowq_unit_tests
     integration/example_build_tests.cpp
+    integration/quic_endpoint_driver_tests.cpp
     integration/quic_loopback_tests.cpp
     integration/quic_udp_session_tests.cpp
     unit/buffer_tests.cpp
