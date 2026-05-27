@@ -9,11 +9,13 @@
 
 namespace flowq::quic {
 
+/// Congestion controller phase: slow start or congestion avoidance.
 enum class congestion_phase {
     slow_start,
     congestion_avoidance
 };
 
+/// Packet metadata for persistent congestion detection.
 struct congestion_packet {
     std::uint64_t packet_number{};
     std::chrono::steady_clock::time_point sent_at{};
@@ -21,14 +23,18 @@ struct congestion_packet {
     std::uint64_t bytes{};
 };
 
+/// Default initial congestion window (10 * max_udp_payload_size).
 [[nodiscard]] inline std::uint64_t default_initial_window() noexcept {
     return 10 * 1200;
 }
 
+/// Minimum congestion window (2 * max_udp_payload_size).
 [[nodiscard]] inline std::uint64_t default_minimum_window() noexcept {
     return 2 * 1200;
 }
 
+/// Compute persistent congestion threshold per RFC 9002 §7.6.2.
+/// Simplified: 3*smoothed_rtt + 4*rtt_variance, minimum 100ms.
 [[nodiscard]] inline std::chrono::steady_clock::duration persistent_congestion_threshold(
     const rtt_estimator& estimator,
     std::chrono::steady_clock::duration max_ack_delay) noexcept {

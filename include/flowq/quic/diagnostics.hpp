@@ -7,6 +7,7 @@
 
 namespace flowq::quic {
 
+/// Diagnostic event types for qlog-style observability.
 enum class diagnostic_event_type {
     packet_sent,
     packet_received,
@@ -16,6 +17,7 @@ enum class diagnostic_event_type {
     transport_parameter_decoded
 };
 
+/// A single diagnostic event with timestamp and structured data.
 struct diagnostic_event {
     diagnostic_event_type type{};
     std::chrono::steady_clock::time_point timestamp{};
@@ -23,19 +25,24 @@ struct diagnostic_event {
     std::string message;
 };
 
+/// Abstract sink for diagnostic events. Implement to collect or forward events.
+/// Lifetime: the diagnostics object must not outlive its sink.
 class diagnostic_sink {
 public:
     virtual ~diagnostic_sink() = default;
 
+    /// Emit a diagnostic event to this sink.
     virtual void emit(diagnostic_event event) = 0;
 };
 
+/// Concrete sink that collects events in memory for testing/inspection.
 class diagnostic_collector final : public diagnostic_sink {
 public:
     void emit(diagnostic_event event) override {
         events_.push_back(std::move(event));
     }
 
+    /// Return all collected events.
     [[nodiscard]] const std::vector<diagnostic_event>& events() const noexcept {
         return events_;
     }

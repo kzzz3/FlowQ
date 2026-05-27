@@ -5,6 +5,7 @@
 
 namespace flowq::quic {
 
+/// Encryption levels corresponding to QUIC packet number spaces.
 enum class encryption_level {
     initial,
     handshake,
@@ -12,21 +13,27 @@ enum class encryption_level {
     one_rtt
 };
 
+/// Key direction: send or receive.
 enum class key_direction {
     send,
     receive
 };
 
+/// Event describing key availability at a specific encryption level and direction.
 struct key_availability_event {
     encryption_level level{};
     key_direction direction{};
 };
 
+/// Bidirectional key availability for a single encryption level.
 struct directional_key_availability {
     bool send{};
     bool receive{};
 };
 
+/// Deterministic key lifecycle state machine.
+/// Tracks key availability events and derives packet-space discard decisions.
+/// Does not store, export, or install actual TLS secrets or key material.
 class key_lifecycle_state {
 public:
     void install(key_availability_event event) noexcept {

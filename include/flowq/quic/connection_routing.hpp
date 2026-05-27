@@ -16,7 +16,9 @@ public:
         entries_[to_key(cid)] = connection_handle;
     }
 
-    [[nodiscard]] std::optional<std::uint64_t> lookup(const connection_id& cid) const {
+    /// Look up a connection handle by destination connection ID.
+    /// Returns nullopt if the CID is not registered.
+    [[nodiscard]] std::optional<std::uint64_t> lookup(const connection_id& cid) const noexcept {
         auto it = entries_.find(to_key(cid));
         if (it == entries_.end()) {
             return std::nullopt;
@@ -24,10 +26,12 @@ public:
         return it->second;
     }
 
-    void retire(const connection_id& cid) {
+    /// Retire a connection ID, removing it from the routing table.
+    void retire(const connection_id& cid) noexcept {
         entries_.erase(to_key(cid));
     }
 
+    /// Return the number of active connection ID mappings.
     [[nodiscard]] std::size_t active_count() const noexcept {
         return entries_.size();
     }
