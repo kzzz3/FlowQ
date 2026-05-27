@@ -131,7 +131,9 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 
 ## Current Status
 
-M36 is complete: FlowQ now has a production-shaped endpoint driver with explicit lifecycle, connection ID routing integration, and connection limits. FlowQ remains a non-production C++20 QUIC-like library baseline; real UDP socket ownership, ASIO integration, and production dispatch remain future work.
+All M20-M39 production-readiness milestones are complete. FlowQ has deterministic protocol primitives, TLS handshake adapter boundary, key lifecycle gates, congestion baseline, connection routing, endpoint driver, diagnostics, fuzz targets, and an opt-in interop harness. FlowQ remains a non-production C++20 QUIC-like library baseline until the release checklist in `docs/release-checklist.md` is fully satisfied and human security review is completed.
+
+See `docs/production-readiness-gate.md` for the exact evidence required before changing public wording from non-production baseline to production candidate.
 
 The completed plan `docs/superpowers/plans/2026-04-27-post-m19-basic-quic-library-completion.md` covers M20-M26 through this baseline. Post-basic production QUIC work remains separate: real TLS 1.3, AEAD, header protection, short-header packet-number reconstruction, congestion control, interoperability, HTTP/3, and WebTransport.
 

@@ -35,7 +35,7 @@
 - [x] M36: Production UDP endpoint lifecycle and public API hardening.
 - [x] M37: Diagnostics, qlog-style events, fuzzing, and sanitizer gates.
 - [x] M38: Interop harness against mature QUIC implementations.
-- [ ] M39: Production release evidence gate and status wording review.
+- [x] M39: Production release evidence gate and status wording review.
 
 ## Individual Plan Files
 
@@ -364,12 +364,12 @@ M38 depends on M31b provider-backed TLS evidence for handshake and stream scenar
 - Modify: `docs/development.md`
 
 **TDD and verification steps:**
-- [ ] Add a documentation checklist requiring full CTest, package-consumer, vector tests, sanitizer/fuzz gates, interop scenarios, external crypto backend version record, and Oracle/security review.
-- [ ] Add explicit language for allowed statuses: `non-production baseline`, `production-readiness milestone`, `production candidate`, and `production-ready`.
-- [ ] State that `production-ready` requires all release checklist gates plus human security review outside the agent loop.
-- [ ] Require production-candidate wording to state exact supported scope: client/server support, QUIC version, operating systems, TLS backend name/version, cipher suites, interop peer versions, scenarios passed, and unsupported items such as migration, stateless reset, path validation, 0-RTT, HTTP/3, or WebTransport if still deferred.
-- [ ] Verify docs do not contain forbidden claims before the checklist is complete.
-- [ ] Run full local verification and request Oracle review.
+- [x] Add a documentation checklist requiring full CTest, package-consumer, vector tests, sanitizer/fuzz gates, interop scenarios, external crypto backend version record, and Oracle/security review.
+- [x] Add explicit language for allowed statuses: `non-production baseline`, `production-readiness milestone`, `production candidate`, and `production-ready`.
+- [x] State that `production-ready` requires all release checklist gates plus human security review outside the agent loop.
+- [x] Require production-candidate wording to state exact supported scope: client/server support, QUIC version, operating systems, TLS backend name/version, cipher suites, interop peer versions, scenarios passed, and unsupported items such as migration, stateless reset, path validation, 0-RTT, HTTP/3, or WebTransport if still deferred.
+- [x] Verify docs do not contain forbidden claims before the checklist is complete.
+- [x] Run full local verification and request Oracle review.
 
 **Acceptance gate:** Status wording is evidence-bound. A future production claim cannot be made by completing one feature milestone, and any production-candidate claim must state its supported scope narrowly.
 

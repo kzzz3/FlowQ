@@ -40,7 +40,7 @@ FlowQ is a modern C++ protocol library that builds a deterministic, testable, no
 - [x] M36: Add production-shaped UDP endpoint lifecycle and public API hardening.
 - [x] M37: Add diagnostics, qlog-style events, fuzzing, and sanitizer gates.
 - [x] M38: Add opt-in interop harness against mature QUIC implementations.
-- [ ] M39: Add production release evidence gate and status wording review.
+- [x] M39: Add production release evidence gate and status wording review.
 
 ## Tech Stack and Architecture Decisions
 
