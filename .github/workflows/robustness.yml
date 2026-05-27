@@ -1,0 +1,53 @@
+name: Robustness
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  sanitize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+      - name: Configure with sanitizers
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
+            -DFLOWQ_BUILD_TESTS=ON \
+            -DFLOWQ_BUILD_EXAMPLES=OFF
+      - name: Build
+        run: cmake --build build
+      - name: Test with sanitizers
+        run: ctest --test-dir build -C Debug --timeout 30 --output-on-failure
+
+  fuzz:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+      - name: Configure with fuzzing
+        run: |
+          cmake -S . -B build-fuzz -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DFLOWQ_BUILD_FUZZ=ON \
+            -DFLOWQ_BUILD_TESTS=OFF \
+            -DFLOWQ_BUILD_EXAMPLES=OFF
+      - name: Build fuzz targets
+        run: cmake --build build-fuzz
+      - name: Run packet header fuzz (short)
+        run: timeout 60 ./build-fuzz/flowq_packet_header_fuzz -max_total_time=30 || true
+      - name: Run frame codec fuzz (short)
+        run: timeout 60 ./build-fuzz/flowq_frame_codec_fuzz -max_total_time=30 || true

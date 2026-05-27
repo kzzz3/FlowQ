@@ -17,6 +17,7 @@ add_executable(
     unit/quic_connection_routing_tests.cpp
     unit/quic_connection_tests.cpp
     unit/quic_crypto_provider_tests.cpp
+    unit/quic_diagnostics_tests.cpp
     unit/quic_frame_tests.cpp
     unit/quic_initial_keys_tests.cpp
     unit/quic_key_lifecycle_tests.cpp

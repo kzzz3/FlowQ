@@ -7,6 +7,7 @@ include(CMakePackageConfigHelpers)
 
 option(FLOWQ_BUILD_TESTS "Build FlowQ tests" ON)
 option(FLOWQ_BUILD_EXAMPLES "Build FlowQ examples" ON)
+option(FLOWQ_BUILD_FUZZ "Build FlowQ fuzz targets (requires libFuzzer)" OFF)
 
 add_library(flowq INTERFACE)
 add_library(FlowQ::flowq ALIAS flowq)
@@ -98,3 +99,15 @@ install(
         ${CMAKE_CURRENT_BINARY_DIR}/FlowQConfigVersion.cmake
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/FlowQ
 )
+
+if(FLOWQ_BUILD_FUZZ)
+    add_executable(flowq_packet_header_fuzz tests/fuzz/packet_header_fuzz.cpp)
+    target_link_libraries(flowq_packet_header_fuzz PRIVATE FlowQ::flowq)
+    target_compile_options(flowq_packet_header_fuzz PRIVATE -fsanitize=fuzzer,address)
+    target_link_options(flowq_packet_header_fuzz PRIVATE -fsanitize=fuzzer,address)
+
+    add_executable(flowq_frame_codec_fuzz tests/fuzz/frame_codec_fuzz.cpp)
+    target_link_libraries(flowq_frame_codec_fuzz PRIVATE FlowQ::flowq)
+    target_compile_options(flowq_frame_codec_fuzz PRIVATE -fsanitize=fuzzer,address)
+    target_link_options(flowq_frame_codec_fuzz PRIVATE -fsanitize=fuzzer,address)
+endif()
