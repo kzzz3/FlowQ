@@ -35,7 +35,7 @@ FlowQ is a modern C++ protocol library that builds a deterministic, testable, no
 - [ ] M31b-b: Add provider-backed local TLS handshake evidence.
 - [x] M32: Add RFC-shaped short-header value model and parser shell.
 - [x] M33: Add key lifecycle gates and packet-space discard rules.
-- [ ] M34: Add recovery and congestion-control production baseline.
+- [x] M34: Add recovery and congestion-control production baseline.
 - [ ] M35: Add connection ID routing, version negotiation, Retry, and address-validation preparation.
 - [ ] M36: Add production-shaped UDP endpoint lifecycle and public API hardening.
 - [ ] M37: Add diagnostics, qlog-style events, fuzzing, and sanitizer gates.
@@ -124,3 +124,4 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 - **TLS provider surface risk**: M31b-a adds only default-off OpenSSL QUIC TLS API detection and provider metadata; complete TLS handshakes, certificate-policy validation, and key lifecycle proof remain future work.
 - **Short-header shell risk**: M32 models RFC-shaped short headers and a test-mode parser shell only; header-protection removal, packet-number reconstruction from protected headers, 1-RTT AEAD, and interoperability remain future work.
 - **Key lifecycle risk**: M33 tracks deterministic availability and packet-space discard gates only; external TLS/crypto must still supply real secrets, key material, key updates, and packet-protection installation.
++- **Congestion baseline risk**: M34 adds deterministic bytes-in-flight accounting and NewReno-style congestion behavior only; pacing, ECN, and production performance tuning remain separate.

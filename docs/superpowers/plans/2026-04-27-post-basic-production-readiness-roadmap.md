@@ -30,7 +30,7 @@
 - [ ] M31b-b: Provider-backed local TLS handshake evidence.
 - [x] M32: RFC-shaped short-header value model and parser shell.
 - [x] M33: Key lifecycle gates and packet-space discard rules.
-- [ ] M34: Recovery and congestion-control production baseline.
+- [x] M34: Recovery and congestion-control production baseline.
 - [ ] M35: Connection ID routing, version negotiation, Retry, and address-validation preparation.
 - [ ] M36: Production UDP endpoint lifecycle and public API hardening.
 - [ ] M37: Diagnostics, qlog-style events, fuzzing, and sanitizer gates.
@@ -240,13 +240,13 @@ M32 depends on M31b for production-path packet protection and key availability e
 - Modify: `docs/development.md`
 
 **TDD steps:**
-- [ ] Write tests for bytes-in-flight increase on ack-eliciting send and decrease on ACK/loss.
-- [ ] Write tests for slow start growth, congestion avoidance growth, loss reduction, and persistent-congestion signal handling.
-- [ ] Write tests proving loss detection remains per packet-number space while congestion state is path-level.
-- [ ] Verify RED.
-- [ ] Implement `congestion_controller` interface and deterministic NewReno-style model.
-- [ ] Integrate connection send/ACK/loss paths without adding pacing timers.
-- [ ] Verify GREEN and full CTest.
+- [x] Write tests for bytes-in-flight increase on ack-eliciting send and decrease on ACK/loss.
+- [x] Write tests for slow start growth, congestion avoidance growth, loss reduction, and persistent-congestion signal handling.
+- [x] Write tests proving loss detection remains per packet-number space while congestion state is path-level.
+- [x] Verify RED.
+- [x] Implement `congestion_controller` interface and deterministic NewReno-style model.
+- [x] Integrate connection send/ACK/loss paths without adding pacing timers.
+- [x] Verify GREEN and full CTest.
 
 **Acceptance gate:** Deterministic congestion behavior passes tests; pacing and production tuning remain later work.
 

@@ -23,14 +23,14 @@
 
 ## Tasks
 
-- [ ] Write RED tests for bytes-in-flight increase on ack-eliciting send and decrease on ACK/loss.
-- [ ] Write RED tests for slow start growth, congestion avoidance growth, and loss reduction.
-- [ ] Write RED tests for persistent congestion signal handling.
-- [ ] Write RED tests proving loss detection stays per packet-number space while congestion is path-level.
-- [ ] Verify RED.
-- [ ] Implement `congestion_controller`, `congestion_state`, and deterministic NewReno-style transitions.
-- [ ] Integrate send/ACK/loss paths without adding pacing timers.
-- [ ] Verify GREEN, full CTest, install, and package-consumer.
+- [x] Write RED tests for bytes-in-flight increase on ack-eliciting send and decrease on ACK/loss.
+- [x] Write RED tests for slow start growth, congestion avoidance growth, and loss reduction.
+- [x] Write RED tests for persistent congestion signal handling.
+- [x] Write RED tests proving loss detection stays per packet-number space while congestion is path-level.
+- [x] Verify RED.
+- [x] Implement `congestion_controller`, `congestion_state`, and deterministic NewReno-style transitions.
+- [x] Integrate send/ACK/loss paths without adding pacing timers.
+- [x] Verify GREEN, full CTest, install, and package-consumer.
 
 ## Acceptance Gate
 

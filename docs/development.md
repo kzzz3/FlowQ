@@ -792,3 +792,23 @@ discard decisions.
 
 M33 does not derive, store, export, or install TLS secrets or packet-protection keys. Key schedule, key update, AEAD,
 header protection, and provider-backed key export remain future work.
+
+### M34 congestion baseline scope
+
+M34 adds `include/flowq/quic/congestion.hpp` as a deterministic congestion controller with bytes-in-flight accounting and
+NewReno-style behavior.
+
+- `congestion_controller` tracks `bytes_in_flight`, `congestion_window`, `slow_start_threshold`, and `congestion_phase`.
+- `on_packet_sent(bytes, ack_eliciting)` increases bytes-in-flight for ack-eliciting packets.
+- `on_packet_acknowledged(bytes)` decreases bytes-in-flight and grows the congestion window (slow start: linear by bytes;
+  congestion avoidance: linear by MSS * acked / cwnd).
+- `on_packet_lost(bytes)` decreases bytes-in-flight; `on_congestion_event()` halves the window and enters congestion avoidance.
+- `detect_persistent_congestion(...)` identifies long idle gaps between lost ack-eliciting packets exceeding the PTO threshold.
+- `on_persistent_congestion()` resets the window to minimum and returns to slow start.
+- `can_send()` returns `bytes_in_flight < congestion_window`.
+- `connection_loop` integrates the controller: `flush_space()` gates sends with `can_send()` and tracks `on_packet_sent()`;
+  `apply_ack_frames()` triggers `on_packet_acknowledged()` and `on_congestion_event()` on loss; `on_recovery_timer()` triggers
+  `on_congestion_event()` on time-threshold loss detection.
+
+M34 does not add pacing timers, ECN support, or production performance tuning. Loss detection remains per packet-number space;
+congestion state is path-level and shared across all packet spaces.

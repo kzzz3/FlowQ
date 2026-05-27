@@ -15,6 +15,7 @@ FlowQ is basic complete as a non-production C++20 QUIC-like library baseline. Th
 - Default-off OpenSSL QUIC TLS provider metadata/API-availability surface when explicitly enabled and supported by the local OpenSSL package.
 - RFC-shaped short-header value model and test-mode parser shell that keep protected payload bytes opaque and separate from the structural Application envelope.
 - Deterministic key availability and packet-space discard gates for Initial, Handshake, 0-RTT value state, and 1-RTT value state.
++- Deterministic bytes-in-flight accounting and NewReno-style congestion behavior through slow start, congestion avoidance, loss reduction, and persistent congestion detection.
 - Plaintext packet protection for deterministic tests and local examples, marked test-only by capability reporting.
 - Bounded non-production UDP/ASIO session adapter for local loopback smoke paths with caller-owned sockets.
 - ASIO recovery scheduler adapter that schedules already-computed deterministic recovery deadlines.
@@ -43,6 +44,7 @@ FlowQ is basic complete as a non-production C++20 QUIC-like library baseline. Th
 - `include/flowq/asio/timer.hpp`
 - `include/flowq/asio/udp.hpp`
 - `include/flowq/quic/ack_loss.hpp`
+- `include/flowq/quic/congestion.hpp`
 - `include/flowq/quic/connection.hpp`
 - `include/flowq/quic/core.hpp`
 - `include/flowq/quic/crypto_provider.hpp`
