@@ -1324,3 +1324,87 @@ TEST_CASE("connection loop blocks production Application data before TLS handsha
     REQUIRE(std::holds_alternative<flowq::quic::close_action>(actions[0]));
     CHECK_FALSE(std::get<flowq::quic::close_action>(actions[0]).error.ok());
 }
+
+TEST_CASE("connection loop tracks bytes-in-flight through congestion controller") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+
+    auto datagram = require_single_outbound(loop.drain_actions());
+    CHECK(loop.congestion().bytes_in_flight() == datagram.payload.size());
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets().size() == 1);
+}
+
+TEST_CASE("connection loop congestion controller is path-level across packet spaces") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.queue_handshake({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+
+    auto actions = loop.drain_actions();
+    REQUIRE(actions.size() == 2);
+    const auto initial_datagram = std::get<flowq::quic::outbound_datagram>(actions[0]);
+    const auto handshake_datagram = std::get<flowq::quic::outbound_datagram>(actions[1]);
+    CHECK(loop.congestion().bytes_in_flight() == initial_datagram.payload.size() + handshake_datagram.payload.size());
+}
+
+TEST_CASE("connection loop reduces bytes-in-flight on ACK") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto outbound = require_single_outbound(client.drain_actions());
+    const auto bytes_before_ack = client.congestion().bytes_in_flight();
+    CHECK(bytes_before_ack > 0);
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(outbound.payload), outbound.peer});
+    (void)server.drain_actions();
+    server.acknowledge(flowq::quic::packet_number_space::initial);
+    auto ack_datagram = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+
+    CHECK(client.congestion().bytes_in_flight() < bytes_before_ack);
+}
+
+TEST_CASE("connection loop congestion window gates flush when exhausted") {
+    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = cid({0x01});
+    config.remote_connection_id = cid({0x02});
+    config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
+    config.initial_protector = &protector;
+    config.handshake_protector = &protector;
+    config.application_protector = &protector;
+    auto loop = flowq::quic::connection_loop{std::move(config)};
+
+    // Send first packet to measure actual datagram size
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+    auto first = require_single_outbound(loop.drain_actions());
+    const auto packet_size = first.payload.size();
+    CHECK(packet_size > 0);
+
+    // Drain all remaining bytes-in-flight (simulate ACK)
+    // by sending enough packets to fill the window
+    const auto window = loop.congestion().congestion_window();
+    const auto packets_needed = (window / packet_size) + 1;
+    for (std::size_t i = 1; i < packets_needed; ++i) {
+        loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+        loop.flush(at(std::chrono::milliseconds{static_cast<long long>(i)}));
+        (void)loop.drain_actions();
+    }
+
+    CHECK_FALSE(loop.congestion().can_send());
+
+    // Next flush should be gated
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(1000ms));
+    CHECK(loop.drain_actions().empty());
+}

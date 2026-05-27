@@ -1,6 +1,7 @@
 #pragma once
 
 #include <flowq/endpoint.hpp>
+#include <flowq/quic/congestion.hpp>
 #include <flowq/quic/core.hpp>
 #include <flowq/quic/key_lifecycle.hpp>
 #include <flowq/quic/packet_pipeline.hpp>
@@ -279,6 +280,10 @@ public:
             result.newly_lost = std::move(detected.newly_lost);
             for (const auto packet_number : result.newly_lost) {
                 sent_tracker(space).mark_lost(packet_number);
+                congestion_.on_packet_lost(1200);
+            }
+            if (!result.newly_lost.empty()) {
+                congestion_.on_congestion_event();
             }
             apply_stream_loss_mapping(space, result.newly_lost);
         }
@@ -382,6 +387,10 @@ public:
         return {};
     }
 
+    [[nodiscard]] const congestion_controller& congestion() const noexcept {
+        return congestion_;
+    }
+
     [[nodiscard]] const stream_receive_state* receive_stream(std::uint64_t stream_id) const noexcept {
         return receive_streams_.find(stream_id);
     }
@@ -411,6 +420,7 @@ private:
     std::uint64_t connection_data_sent_{};
     rtt_estimator recovery_rtt_{};
     pto_config recovery_pto_config_{};
+    congestion_controller congestion_{};
     std::vector<recovery_packet> recovery_packets_{};
     std::optional<std::uint64_t> largest_initial_acknowledged_{};
     std::optional<std::uint64_t> largest_handshake_acknowledged_{};
@@ -529,6 +539,9 @@ private:
             clear_packet_space(space);
             return;
         }
+        if (!congestion_.can_send()) {
+            return;
+        }
         if (space == packet_number_space::application && !application_send_allowed()) {
             actions_.emplace_back(close_action{flowq::error{flowq::error_code::protocol_error, "production Application data requires confirmed TLS handshake and application keys"}});
             return;
@@ -555,6 +568,7 @@ private:
         sent_tracker(space).on_packet_sent(assembled.number.value, ack_eliciting);
         recovery_packets_.push_back(recovery_packet{space, assembled.number.value, sent_at, ack_eliciting, sent_packet_state::outstanding});
         record_sent_stream_ranges(space, assembled.number.value, selected.frames);
+        congestion_.on_packet_sent(assembled.datagram.size(), ack_eliciting);
         queue.erase(queue.begin(), queue.begin() + static_cast<std::ptrdiff_t>(selected.next_index));
         actions_.emplace_back(outbound_datagram{std::move(assembled.datagram), config_.peer});
     }
@@ -568,6 +582,12 @@ private:
                 mark_recovery_packets(space, result.newly_lost, sent_packet_state::lost);
                 apply_stream_ack_mapping(space, result.newly_acknowledged);
                 apply_stream_loss_mapping(space, result.newly_lost);
+                if (!result.newly_acknowledged.empty()) {
+                    congestion_.on_packet_acknowledged(1200);
+                }
+                if (!result.newly_lost.empty()) {
+                    congestion_.on_congestion_event();
+                }
             }
         }
     }
