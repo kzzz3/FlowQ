@@ -92,6 +92,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - `include/flowq/quic/packet_pipeline.hpp`: packet assembly/parsing through protection seams.
 - `include/flowq/quic/ack_loss.hpp`: ACK/loss and recovery primitives.
 - `include/flowq/quic/stream.hpp`: stream receive/send state and flow-control signals.
+- `include/flowq/quic/endpoint_driver.hpp`: production-shaped endpoint driver with explicit lifecycle, CID routing integration, and connection limits.
 - `include/flowq/quic/connection_routing.hpp`: deterministic connection ID routing table, version negotiation, and retry interface helpers.
 - `include/flowq/quic/congestion.hpp`: deterministic bytes-in-flight accounting and NewReno-style congestion controller.
 - `include/flowq/quic/connection.hpp`: deterministic connection loop integration.
@@ -130,7 +131,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 
 ## Current Status
 
-M35 is complete: FlowQ now has deterministic connection ID routing, version negotiation selection, and retry token/integrity interface helpers. FlowQ remains a non-production C++20 QUIC-like library baseline; production server listeners, real retry integrity, and address-validation remain future work.
+M36 is complete: FlowQ now has a production-shaped endpoint driver with explicit lifecycle, connection ID routing integration, and connection limits. FlowQ remains a non-production C++20 QUIC-like library baseline; real UDP socket ownership, ASIO integration, and production dispatch remain future work.
 
 The completed plan `docs/superpowers/plans/2026-04-27-post-m19-basic-quic-library-completion.md` covers M20-M26 through this baseline. Post-basic production QUIC work remains separate: real TLS 1.3, AEAD, header protection, short-header packet-number reconstruction, congestion control, interoperability, HTTP/3, and WebTransport.
 

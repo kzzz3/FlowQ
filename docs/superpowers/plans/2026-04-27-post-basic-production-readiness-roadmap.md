@@ -32,7 +32,7 @@
 - [x] M33: Key lifecycle gates and packet-space discard rules.
 - [x] M34: Recovery and congestion-control production baseline.
 - [x] M35: Connection ID routing, version negotiation, Retry, and address-validation preparation.
-- [ ] M36: Production UDP endpoint lifecycle and public API hardening.
+- [x] M36: Production UDP endpoint lifecycle and public API hardening.
 - [ ] M37: Diagnostics, qlog-style events, fuzzing, and sanitizer gates.
 - [ ] M38: Interop harness against mature QUIC implementations.
 - [ ] M39: Production release evidence gate and status wording review.
@@ -288,13 +288,13 @@ M32 depends on M31b for production-path packet protection and key availability e
 - Modify: `docs/development.md`
 
 **TDD steps:**
-- [ ] Write tests for caller-owned socket lifecycle and explicit stop behavior.
-- [ ] Write tests for datagram receive routing by connection ID through M35 routing helpers.
-- [ ] Write tests for bounded send queue behavior and error reporting under ASIO failures.
-- [ ] Write tests proving test-only plaintext sessions cannot be constructed through production endpoint builders.
-- [ ] Verify RED.
-- [ ] Implement endpoint driver interfaces and harden public construction paths.
-- [ ] Verify GREEN and full CTest.
+- [x] Write tests for caller-owned socket lifecycle and explicit stop behavior.
+- [x] Write tests for datagram receive routing by connection ID through M35 routing helpers.
+- [x] Write tests for bounded send queue behavior and error reporting under ASIO failures.
+- [x] Write tests proving test-only plaintext sessions cannot be constructed through production endpoint builders.
+- [x] Verify RED.
+- [x] Implement endpoint driver interfaces and harden public construction paths.
+- [x] Verify GREEN and full CTest.
 
 **Acceptance gate:** Endpoint driver is production-shaped but still gated by crypto/TLS/interop evidence before production claims.
 
