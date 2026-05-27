@@ -27,7 +27,7 @@
 - [x] M30: Transport parameter codec and config mapping.
 - [x] M31: TLS handshake adapter boundary and CRYPTO byte pump.
 - [x] M31b-a: Default-off OpenSSL QUIC TLS provider surface.
-- [ ] M31b-b: Provider-backed local TLS handshake evidence.
+- [x] M31b-b: Provider-backed local TLS handshake evidence.
 - [x] M32: RFC-shaped short-header value model and parser shell.
 - [x] M33: Key lifecycle gates and packet-space discard rules.
 - [x] M34: Recovery and congestion-control production baseline.

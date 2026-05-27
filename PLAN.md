@@ -98,12 +98,12 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 
 ### Phase 7: Post-Basic Production QUIC Tracks
 
-- [ ] External TLS/crypto adapter implementation track.
+- [x] External TLS/crypto adapter implementation track.
 - [x] M27 packet-number truncation/reconstruction helper foundation.
-- [ ] M31b-b local TLS handshake evidence and follow-up key export foundations.
-- [ ] M34-M36 congestion-control, connection routing, and production-shaped endpoint foundations.
-- [ ] M37-M39 diagnostics, fuzzing, interop harness, and production release evidence gates.
-- [ ] HTTP/3 and WebTransport backlog tracks after transport production-readiness evidence.
+- [x] M31b-b local TLS handshake evidence and follow-up key export foundations.
+- [x] M34-M36 congestion-control, connection routing, and production-shaped endpoint foundations.
+- [x] M37-M39 diagnostics, fuzzing, interop harness, and production release evidence gates.
+- [x] HTTP/3 and WebTransport backlog tracks after transport production-readiness evidence.
 
 ## Risk Assessment
 
