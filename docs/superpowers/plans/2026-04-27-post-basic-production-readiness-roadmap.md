@@ -34,7 +34,7 @@
 - [x] M35: Connection ID routing, version negotiation, Retry, and address-validation preparation.
 - [x] M36: Production UDP endpoint lifecycle and public API hardening.
 - [x] M37: Diagnostics, qlog-style events, fuzzing, and sanitizer gates.
-- [ ] M38: Interop harness against mature QUIC implementations.
+- [x] M38: Interop harness against mature QUIC implementations.
 - [ ] M39: Production release evidence gate and status wording review.
 
 ## Individual Plan Files
@@ -340,14 +340,14 @@ M38 depends on M31b provider-backed TLS evidence for handshake and stream scenar
 - Modify: `docs/basic-complete.md`
 
 **TDD steps:**
-- [ ] Add an opt-in CMake option `FLOWQ_BUILD_INTEROP` defaulting off.
-- [ ] Write a harness self-test that validates scenario parsing without launching external processes.
-- [ ] Write a harness self-test that verifies missing peer binaries produce a skipped result, not a false pass.
-- [ ] Write a harness self-test that verifies missing provider-backed TLS adapter produces a skipped result for handshake/stream scenarios, not a false pass.
-- [ ] Add scenario files for handshake, stream echo, and loss recovery with explicit expected packet/event milestones.
-- [ ] Verify RED for scenario parser and skip behavior.
-- [ ] Implement parser and opt-in runner shell.
-- [ ] Verify GREEN and full default CTest with interop disabled.
+- [x] Add an opt-in CMake option `FLOWQ_BUILD_INTEROP` defaulting off.
+- [x] Write a harness self-test that validates scenario parsing without launching external processes.
+- [x] Write a harness self-test that verifies missing peer binaries produce a skipped result, not a false pass.
+- [x] Write a harness self-test that verifies missing provider-backed TLS adapter produces a skipped result for handshake/stream scenarios, not a false pass.
+- [x] Add scenario files for handshake, stream echo, and loss recovery with explicit expected packet/event milestones.
+- [x] Verify RED for scenario parser and skip behavior.
+- [x] Implement parser and opt-in runner shell.
+- [x] Verify GREEN and full default CTest with interop disabled.
 
 **Acceptance gate:** Interop harness is reproducible and opt-in. FlowQ can only claim interoperability for scenarios that pass against named peer versions, named FlowQ TLS backend, backend version, and CI or release evidence.
 
