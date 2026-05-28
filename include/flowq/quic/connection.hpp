@@ -422,6 +422,7 @@ private:
     pto_config recovery_pto_config_{};
     congestion_controller congestion_{};
     std::vector<recovery_packet> recovery_packets_{};
+    bool lifecycle_dirty_{true};
     std::optional<std::uint64_t> largest_initial_acknowledged_{};
     std::optional<std::uint64_t> largest_handshake_acknowledged_{};
     std::optional<std::uint64_t> largest_application_acknowledged_{};
@@ -497,10 +498,17 @@ private:
     }
 
     void refresh_key_lifecycle() {
-        if (config_.tls_adapter != nullptr) {
-            config_.key_lifecycle.observe_tls(config_.tls_adapter->state(), config_.tls_adapter->key_availability());
+        if (lifecycle_dirty_) {
+            if (config_.tls_adapter != nullptr) {
+                config_.key_lifecycle.observe_tls(config_.tls_adapter->state(), config_.tls_adapter->key_availability());
+            }
+            clear_discarded_packet_spaces();
+            lifecycle_dirty_ = false;
         }
-        clear_discarded_packet_spaces();
+    }
+
+    void mark_lifecycle_dirty() noexcept {
+        lifecycle_dirty_ = true;
     }
 
     [[nodiscard]] bool packet_space_discarded(packet_number_space space) const noexcept {
@@ -774,6 +782,7 @@ private:
                 if (!error.ok()) {
                     return error;
                 }
+                mark_lifecycle_dirty();
             }
         }
         return {};
