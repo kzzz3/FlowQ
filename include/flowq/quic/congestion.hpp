@@ -24,12 +24,12 @@ struct congestion_packet {
 };
 
 /// Default initial congestion window (10 * max_udp_payload_size).
-[[nodiscard]] inline std::uint64_t default_initial_window() noexcept {
+[[nodiscard]] constexpr inline std::uint64_t default_initial_window() noexcept {
     return 10 * 1200;
 }
 
 /// Minimum congestion window (2 * max_udp_payload_size).
-[[nodiscard]] inline std::uint64_t default_minimum_window() noexcept {
+[[nodiscard]] constexpr inline std::uint64_t default_minimum_window() noexcept {
     return 2 * 1200;
 }
 

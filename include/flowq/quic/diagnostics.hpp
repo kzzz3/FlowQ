@@ -79,67 +79,97 @@ public:
     }
 
     void packet_sent(std::uint64_t packet_number, std::size_t bytes) {
-        if (sink_ != nullptr) {
+        if (sink_ != nullptr) [[likely]] {
+            std::string msg;
+            msg.reserve(32);
+            msg.append("packet_sent pn=");
+            msg.append(std::to_string(packet_number));
+            msg.append(" bytes=");
+            msg.append(std::to_string(bytes));
             sink_->emit(diagnostic_event{
                 diagnostic_event_type::packet_sent,
                 std::chrono::steady_clock::now(),
                 "transport",
-                "packet_sent pn=" + std::to_string(packet_number) + " bytes=" + std::to_string(bytes)
+                std::move(msg)
             });
         }
     }
 
     void packet_received(std::uint64_t packet_number, std::size_t bytes) {
-        if (sink_ != nullptr) {
+        if (sink_ != nullptr) [[likely]] {
+            std::string msg;
+            msg.reserve(36);
+            msg.append("packet_received pn=");
+            msg.append(std::to_string(packet_number));
+            msg.append(" bytes=");
+            msg.append(std::to_string(bytes));
             sink_->emit(diagnostic_event{
                 diagnostic_event_type::packet_received,
                 std::chrono::steady_clock::now(),
                 "transport",
-                "packet_received pn=" + std::to_string(packet_number) + " bytes=" + std::to_string(bytes)
+                std::move(msg)
             });
         }
     }
 
     void packet_lost(std::uint64_t packet_number) {
-        if (sink_ != nullptr) {
+        if (sink_ != nullptr) [[likely]] {
+            std::string msg;
+            msg.reserve(20);
+            msg.append("packet_lost pn=");
+            msg.append(std::to_string(packet_number));
             sink_->emit(diagnostic_event{
                 diagnostic_event_type::packet_lost,
                 std::chrono::steady_clock::now(),
                 "recovery",
-                "packet_lost pn=" + std::to_string(packet_number)
+                std::move(msg)
             });
         }
     }
 
     void key_updated(const std::string& level) {
-        if (sink_ != nullptr) {
+        if (sink_ != nullptr) [[likely]] {
+            std::string msg;
+            msg.reserve(16 + level.size());
+            msg.append("key_updated level=");
+            msg.append(level);
             sink_->emit(diagnostic_event{
                 diagnostic_event_type::key_updated,
                 std::chrono::steady_clock::now(),
                 "security",
-                "key_updated level=" + level
+                std::move(msg)
             });
         }
     }
 
     void congestion_state_changed(const std::string& old_state, const std::string& new_state) {
-        if (sink_ != nullptr) {
+        if (sink_ != nullptr) [[likely]] {
+            std::string msg;
+            msg.reserve(28 + old_state.size() + new_state.size());
+            msg.append("congestion_state_changed ");
+            msg.append(old_state);
+            msg.append(" -> ");
+            msg.append(new_state);
             sink_->emit(diagnostic_event{
                 diagnostic_event_type::congestion_state_changed,
                 std::chrono::steady_clock::now(),
                 "congestion",
-                "congestion_state_changed " + old_state + " -> " + new_state
+                std::move(msg)
             });
         }
     }
 
     void transport_parameter_decoded(const std::string& name) {
-        if (sink_ != nullptr) {
+        if (sink_ != nullptr) [[likely]] {
+            std::string msg;
+            msg.reserve(28 + name.size());
+            msg.append("transport_parameter_decoded name=");
+            msg.append(name);
             sink_->emit(diagnostic_event{
                 diagnostic_event_type::transport_parameter_decoded,
                 std::chrono::steady_clock::now(),
                 "transport",
-                "transport_parameter_decoded name=" + name
+                std::move(msg)
             });
         }
     }

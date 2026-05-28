@@ -45,7 +45,7 @@ struct varint_decode_result {
     return flowq::error{flowq::error_code::protocol_error, message};
 }
 
-[[nodiscard]] inline varint_size_result encoded_size(std::uint64_t value) {
+[[nodiscard]] constexpr inline varint_size_result encoded_size(std::uint64_t value) {
     if (value > max_varint) {
         return {0, codec_error("QUIC varint value exceeds 2^62 - 1")};
     }
