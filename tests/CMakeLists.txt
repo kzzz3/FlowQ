@@ -23,6 +23,7 @@ add_executable(
     unit/quic_diagnostics_tests.cpp
     unit/quic_frame_tests.cpp
     unit/quic_http3_tests.cpp
+    unit/quic_http3_server_tests.cpp
     unit/quic_initial_keys_tests.cpp
     unit/quic_key_lifecycle_tests.cpp
     unit/quic_packet_header_tests.cpp
