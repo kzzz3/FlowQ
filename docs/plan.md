@@ -58,9 +58,12 @@ Architecture follows values first, deterministic tests second, connection integr
 - `include/flowq/`: public header-only library surface and protocol modules.
 - `include/flowq/quic/`: QUIC-like value types, codecs, stream state, packet pipeline, ACK/loss, recovery, and connection loop.
 - `tests/unit/`: deterministic Catch2 unit tests, grouped by protocol module.
-- `docs/development.md`: living development guide and implemented milestone scope notes.
-- `docs/superpowers/specs/`: milestone design documents.
-- `docs/superpowers/plans/`: milestone execution plans with checklist progress.
+- `tests/integration/`: deterministic in-memory loopback tests.
+- `tests/interop/`: interop test scenarios and runner.
+- `tests/fuzz/`: fuzz targets for protocol parsers.
+- `examples/`: example applications organized by feature.
+- `docs/`: documentation organized by category (guides, milestones, production, reference).
+- `scripts/`: utility scripts for validation and documentation generation.
 - `build/`: generated local build output; not source of truth.
 
 ## Development Phases and Milestones
@@ -115,7 +118,7 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 - **Library surface risk**: M20-M23 must expose a usable QUIC library façade without leaking raw internal frame queues as the primary consumer API.
 - **Packaging risk**: M24-M26 must prove examples and CMake package consumption build from documented commands, not only from the monorepo test binary.
 - **Tooling risk**: local LSP diagnostics currently cannot run because `clangd` is not installed in this environment; MSVC build and CTest are the executable verification gates.
-- **Documentation drift risk**: this `PLAN.md`, `README.md`, `docs/development.md`, and milestone docs must be updated together when implementation scope evolves.
+- **Documentation drift risk**: `docs/plan.md`, `README.md`, and milestone docs must be updated together when implementation scope evolves.
 - **Production wording risk**: M28-M39 must keep status evidence-bound; no single milestone is enough to claim production readiness, security, or interoperability.
 - **Crypto provider boundary risk**: M28 adds external provider capability evidence only; future work must not treat provider-shaped values as an in-tree crypto backend or a production security claim.
 - **Crypto vector risk**: M29 validates selected RFC 9001 Initial vectors through OpenSSL only when explicitly enabled; passing these vectors is not a production TLS, packet-protection, or interoperability claim.

@@ -36,16 +36,15 @@ Complete all items before claiming production-candidate status.
 ## Documentation Gates
 
 - [ ] README.md status section matches actual evidence
-- [ ] PLAN.md roadmap checkboxes match actual milestone completion
-- [ ] docs/basic-complete.md lists all installed headers
-- [ ] docs/development.md documents all milestone scopes
-- [ ] docs/production-readiness-gate.md status level matches evidence
+- [ ] docs/plan.md roadmap checkboxes match actual milestone completion
+- [ ] docs/milestones/roadmap.md documents all milestone scopes
+- [ ] docs/production/readiness-gate.md status level matches evidence
 
 ## Scope Statement
 
 Before claiming production-candidate:
 
-1. Fill in the scope template in `docs/production-readiness-gate.md`
+1. Fill in the scope template in `docs/production/readiness-gate.md`
 2. State exactly what is supported and what is not
 3. Reference specific interop results
 4. Reference TLS backend version and cipher suites

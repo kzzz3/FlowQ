@@ -32,18 +32,20 @@ docs/
 
 ## Project Status
 
-**Version**: 0.1.0  
-**Tests**: 318/318 passing  
-**Status**: Non-production baseline
+**Version**: 1.0.0  
+**Tests**: 427/427 passing  
+**Status**: Non-production baseline (all M20-M39 milestones complete)
 
 ### Completed Features
 
-- ✅ QUIC protocol primitives (varint, frame, header codecs)
+- ✅ QUIC transport core (varint, frame, header codecs, packet pipeline)
 - ✅ Connection management (connection loop, streams, flow control)
 - ✅ Security boundaries (crypto provider, TLS adapter, key lifecycle)
 - ✅ Recovery (ACK/loss, congestion control, recovery timers)
 - ✅ Diagnostics (event sink, qlog-style observability)
-- ✅ HTTP/3 (basic frame encoding)
-- ✅ 0-RTT (early data support, replay protection)
+- ✅ HTTP/3 (experimental: QPACK, frame encoding, basic server)
+- ✅ WebTransport (experimental: session management, stream multiplexing)
+- ✅ 0-RTT (experimental: early data support, replay protection)
+- ✅ Congestion control (NewReno, BBR, CUBIC)
 
-All milestones M27-M39 are complete. See [Roadmap](milestones/roadmap.md) for details.
+All milestones M20-M39 are complete. See [Roadmap](milestones/roadmap.md) for details.

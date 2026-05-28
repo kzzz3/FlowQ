@@ -83,9 +83,9 @@ cmake --build build/package-consumer --config Debug
 
 The installed package exports headers, `FlowQTargets.cmake`, `FlowQConfig.cmake`, and `FlowQConfigVersion.cmake`. Consumers should use the same vcpkg toolchain so FlowQ's public Asio and stdexec dependencies resolve consistently.
 
-### CI and basic-complete baseline
+### CI
 
-The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/vcpkg gate: configure, build, CTest, install, package-consumer configure/build, and package-consumer execution. The release-scope baseline is documented in `docs/basic-complete.md`.
+The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/vcpkg gate: configure, build, CTest, install, package-consumer configure/build, and package-consumer execution. CI is triggered manually via `workflow_dispatch`.
 
 ## Project Navigation
 
@@ -117,12 +117,13 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - `examples/protection_policy.cpp`: packet-protection policy example showing plaintext rejection under production-required policy.
 - `tests/integration/`: deterministic in-memory loopback tests that compose connection-loop pieces.
 - `tests/unit/`: Catch2 tests for each protocol module.
-- `docs/development.md`: implemented milestone notes and build guidance.
-- `docs/basic-complete.md`: non-production basic-complete baseline declaration and verification gate.
-- `docs/superpowers/specs/`: design documents for staged milestones.
-- `docs/superpowers/plans/`: execution checklists for staged milestones.
 - `.github/workflows/ci.yml`: Windows MSVC/vcpkg CI gate for build, tests, install, and package consumption.
-- `PLAN.md`: top-level roadmap and risk register.
+- `.github/workflows/robustness.yml`: Sanitizer and fuzz testing workflow.
+- `docs/plan.md`: project roadmap and milestone tracking.
+- `docs/guides/`: getting-started, building, and testing guides.
+- `docs/production/`: production readiness gate and release checklist.
+- `docs/reference/`: architecture documentation.
+- `docs/milestones/`: milestone tracking and roadmap.
 
 ## Tech Stack
 
@@ -135,7 +136,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 
 ## Contribution Guide
 
-- Follow the milestone docs in `docs/superpowers/plans/` and keep `PLAN.md` plus `docs/development.md` synchronized.
+- Follow the milestone docs in `docs/milestones/` and keep `docs/plan.md` synchronized.
 - Use TDD for feature and bug work: add a focused failing test, verify RED, implement minimal GREEN, then refactor.
 - Keep changes atomic: implementation and direct tests together; docs in a separate commit when practical.
 - Do not introduce production TLS, AEAD, header protection, or security claims without an explicit adapter milestone.
@@ -143,10 +144,8 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 
 ## Current Status
 
-All M20-M39 production-readiness milestones are complete. FlowQ has deterministic protocol primitives, TLS handshake adapter boundary, key lifecycle gates, congestion baseline, connection routing, endpoint driver, diagnostics, fuzz targets, and an opt-in interop harness. FlowQ remains a non-production C++20 QUIC-like library baseline until the release checklist in `docs/release-checklist.md` is fully satisfied and human security review is completed.
+All M20-M39 production-readiness milestones are complete. FlowQ has deterministic protocol primitives, TLS handshake adapter boundary, key lifecycle gates, congestion baseline, connection routing, endpoint driver, diagnostics, fuzz targets, and an opt-in interop harness. FlowQ remains a non-production C++20 QUIC-like library baseline until the release checklist in `docs/production/release-checklist.md` is fully satisfied and human security review is completed.
 
-See `docs/production-readiness-gate.md` for the exact evidence required before changing public wording from non-production baseline to production candidate.
+See `docs/production/readiness-gate.md` for the exact evidence required before changing public wording from non-production baseline to production candidate.
 
-The completed plan `docs/superpowers/plans/2026-04-27-post-m19-basic-quic-library-completion.md` covers M20-M26 through this baseline. Post-basic production QUIC work remains separate: real TLS 1.3, AEAD, header protection, short-header packet-number reconstruction, congestion control, interoperability, HTTP/3, and WebTransport.
-
-Post-basic roadmap: `docs/superpowers/specs/2026-04-27-post-basic-production-readiness-design.md`, `docs/superpowers/plans/2026-04-27-post-basic-production-readiness-roadmap.md`, `docs/superpowers/plans/2026-04-27-m27-packet-number-helpers.md`, `docs/superpowers/plans/2026-04-27-m28-crypto-provider-boundary.md`, `docs/superpowers/plans/2026-04-27-m29-rfc9001-initial-vectors.md`, `docs/superpowers/plans/2026-04-27-m30-transport-parameters.md`, `docs/superpowers/plans/2026-04-27-m31-tls-handshake-adapter.md`, `docs/superpowers/plans/2026-04-27-m31b-external-tls-provider-adapter.md`, and `docs/superpowers/plans/2026-04-27-m32-short-header-shell.md`.
+All milestones M20-M39 are complete. See `docs/plan.md` for the full milestone list and `docs/milestones/roadmap.md` for the detailed roadmap.
