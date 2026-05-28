@@ -63,6 +63,25 @@ struct varint_decode_result {
 }
 
 [[nodiscard]] inline varint_encode_result encode_varint(std::uint64_t value, std::span<std::byte> output) {
+    // Fast path for common 1-byte case (0-63)
+    if (value < 64) {
+        if (output.size() < 1) {
+            return {0, codec_error("destination buffer too small for QUIC varint")};
+        }
+        output[0] = static_cast<std::byte>(value);
+        return {1, {}};
+    }
+
+    // Fast path for 2-byte case (64-16383)
+    if (value < 16384) {
+        if (output.size() < 2) {
+            return {0, codec_error("destination buffer too small for QUIC varint")};
+        }
+        output[0] = static_cast<std::byte>(0x40U | ((value >> 8U) & 0x3fU));
+        output[1] = static_cast<std::byte>(value & 0xffU);
+        return {2, {}};
+    }
+
     const auto size = encoded_size(value);
     if (!size.ok()) {
         return {0, size.error};
@@ -73,13 +92,6 @@ struct varint_decode_result {
     }
 
     switch (size.value) {
-    case 1:
-        output[0] = static_cast<std::byte>(value & 0x3fU);
-        break;
-    case 2:
-        output[0] = static_cast<std::byte>(0x40U | ((value >> 8U) & 0x3fU));
-        output[1] = static_cast<std::byte>(value & 0xffU);
-        break;
     case 4:
         output[0] = static_cast<std::byte>(0x80U | ((value >> 24U) & 0x3fU));
         output[1] = static_cast<std::byte>((value >> 16U) & 0xffU);
@@ -114,7 +126,23 @@ template <std::ranges::contiguous_range Range>
 
     const auto first = static_cast<std::uint8_t>(input[0]);
     const auto prefix = first >> 6U;
-    const std::size_t length = std::array<std::size_t, 4>{1, 2, 4, 8}[prefix];
+
+    // Fast path for 1-byte case (prefix 00)
+    if (prefix == 0) {
+        return {static_cast<std::uint64_t>(first & 0x3fU), 1, {}};
+    }
+
+    // Fast path for 2-byte case (prefix 01)
+    if (prefix == 1) {
+        if (input.size() < 2) {
+            return {0, 0, codec_error("truncated QUIC varint")};
+        }
+        const auto value = static_cast<std::uint64_t>((first & 0x3fU) << 8U) |
+                          static_cast<std::uint64_t>(static_cast<std::uint8_t>(input[1]));
+        return {value, 2, {}};
+    }
+
+    const std::size_t length = prefix == 2 ? 4 : 8;
 
     if (input.size() < length) {
         return {0, 0, codec_error("truncated QUIC varint")};

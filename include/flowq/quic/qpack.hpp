@@ -199,7 +199,10 @@ struct decode_result {
 class encoder {
 public:
     explicit encoder(std::uint64_t max_dynamic_table_capacity = 4096)
-        : dynamic_table_{max_dynamic_table_capacity} {}
+        : dynamic_table_{max_dynamic_table_capacity} {
+        // Build static table lookup cache
+        build_static_cache();
+    }
 
     /// Encode a list of header fields.
     [[nodiscard]] encode_result encode(const std::vector<header_field>& headers) {
@@ -208,7 +211,7 @@ public:
         // Required Insert Count (number of dynamic table insertions)
         std::uint64_t insert_count = 0;
         for (const auto& header : headers) {
-            if (!find_in_static_table(header.name, header.value).has_value()) {
+            if (!find_in_static_table_fast(header.name, header.value).has_value()) {
                 // Will be inserted into dynamic table
                 ++insert_count;
             }
@@ -225,8 +228,8 @@ public:
         output.push_back(std::byte{0x00});
         
         for (const auto& header : headers) {
-            // Try static table first
-            auto static_index = find_in_static_table(header.name, header.value);
+            // Try static table first (fast path)
+            auto static_index = find_in_static_table_fast(header.name, header.value);
             if (static_index.has_value()) {
                 // Static table reference with value
                 encode_static_reference(output, *static_index);
@@ -241,8 +244,8 @@ public:
                 continue;
             }
             
-            // Try static table name only
-            auto static_name_index = find_static_name(header.name);
+            // Try static table name only (fast path)
+            auto static_name_index = find_static_name_fast(header.name);
             if (static_name_index.has_value()) {
                 // Static name reference + literal value
                 encode_static_name_with_literal_value(output, *static_name_index, header.value);
@@ -273,24 +276,61 @@ public:
 private:
     dynamic_table dynamic_table_;
 
-    [[nodiscard]] std::optional<std::uint64_t> find_in_static_table(const std::string& name, const std::string& value) const {
+    // Static table lookup cache for fast name+value matching
+    struct static_cache_entry {
+        std::uint64_t index{};
+        bool has_value_match{};
+    };
+
+    // Cache for name+value -> index lookup
+    std::unordered_map<std::string, std::unordered_map<std::string, std::uint64_t>> static_name_value_cache_;
+
+    // Cache for name-only -> first index lookup
+    std::unordered_map<std::string, std::uint64_t> static_name_cache_;
+
+    void build_static_cache() {
         const auto& table = static_table();
         for (std::size_t i = 0; i < table.size(); ++i) {
-            if (table[i].name == name && table[i].value == value) {
-                return static_cast<std::uint64_t>(i);
+            const auto& entry = table[i];
+
+            // Cache name+value pair
+            auto& value_map = static_name_value_cache_[entry.name];
+            if (value_map.find(entry.value) == value_map.end()) {
+                value_map[entry.value] = static_cast<std::uint64_t>(i);
+            }
+
+            // Cache name-only (first occurrence)
+            if (static_name_cache_.find(entry.name) == static_name_cache_.end()) {
+                static_name_cache_[entry.name] = static_cast<std::uint64_t>(i);
+            }
+        }
+    }
+
+    [[nodiscard]] std::optional<std::uint64_t> find_in_static_table_fast(const std::string& name, const std::string& value) const {
+        auto name_it = static_name_value_cache_.find(name);
+        if (name_it != static_name_value_cache_.end()) {
+            auto value_it = name_it->second.find(value);
+            if (value_it != name_it->second.end()) {
+                return value_it->second;
             }
         }
         return std::nullopt;
     }
 
-    [[nodiscard]] std::optional<std::uint64_t> find_static_name(const std::string& name) const {
-        const auto& table = static_table();
-        for (std::size_t i = 0; i < table.size(); ++i) {
-            if (table[i].name == name) {
-                return static_cast<std::uint64_t>(i);
-            }
+    [[nodiscard]] std::optional<std::uint64_t> find_static_name_fast(const std::string& name) const {
+        auto it = static_name_cache_.find(name);
+        if (it != static_name_cache_.end()) {
+            return it->second;
         }
         return std::nullopt;
+    }
+
+    [[nodiscard]] std::optional<std::uint64_t> find_in_static_table(const std::string& name, const std::string& value) const {
+        return find_in_static_table_fast(name, value);
+    }
+
+    [[nodiscard]] std::optional<std::uint64_t> find_static_name(const std::string& name) const {
+        return find_static_name_fast(name);
     }
 
     static void encode_static_reference(std::vector<std::byte>& output, std::uint64_t index) {
