@@ -7,40 +7,28 @@ FlowQ is a modern C++20 QUIC-like protocol library.
 ```
 docs/
 ├── README.md              # This file
-├── plan.md                # Project plan and milestones
+├── plan.md                # Project plan
 ├── guides/                # How-to guides
 │   ├── getting-started.md
 │   ├── building.md
-│   ├── testing.md
-│   └── contributing.md
-├── reference/             # Technical reference
-│   └── architecture.md
+│   └── testing.md
 ├── milestones/            # Milestone tracking
 │   └── roadmap.md
 ├── production/            # Production readiness
 │   ├── readiness-gate.md
 │   └── release-checklist.md
-└── archive/               # Historical documents
-    ├── history.md
-    └── ... (design specs)
+└── reference/             # Technical reference
+    └── architecture.md
 ```
 
 ## Quick Links
 
-### For New Users
 - [Getting Started](guides/getting-started.md) - First steps
 - [Building](guides/building.md) - Build instructions
 - [Testing](guides/testing.md) - Run and write tests
-
-### For Contributors
-- [Contributing](guides/contributing.md) - Development workflow
 - [Architecture](reference/architecture.md) - System design
 - [Roadmap](milestones/roadmap.md) - Milestone tracking
-
-### For Release Managers
 - [Plan](plan.md) - Project plan
-- [Readiness Gate](production/readiness-gate.md) - Evidence requirements
-- [Release Checklist](production/release-checklist.md) - Pre-release verification
 
 ## Project Status
 
@@ -58,14 +46,4 @@ docs/
 - ✅ HTTP/3 (basic frame encoding)
 - ✅ 0-RTT (early data support, replay protection)
 
-### Milestones
-
 All milestones M27-M39 are complete. See [Roadmap](milestones/roadmap.md) for details.
-
-## Archive
-
-Historical design documents are preserved in [archive/](archive/):
-- [Development History](archive/history.md) - Consolidated development record
-- [Technical Proposal](archive/technical-proposal.md) - Original project proposal
-- [Basic Complete Declaration](archive/basic-complete.md) - Baseline declaration
-- Design specs for completed milestones (M1-M20)
