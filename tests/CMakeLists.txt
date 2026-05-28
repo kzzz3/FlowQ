@@ -16,6 +16,7 @@ add_executable(
     unit/protocol_core_tests.cpp
     unit/quic_ack_loss_tests.cpp
     unit/quic_benchmark_tests.cpp
+    unit/quic_benchmark_comprehensive_tests.cpp
     unit/quic_congestion_tests.cpp
     unit/quic_congestion_algorithms_tests.cpp
     unit/quic_connection_routing_tests.cpp
