@@ -78,6 +78,14 @@ if(FLOWQ_BUILD_TESTS)
         add_test(NAME flowq.example.udp_stream_echo COMMAND flowq_example_udp_stream_echo)
         add_test(NAME flowq.example.protection_policy COMMAND flowq_example_protection_policy)
     endif()
+    add_test(
+        NAME flowq.release_readiness
+        COMMAND powershell
+            -NoProfile
+            -ExecutionPolicy Bypass
+            -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-release-readiness.ps1
+            -SourceRoot ${CMAKE_CURRENT_SOURCE_DIR}
+    )
     add_subdirectory(tests)
 endif()
 

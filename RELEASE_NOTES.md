@@ -6,74 +6,70 @@ FlowQ v1.0.0 is a complete, production-shaped C++20 QUIC-like protocol library w
 
 ## ✨ Features
 
-### Core Protocol
-- **QUIC Transport**: Connection management, streams, flow control, packet number spaces
-- **HTTP/3**: QPACK header compression, frame encoding, request/response, server
-- **WebTransport**: Session management, stream multiplexing, datagrams
-- **0-RTT**: Early data support with replay protection
+### Core Transport (Evidence-Backed Baseline)
 
-### Security
-- **TLS**: OpenSSL 3.5+ QUIC TLS adapter with handshake support
+These features are part of the core transport layer and have been verified through unit tests, integration tests, and protocol compliance tests:
+
+- **QUIC Transport**: Connection management, streams, flow control, packet number spaces
+- **Packet Pipeline**: Long/short header codecs, packet assembly/parsing through protection seams
+- **ACK/Loss Recovery**: Deterministic ACK processing, loss detection, and recovery timers
+- **Congestion Control**: NewReno-style congestion controller with bytes-in-flight accounting
+- **Connection Routing**: Deterministic connection ID routing table, version negotiation, and retry interface
+- **Endpoint Driver**: Production-shaped endpoint lifecycle with explicit lifecycle management
 - **Key Lifecycle**: Deterministic key availability and packet-space discard gates
 - **Crypto Provider**: External crypto provider boundary with fail-closed contract
-
-### Performance
-- **Congestion Control**: NewReno, BBR, CUBIC algorithms
-- **Optimized Hot Paths**: Buffer move semantics, varint fast paths, QPACK lookup cache
-- **Lifecycle Caching**: Dirty flag optimization for key lifecycle refresh
-
-### Observability
+- **TLS Handshake Adapter**: Boundary for opaque CRYPTO byte flow and state observation
 - **Diagnostics**: qlog-style event sink for packet sent/received/lost, key updates, congestion state
 - **Fuzzing**: Packet header and frame codec fuzz targets
 - **Sanitizer CI**: ASAN/UBSAN workflow for robustness testing
 
-### Testing
-- **427/427 tests passing** across all modules
-- **Protocol compliance tests**: RFC 9000, 9001, 9002, 9114, 9204
-- **Performance benchmarks**: Varint, QPACK, HTTP/3, congestion control
-- **Cross-platform CI**: Windows MSVC, Linux GCC/Clang, macOS Clang
+### Experimental Extensions (Structural, Not Production)
 
-### Examples
-- **Echo**: Server/client echo example
-- **Chat Room**: Multi-user chat room example
-- **HTTP/3**: HTTP/3 frame encoding and QPACK
-- **WebTransport**: Session management and stream multiplexing
-- **QPACK**: Header compression example
-- **In-Memory Loopback**: Deterministic session testing
-- **UDP**: Stream echo over UDP
-- **Protection Policy**: Packet protection policy demonstration
+These features provide structural support for QUIC extensions but are **not production-ready**. They are intended for development, testing, and future integration:
 
-## 📦 Installation
+- **HTTP/3**: QPACK header compression (static table only), frame encoding, basic request/response structure
+- **WebTransport**: Session management framework, stream multiplexing structure
+- **0-RTT**: Early data support structure with replay protection framework
+- **BBR/CUBIC**: Congestion control algorithm implementations (structural, not tuned for production)
+- **OpenSSL TLS**: Provider-backed OpenSSL 3.5+ QUIC TLS adapter surface (default-off, requires explicit enable)
 
-```powershell
-# Clone
-git clone https://github.com/kzzz3/FlowQ.git
-cd FlowQ
+### Why This Classification?
 
-# Configure
-$env:VCPKG_ROOT = "D:/vcpkg"
-cmake --preset windows-msvc-vcpkg
+**Core Transport** features have:
+- ✅ Unit tests covering all code paths
+- ✅ Integration tests verifying component interaction
+- ✅ Protocol compliance tests against RFC specifications
+- ✅ Deterministic behavior for testing and development
 
-# Build
-cmake --build --preset windows-msvc-vcpkg
-
-# Test
-ctest --preset windows-msvc-vcpkg --timeout 10
-```
-
-## 📚 Documentation
-
-- [Getting Started](docs/guides/getting-started.md)
-- [Building](docs/guides/building.md)
-- [Testing](docs/guides/testing.md)
-- [Architecture](docs/reference/architecture.md)
-- [API Reference](docs/api/html/index.html) (generate with `scripts/generate-docs.sh`)
+**Experimental Extensions** have:
+- ⚠️ Structural implementation only (not production-complete)
+- ⚠️ Limited or no real-world testing
+- ⚠️ May have known limitations or missing features
+- ⚠️ Not intended for production use without further development
 
 ## 🔒 Production Readiness
 
 FlowQ v1.0.0 is a **non-production baseline**. See [Production Readiness Gate](docs/production/readiness-gate.md) for evidence requirements before claiming production status.
 
-**Current limitations:**
+### Minimal Production Candidate Scope
+
+FlowQ defines a narrow production candidate scope (see [readiness-gate.md](docs/production/readiness-gate.md)):
+
+**Supported** (with evidence):
+- Windows 10+ (MSVC 2026)
+- QUIC Version 1 (RFC 9000)
+- OpenSSL 3.5+ TLS backend (when enabled)
+- Basic handshake, stream echo, loss recovery scenarios
+
+**Not Supported** (explicitly excluded):
+- Connection migration, stateless reset, path validation
+- 0-RTT, HTTP/3, WebTransport
+- Cross-platform (Linux, macOS)
+- Production TLS certificate validation
+- Real-world network conditions
+
+### Current Limitations
+
 - No real TLS handshake integration (stub implementation)
 - No production QPACK Huffman encoding
 - No production HTTP/3 server

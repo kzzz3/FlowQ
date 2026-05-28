@@ -43,3 +43,48 @@ Any production-candidate claim MUST state:
 | Fuzz targets | `tests/fuzz/*.cpp` | Agent-verifiable |
 | Interop scenarios | `tests/interop/scenarios/*.json` | Requires peer binaries |
 | Security review | External reviewer | Human-only |
+
+## Production Candidate Minimal Scope
+
+FlowQ should NOT claim "production-ready" for all features. Instead, define a **minimal production candidate scope** that is narrow and evidence-backed:
+
+### Recommended Minimal Scope
+
+**Supported** (with evidence):
+- **Operating System**: Windows 10+ (MSVC 2026)
+- **QUIC Version**: RFC 9000 (v1)
+- **TLS Backend**: OpenSSL 3.5+ (when enabled via `FLOWQ_ENABLE_OPENSSL_QUIC_TLS`)
+- **Cipher Suites**: AES-128-GCM-SHA256 (via OpenSSL)
+- **Roles**: Client and server
+- **Scenarios**:
+  - Basic handshake (Initial + Handshake packets)
+  - Stream echo (unidirectional data transfer)
+  - Loss recovery (ACK-based loss detection)
+
+**Not Supported** (explicitly excluded):
+- Connection migration
+- Stateless reset
+- Path validation
+- 0-RTT (early data)
+- HTTP/3
+- WebTransport
+- QPACK dynamic tables
+- BBR/CUBIC congestion control tuning
+- Cross-platform (Linux, macOS)
+- Production TLS certificate validation
+- Real-world network conditions
+
+### Why This Scope?
+
+1. **Evidence-backed**: These scenarios can be verified against real QUIC implementations (ngtcp2, quiche, MsQuic)
+2. **Narrow enough to audit**: Limited surface area makes security review feasible
+3. **Clear boundaries**: Users understand exactly what's tested and what's not
+4. **Incremental**: Can expand scope as evidence grows
+
+### Scope Expansion Path
+
+To expand the production candidate scope:
+1. Add evidence for new scenarios (interop, performance, security)
+2. Update this document with new scope statement
+3. Update README.md to reflect new capabilities
+4. Run validation scripts to verify consistency
