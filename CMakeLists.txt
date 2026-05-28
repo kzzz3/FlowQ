@@ -43,31 +43,31 @@ target_link_libraries(
 )
 
 if(FLOWQ_BUILD_EXAMPLES)
-    add_executable(flowq_example_in_memory_loopback examples/in_memory_loopback.cpp)
+    add_executable(flowq_example_in_memory_loopback examples/in-memory/loopback.cpp)
     target_link_libraries(flowq_example_in_memory_loopback PRIVATE FlowQ::flowq)
 
-    add_executable(flowq_example_udp_stream_echo examples/udp_stream_echo.cpp)
+    add_executable(flowq_example_udp_stream_echo examples/udp/stream_echo.cpp)
     target_link_libraries(flowq_example_udp_stream_echo PRIVATE FlowQ::flowq)
 
-    add_executable(flowq_example_protection_policy examples/protection_policy.cpp)
+    add_executable(flowq_example_protection_policy examples/protection-policy/main.cpp)
     target_link_libraries(flowq_example_protection_policy PRIVATE FlowQ::flowq)
 
-    add_executable(flowq_example_http3 examples/http3_example.cpp)
+    add_executable(flowq_example_http3 examples/http3/main.cpp)
     target_link_libraries(flowq_example_http3 PRIVATE FlowQ::flowq)
 
-    add_executable(flowq_example_webtransport examples/webtransport_example.cpp)
+    add_executable(flowq_example_webtransport examples/webtransport/main.cpp)
     target_link_libraries(flowq_example_webtransport PRIVATE FlowQ::flowq)
 
-    add_executable(flowq_example_qpack examples/qpack_example.cpp)
+    add_executable(flowq_example_qpack examples/qpack/main.cpp)
     target_link_libraries(flowq_example_qpack PRIVATE FlowQ::flowq)
 
-    add_executable(flowq_example_echo_server examples/echo_server.cpp)
+    add_executable(flowq_example_echo_server examples/echo/server.cpp)
     target_link_libraries(flowq_example_echo_server PRIVATE FlowQ::flowq)
 
-    add_executable(flowq_example_echo_client examples/echo_client.cpp)
+    add_executable(flowq_example_echo_client examples/echo/client.cpp)
     target_link_libraries(flowq_example_echo_client PRIVATE FlowQ::flowq)
 
-    add_executable(flowq_example_chat_room examples/chat_room.cpp)
+    add_executable(flowq_example_chat_room examples/chat-room/main.cpp)
     target_link_libraries(flowq_example_chat_room PRIVATE FlowQ::flowq)
 endif()
 
