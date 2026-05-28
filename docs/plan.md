@@ -32,7 +32,7 @@ FlowQ is a modern C++ protocol library that builds a deterministic, testable, no
 - [x] M30: Add structural transport parameter codec and config mapping.
 - [x] M31: Add TLS handshake adapter boundary and CRYPTO byte pump.
 - [x] M31b-a: Add default-off OpenSSL QUIC TLS provider surface.
-- [ ] M31b-b: Add provider-backed local TLS handshake evidence.
+- [x] M31b-b: Add provider-backed local TLS handshake evidence.
 - [x] M32: Add RFC-shaped short-header value model and parser shell.
 - [x] M33: Add key lifecycle gates and packet-space discard rules.
 - [x] M34: Add recovery and congestion-control production baseline.
