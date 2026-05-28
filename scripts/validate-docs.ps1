@@ -30,9 +30,9 @@ foreach ($mdFile in $mdFiles) {
 
     # Read file and extract links
     $lineNum = 0
-    Get-Content $mdFile.FullName | ForEach-Object {
+    $lines = Get-Content $mdFile.FullName
+    foreach ($line in $lines) {
         $lineNum++
-        $line = $_
 
         # Extract markdown links [text](url.md)
         $matches = [regex]::Matches($line, '\[.*?\]\(([^)]+\.md)\)')
@@ -45,7 +45,11 @@ foreach ($mdFile in $mdFiles) {
                 $targetFile = Join-Path $RepoRoot $link.TrimStart('/')
             } else {
                 $dir = Split-Path -Parent $relativePath
-                $targetFile = Join-Path $RepoRoot $dir $link
+                if ($dir) {
+                    $targetFile = Join-Path $RepoRoot (Join-Path $dir $link)
+                } else {
+                    $targetFile = Join-Path $RepoRoot $link
+                }
             }
 
             # Normalize path
