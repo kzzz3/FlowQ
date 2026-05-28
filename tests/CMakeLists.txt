@@ -30,6 +30,7 @@ add_executable(
     unit/quic_key_lifecycle_tests.cpp
     unit/quic_packet_header_tests.cpp
     unit/quic_packet_pipeline_tests.cpp
+    unit/quic_protocol_compliance_tests.cpp
     unit/quic_qpack_tests.cpp
     unit/quic_recovery_core_tests.cpp
     unit/quic_recovery_scheduler_tests.cpp
