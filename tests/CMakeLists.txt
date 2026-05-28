@@ -5,6 +5,7 @@ add_executable(
     integration/example_build_tests.cpp
     integration/quic_endpoint_driver_tests.cpp
     integration/quic_loopback_tests.cpp
+    integration/quic_openssl_tls_tests.cpp
     integration/quic_udp_session_tests.cpp
     unit/buffer_tests.cpp
     unit/context_tests.cpp
