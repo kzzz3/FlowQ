@@ -16,7 +16,7 @@ FlowQ is a modern C++ QUIC-like protocol library that builds deterministic proto
 - [Building](docs/guides/building.md) - Build instructions and options
 - [Testing](docs/guides/testing.md) - Running and writing tests
 - [Architecture](docs/reference/architecture.md) - System design overview
-- [Contributing](docs/guides/contributing.md) - Development workflow
+- [API Reference](docs/api/html/index.html) - Generated API documentation (run `scripts/generate-docs.sh` to generate)
 
 ## Design Overview
 
