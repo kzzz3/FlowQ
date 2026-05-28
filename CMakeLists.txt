@@ -85,6 +85,7 @@ if(FLOWQ_BUILD_TESTS)
             -ExecutionPolicy Bypass
             -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-release-readiness.ps1
             -SourceRoot ${CMAKE_CURRENT_SOURCE_DIR}
+            -SkipBuild
     )
     add_subdirectory(tests)
 endif()
