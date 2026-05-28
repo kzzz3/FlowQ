@@ -60,6 +60,15 @@ if(FLOWQ_BUILD_EXAMPLES)
 
     add_executable(flowq_example_qpack examples/qpack_example.cpp)
     target_link_libraries(flowq_example_qpack PRIVATE FlowQ::flowq)
+
+    add_executable(flowq_example_echo_server examples/echo_server.cpp)
+    target_link_libraries(flowq_example_echo_server PRIVATE FlowQ::flowq)
+
+    add_executable(flowq_example_echo_client examples/echo_client.cpp)
+    target_link_libraries(flowq_example_echo_client PRIVATE FlowQ::flowq)
+
+    add_executable(flowq_example_chat_room examples/chat_room.cpp)
+    target_link_libraries(flowq_example_chat_room PRIVATE FlowQ::flowq)
 endif()
 
 if(FLOWQ_BUILD_TESTS)
