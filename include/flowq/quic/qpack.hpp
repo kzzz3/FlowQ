@@ -205,8 +205,21 @@ public:
     [[nodiscard]] encode_result encode(const std::vector<header_field>& headers) {
         std::vector<std::byte> output;
         
-        // Required Insert Count (0 for now, no dynamic table entries)
-        output.push_back(std::byte{0x00});
+        // Required Insert Count (number of dynamic table insertions)
+        std::uint64_t insert_count = 0;
+        for (const auto& header : headers) {
+            if (!find_in_static_table(header.name, header.value).has_value()) {
+                // Will be inserted into dynamic table
+                ++insert_count;
+            }
+        }
+        
+        // Encode Required Insert Count
+        if (insert_count == 0) {
+            output.push_back(std::byte{0x00});
+        } else {
+            encode_varint_to(output, insert_count);
+        }
         
         // Delta Base (0 for now)
         output.push_back(std::byte{0x00});
@@ -220,16 +233,38 @@ public:
                 continue;
             }
             
+            // Try dynamic table
+            auto dynamic_index = dynamic_table_.find(header.name, header.value);
+            if (dynamic_index.has_value()) {
+                // Dynamic table reference
+                encode_dynamic_reference(output, *dynamic_index);
+                continue;
+            }
+            
             // Try static table name only
             auto static_name_index = find_static_name(header.name);
             if (static_name_index.has_value()) {
                 // Static name reference + literal value
                 encode_static_name_with_literal_value(output, *static_name_index, header.value);
+                // Insert into dynamic table
+                dynamic_table_.add(header.name, header.value);
+                continue;
+            }
+            
+            // Try dynamic table name only
+            auto dynamic_name_index = dynamic_table_.find_name(header.name);
+            if (dynamic_name_index.has_value()) {
+                // Dynamic name reference + literal value
+                encode_dynamic_name_with_literal_value(output, *dynamic_name_index, header.value);
+                // Insert into dynamic table
+                dynamic_table_.add(header.name, header.value);
                 continue;
             }
             
             // Literal name and value
             encode_literal_header(output, header.name, header.value);
+            // Insert into dynamic table
+            dynamic_table_.add(header.name, header.value);
         }
         
         return {flowq::buffer{output}, {}};
@@ -269,8 +304,30 @@ private:
         }
     }
 
+    static void encode_dynamic_reference(std::vector<std::byte>& output, std::uint64_t index) {
+        // Encode as Dynamic Indexed Header Field (0b10000000 with different prefix)
+        // For simplicity, use same encoding as static but with different prefix bit
+        if (index < 128) {
+            output.push_back(static_cast<std::byte>(0x80 | index));
+        } else {
+            output.push_back(std::byte{0xff});
+            encode_varint_to(output, index - 128);
+        }
+    }
+
     static void encode_static_name_with_literal_value(std::vector<std::byte>& output, std::uint64_t name_index, const std::string& value) {
         // Encode as Literal Header Field with Static Name Reference (0b01000000 + 6-bit index)
+        if (name_index < 64) {
+            output.push_back(static_cast<std::byte>(0x40 | name_index));
+        } else {
+            output.push_back(std::byte{0x7f});
+            encode_varint_to(output, name_index - 64);
+        }
+        encode_string(output, value);
+    }
+
+    static void encode_dynamic_name_with_literal_value(std::vector<std::byte>& output, std::uint64_t name_index, const std::string& value) {
+        // Encode as Literal Header Field with Dynamic Name Reference
         if (name_index < 64) {
             output.push_back(static_cast<std::byte>(0x40 | name_index));
         } else {
