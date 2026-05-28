@@ -1,4 +1,4 @@
-name: windows-msvc-vcpkg
+name: CI
 
 on:
   push:
@@ -65,3 +65,122 @@ jobs:
       - name: Run package consumer
         shell: pwsh
         run: .\build\package-consumer\Debug\flowq_package_consumer.exe
+
+  linux-gcc:
+    name: Linux GCC
+    runs-on: ubuntu-latest
+
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+      CTEST_OUTPUT_ON_FAILURE: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libasio-dev
+
+      - name: Configure FlowQ
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DFLOWQ_BUILD_TESTS=ON \
+            -DFLOWQ_BUILD_EXAMPLES=ON
+
+      - name: Build FlowQ
+        run: cmake --build build
+
+      - name: Test FlowQ
+        run: ctest --test-dir build -C Debug --timeout 10 --output-on-failure
+
+      - name: Install FlowQ package
+        run: cmake --install build --config Debug --prefix build/install-flowq
+
+      - name: Configure package consumer
+        run: |
+          cmake -S tests/package-consumer -B build/package-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/build/install-flowq"
+
+      - name: Build package consumer
+        run: cmake --build build/package-consumer
+
+      - name: Run package consumer
+        run: ./build/package-consumer/flowq_package_consumer
+
+  linux-clang:
+    name: Linux Clang
+    runs-on: ubuntu-latest
+
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+      CTEST_OUTPUT_ON_FAILURE: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang libasio-dev
+
+      - name: Configure FlowQ
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_COMPILER=clang \
+            -DFLOWQ_BUILD_TESTS=ON \
+            -DFLOWQ_BUILD_EXAMPLES=ON
+
+      - name: Build FlowQ
+        run: cmake --build build
+
+      - name: Test FlowQ
+        run: ctest --test-dir build -C Debug --timeout 10 --output-on-failure
+
+  macos-clang:
+    name: macOS Clang
+    runs-on: macos-latest
+
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+      CTEST_OUTPUT_ON_FAILURE: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install cmake ninja
+
+      - name: Configure FlowQ
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DFLOWQ_BUILD_TESTS=ON \
+            -DFLOWQ_BUILD_EXAMPLES=ON
+
+      - name: Build FlowQ
+        run: cmake --build build
+
+      - name: Test FlowQ
+        run: ctest --test-dir build -C Debug --timeout 10 --output-on-failure
+
+      - name: Install FlowQ package
+        run: cmake --install build --config Debug --prefix build/install-flowq
+
+      - name: Configure package consumer
+        run: |
+          cmake -S tests/package-consumer -B build/package-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/build/install-flowq"
+
+      - name: Build package consumer
+        run: cmake --build build/package-consumer
+
+      - name: Run package consumer
+        run: ./build/package-consumer/flowq_package_consumer
