@@ -1,165 +1,92 @@
 # FlowQ Production Readiness Gate
 
-This document defines the exact evidence required before FlowQ can change public wording from non-production baseline to production candidate.
+This document records the current evidence required before FlowQ can claim production-candidate status.
 
 ## Current Status
 
-**Level**: Production-readiness milestone
-**Date**: 2026-05-29
-**Summary**: Phases 0-5 of the production push plan are complete. Structured evidence has been collected for build, test, sanitizer, fuzz, AEAD, and API hardening gates. Interop validation (Phase 4) is the primary remaining blocker for "Production candidate" status.
+- **Level**: Production-readiness gate
+- **Date**: 2026-05-29
+- **Status**: Non-production. The codebase has local build/test evidence, OpenSSL-gated AES-128-GCM packet protection, and deterministic transport behavior. External peer QUIC interop evidence and human security review are not recorded.
 
-## Evidence Collected
+## Evidence In Place
 
-The following evidence has been collected and verified as part of Phases 0-5:
+### Build And Test
 
-### Build & Test
+- ✅ **CMake/CTest suite** on Windows MSVC/vcpkg preset (`ctest --preset windows-msvc-vcpkg --timeout 10`)
+- ✅ **Install + package-consumer** build path
+- ✅ **Release-readiness script** (`scripts/check-release-readiness.ps1 -SkipBuild`)
+- ✅ **Checklist validator** (`scripts/validate-checklist.ps1`)
 
-- ✅ **495 tests passing** on Windows MSVC/vcpkg preset (`ctest --preset windows-msvc-vcpkg --timeout 10`)
-- ✅ **Install + package-consumer** builds and runs successfully
-- ✅ **Zero compiler warnings** with MSVC equivalent of `-Wall -Wextra`
-- ✅ **Zero TODO/FIXME** markers in production code paths
+### Packet Protection
 
-### Sanitizers & Fuzzing
+- ✅ `openssl_aead_protector` implements the `packet_protector` interface.
+- ✅ AES-128-GCM packet protection is implemented when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled.
+- ✅ Header protection uses the RFC 9001 initial header-protection path.
+- ✅ Unsupported suites such as ChaCha20-Poly1305 and AES-256-GCM are rejected explicitly.
+- ✅ AEAD creation fails closed when the OpenSSL crypto backend is not compiled in.
+- ✅ Plaintext/test protection is rejected when production protection is required.
 
-- ✅ **ASan + UBSan CI gate** configured in `.github/workflows/robustness.yml`
-- ✅ **Fuzz targets**: `fuzz_packet_header`, `fuzz_frame_decode`, `fuzz_qpack` registered in CMakeLists.txt
-- ✅ **Fuzzer flags**: `-fsanitize=fuzzer,address,undefined` with `-fno-omit-frame-pointer`
+### Transport Behavior
 
-### AEAD (gated behind `FLOWQ_ENABLE_OPENSSL_CRYPTO`)
+- ✅ QUIC varint, packet number, packet header, frame, transport parameter, and packet pipeline primitives.
+- ✅ ACK/loss recovery, bytes-in-flight accounting, NewReno-style congestion baseline, and deterministic timers.
+- ✅ Stream receive/send state, flow-control frame handling, reset/stop handling, and retransmission behavior.
+- ✅ Connection ID routing, version negotiation, retry helper surfaces, endpoint-driver lifecycle, and diagnostics.
+- ✅ PATH_CHALLENGE/PATH_RESPONSE frame codec support.
+- ✅ Application-space PATH_CHALLENGE scheduling emits a same-value PATH_RESPONSE.
+- ✅ PATH_CHALLENGE/PATH_RESPONSE outside Application packet space closes with protocol error.
 
-- ✅ **openssl_aead_protector** implements `packet_protector` interface
-- ✅ **AES-128-GCM** and **ChaCha20-Poly1305** cipher suites
-- ✅ **Header protection** per RFC 9001 §5.4
-- ✅ **Key update mechanism** (Phase 3 of key_lifecycle)
-- ✅ **RFC 9001 Appendix A test vectors** validated
-- ✅ **AEAD integration tests** passing
+### Hardening
 
-### API Hardening
+- ✅ Fuzz targets: `fuzz_packet_header`, `fuzz_frame_decode`, `fuzz_qpack`.
+- ✅ ASan + UBSan workflow in `.github/workflows/robustness.yml`.
+- ✅ `detail::` namespace access is gated by `FLOWQ_DETAIL`.
+- ✅ Inspection methods are gated by `FLOWQ_ENABLE_INSPECTION`.
+- ✅ Public value-returning methods use `[[nodiscard]]` where applicable.
+- ✅ Movable core types use explicit `noexcept` move operations.
+- ✅ Public pointer ownership and thread-safety contracts are documented.
 
-- ✅ **`detail::` namespaces** gated behind `FLOWQ_DETAIL` macro
-- ✅ **Inspection methods** gated behind `FLOWQ_ENABLE_INSPECTION`
-- ✅ **`[[nodiscard]]`** on all value-returning public methods
-- ✅ **noexcept move semantics** on `stream_receive_state`, `stream_send_state`, `connection_loop`, `buffer`
-- ✅ **Ownership documentation** (`@pre` comments) on all raw pointer members
-- ✅ **Thread-safety contracts** documented on session/connection/endpoint types
-- ✅ **Stub warnings** on non-production headers (`http3_server.hpp`, `webtransport.hpp`)
+## Production-Candidate Scope
 
-### QPACK
+FlowQ can only claim production-candidate status for the exact scope backed by local evidence and external peer interop results.
 
-- ✅ **Delta-base encoding** fixed (was hardcoded to 0)
-- ✅ **Multi-byte length decoding** implemented
-- ✅ **Dynamic table support** added
-- ✅ **RFC 9204 test vectors** passing
+**Candidate Scope Target**
 
-## Status Levels
+- **Operating system**: Windows with MSVC/vcpkg preset evidence
+- **QUIC version**: QUIC v1 structural transport behavior
+- **TLS/backend**: OpenSSL-backed packet protection where enabled
+- **Cipher suite**: AES-128-GCM-SHA256
+- **Roles**: Client and server surfaces
+- **Scenarios**: handshake path, stream echo, loss recovery, path validation primitives
 
-| Status | Definition | Required Evidence |
-|--------|------------|-------------------|
-| **Non-production baseline** | Deterministic protocol primitives for development and testing | All M20-M39 milestones complete |
-| **Production-readiness milestone** | Structured evidence collection in progress | Checklist items being verified |
-| **Production candidate** | Claim specific supported scope with evidence | All checklist gates pass + scope statement |
-| **Production-ready** | Full production deployment approved | All checklist gates + human security review |
+**Explicitly Outside Scope**
 
-## Forbidden Claims
-
-The following claims are NOT allowed until the corresponding evidence is provided:
-
-- "Production-ready" — requires human security review outside agent loop
-- "RFC-compliant" — requires interop verification against named peer implementations
-- "Secure" — requires external security audit or formal verification
-- "Interoperable" — requires passing interop scenarios against named peer versions
-
-## Production Candidate Scope Statement
-
-Any production-candidate claim MUST state:
-
-1. **Supported QUIC version**: e.g., RFC 9000 (v1)
-2. **Supported roles**: client, server, or both
-3. **Supported operating systems**: e.g., Windows 10+, Ubuntu 22.04+
-4. **TLS backend**: name and version (e.g., OpenSSL 3.5+)
-5. **Cipher suites**: e.g., AES-128-GCM-SHA256, ChaCha20-Poly1305
-6. **Interop peer versions**: e.g., ngtcp2 0.9.0, quiche 0.18.0
-7. **Scenarios passed**: e.g., basic_handshake, stream_echo, loss_recovery
-8. **Unsupported items**: e.g., connection migration, stateless reset, path validation, 0-RTT, HTTP/3, WebTransport
-
-## Evidence Sources
-
-| Evidence Type | Source | Verification |
-|---------------|--------|--------------|
-| Build + CTest | `cmake --build` + `ctest` | Agent-verifiable |
-| Install + package-consumer | `cmake --install` + consumer build | Agent-verifiable |
-| Sanitizer CI | `.github/workflows/robustness.yml` | Agent-verifiable |
-| Fuzz targets | `tests/fuzz/*.cpp` | Agent-verifiable |
-| Interop scenarios | `tests/interop/scenarios/*.json` | Requires peer binaries |
-| Security review | External reviewer | Human-only |
-
-## Production Candidate Minimal Scope
-
-FlowQ should NOT claim "production-ready" for all features. Instead, define a **minimal production candidate scope** that is narrow and evidence-backed:
-
-### Recommended Minimal Scope
-
-**Supported** (with evidence):
-- **Operating System**: Windows 10+ (MSVC 2026)
-- **QUIC Version**: RFC 9000 (v1)
-- **TLS Backend**: OpenSSL 3.5+ (when enabled via `FLOWQ_ENABLE_OPENSSL_QUIC_TLS`)
-- **Cipher Suites**: AES-128-GCM-SHA256 (via OpenSSL)
-- **Roles**: Client and server
-- **Scenarios**:
-  - Basic handshake (Initial + Handshake packets)
-  - Stream echo (unidirectional data transfer)
-  - Loss recovery (ACK-based loss detection)
-
-**Not Supported** (explicitly excluded):
-- Connection migration
+- Full path migration workflow
 - Stateless reset
-- Path validation
-- 0-RTT (early data)
-- HTTP/3
-- WebTransport
-- QPACK dynamic tables
-- BBR/CUBIC congestion control tuning
-- Cross-platform (Linux, macOS)
-- Production TLS certificate validation
-- Real-world network conditions
+- 0-RTT deployment policy
+- HTTP/3 deployment
+- WebTransport deployment
+- QPACK deployment guarantees
+- BBR/CUBIC production tuning
+- Cross-platform release evidence
+- Production TLS certificate-validation policy
+- External security audit
 
-### Why This Scope?
+## Open Gate Items
 
-1. **Evidence-backed**: These scenarios can be verified against real QUIC implementations (ngtcp2, quiche, MsQuic)
-2. **Narrow enough to audit**: Limited surface area makes security review feasible
-3. **Clear boundaries**: Users understand exactly what's tested and what's not
-4. **Incremental**: Can expand scope as evidence grows
+- [ ] Real interop runner replaces the stub in `include/flowq/quic/interop_runner.hpp`.
+- [ ] Basic handshake passes against named external QUIC peer versions.
+- [ ] Stream echo passes against named external QUIC peer versions.
+- [ ] Loss recovery passes against named external QUIC peer versions.
+- [ ] Interop results are recorded in `docs/interop/results.md`.
+- [ ] TLS backend and cipher-suite versions used during validation are recorded.
+- [ ] Human security review is recorded.
 
-### Scope Expansion Path
+## Forbidden Public Claims
 
-To expand the production candidate scope:
-1. Add evidence for new scenarios (interop, performance, security)
-2. Update this document with new scope statement
-3. Update README.md to reflect new capabilities
-4. Run validation scripts to verify consistency
+The following public claims require evidence and must not appear outside policy documents:
 
-## Still Needed for "Production Candidate" Status
-
-The following items must be completed before FlowQ can claim "Production candidate" status:
-
-### Interop Validation (Phase 4 — Primary Blocker)
-
-- [ ] Real interop runner replacing stub in `interop_runner.hpp`
-- [ ] Basic handshake passes against ngtcp2
-- [ ] Basic handshake passes against quiche
-- [ ] Basic handshake passes against MsQuic
-- [ ] Stream echo passes against 2+ implementations
-- [ ] Loss recovery passes against 2+ implementations
-- [ ] Interop results documented in `docs/interop/results.md` with peer names and versions
-
-### Security Review
-
-- [ ] External security review (not agent-generated)
-- [ ] Threat model validation by human reviewer
-- [ ] Sign-off from human reviewer to change public wording
-
-### Scope Statement Completion
-
-- [ ] Fill in the scope template above with actual interop peer versions
-- [ ] Record specific cipher suite and TLS backend versions used in validation
-- [ ] Document exact scenarios passed and failed against each peer
+- "Production-ready" requires human security review.
+- "RFC-compliant" requires external peer interop evidence against named versions.
+- "Secure" requires external audit or formal evidence.
+- "Interoperable" requires passing scenarios against named peer versions.

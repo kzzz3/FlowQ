@@ -2,7 +2,7 @@
 
 ## Project Goal
 
-FlowQ is a modern C++ protocol library that builds a deterministic, testable, non-production QUIC-like core before exposing real network and security integrations.
+FlowQ is a C++20 QUIC transport library moving toward a narrow production-candidate scope backed by local verification, OpenSSL-gated packet protection, and external peer interop evidence.
 
 ## Core Feature Breakdown
 
@@ -17,15 +17,15 @@ FlowQ is a modern C++ protocol library that builds a deterministic, testable, no
 - [x] Add connection stream integration, aggregate flow control, packet budgeting, recovery timers, and stream ACK/loss mapping.
 - [x] M16: Add a clearly non-production structural Application packet-number space for tests and loopback.
 - [x] M17: Add minimal close/reset structural codecs and stream effects.
-- [x] M18: Prove a basic in-memory QUIC-like loopback session.
-- [x] M19: Document and enforce the crypto adapter seam for future real TLS/packet protection.
+- [x] M18: Prove a basic in-memory QUIC transport loopback session.
+- [x] M19: Document and enforce the crypto adapter seam for TLS and packet-protection integration.
 - [x] M20: Freeze basic-complete QUIC library scope and public API contract.
 - [x] M21: Add a public QUIC session façade over the deterministic connection loop.
-- [x] M22: Add a non-production UDP/ASIO session adapter.
+- [x] M22: Add a bounded UDP/ASIO session adapter.
 - [x] M23: Add ASIO recovery timer scheduling integration.
 - [x] M24: Add library examples and public smoke tests.
 - [x] M25: Add CMake install/export packaging and package-consumer test.
-- [x] M26: Add CI and declare the basic complete non-production library baseline.
+- [x] M26: Add CI and release-gate documentation.
 - [x] M27: Add RFC 9000 packet-number truncation and reconstruction helpers.
 - [x] M28: Add crypto provider boundary and fail-closed packet protection contract.
 - [x] M29: Pass selected RFC 9001 Initial packet-protection vectors through vetted primitives.
@@ -48,15 +48,15 @@ FlowQ is a modern C++ protocol library that builds a deterministic, testable, no
 - **CMake 3.25+**: standard C++ build orchestration with preset-based workflows.
 - **vcpkg manifest mode**: reproducible dependency resolution for Asio, stdexec, and Catch2.
 - **standalone Asio**: mature asynchronous I/O foundation without requiring Boost.
-- **stdexec**: sender/receiver direction for future execution APIs, currently isolated behind small seams.
+- **stdexec**: sender/receiver direction isolated behind small seams.
 - **Catch2**: readable, focused unit tests for protocol values and connection behavior.
 
-Architecture follows values first, deterministic tests second, connection integration third, and loopback proof last. Production TLS, AEAD, header protection, congestion control, and public socket APIs remain outside the current baseline until explicit adapter boundaries exist.
+Architecture follows value codecs first, deterministic tests second, connection integration third, and endpoint/interop evidence last. The current production-candidate boundary is evidence-based: AES-128-GCM packet protection exists behind OpenSSL, plaintext/test protection is rejected by production policy, and external peer interop evidence remains the main open gate.
 
 ## Project Structure
 
 - `include/flowq/`: public header-only library surface and protocol modules.
-- `include/flowq/quic/`: QUIC-like value types, codecs, stream state, packet pipeline, ACK/loss, recovery, and connection loop.
+- `include/flowq/quic/`: QUIC transport value types, codecs, stream state, packet pipeline, ACK/loss, recovery, and connection loop.
 - `tests/unit/`: deterministic Catch2 unit tests, grouped by protocol module.
 - `tests/integration/`: deterministic in-memory loopback tests.
 - `tests/interop/`: interop test scenarios and runner.
@@ -80,7 +80,7 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 
 - [x] M16 Application Data structural packet space.
 - [x] M17 minimal close/reset codec behavior.
-- [x] M18 in-memory QUIC-like loopback session.
+- [x] M18 in-memory QUIC transport loopback session.
 
 ### Phase 4: Security Boundary Documentation
 
@@ -110,22 +110,22 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 
 ## Risk Assessment
 
-- **Application packet modeling risk**: M16 now has independent Application packet counters and trackers; future changes must preserve this and avoid aliasing Application state into Initial or Handshake.
-- **Reset/stop scope risk**: M17 reset/stop behavior is structural and test-visible only; future work must avoid treating it as a complete stream lifecycle or application cancellation API.
-- **Loopback scope risk**: M18 proves deterministic in-memory session behavior only; future work must not present it as socket, TLS, or interoperable QUIC support.
-- **Security claim risk**: M19 adds explicit protector capability reporting and production-required rejection for test-only protection; future docs must continue to avoid describing plaintext/test protection as secure QUIC.
-- **Scope creep risk**: full protected short-header parsing, TLS, AEAD, header protection, congestion control, and production/interoperable UDP public APIs remain deferred beyond this baseline; M22 covers only a bounded non-production UDP/ASIO smoke adapter.
-- **Library surface risk**: M20-M23 must expose a usable QUIC library façade without leaking raw internal frame queues as the primary consumer API.
-- **Packaging risk**: M24-M26 must prove examples and CMake package consumption build from documented commands, not only from the monorepo test binary.
+- **Application packet modeling risk**: Application packet counters and trackers must remain independent from Initial and Handshake state.
+- **Reset/stop scope risk**: reset/stop behavior is covered structurally; application-level cancellation semantics require explicit API evidence before being claimed.
+- **Loopback scope risk**: deterministic in-memory and local UDP smoke paths are not external peer interop evidence.
+- **Security claim risk**: plaintext/test protection must remain outside production-required packet-protection policy.
+- **Scope creep risk**: documented production-candidate scope must match implemented AES-128-GCM, header protection, recovery, routing, endpoint, and path-validation evidence.
+- **Library surface risk**: the public session façade should avoid exposing raw internal frame queues as the primary consumer API.
+- **Packaging risk**: examples and CMake package consumption must build from documented commands, not only from the monorepo test binary.
 - **Tooling risk**: local LSP diagnostics currently cannot run because `clangd` is not installed in this environment; MSVC build and CTest are the executable verification gates.
 - **Documentation drift risk**: `docs/plan.md`, `README.md`, and milestone docs must be updated together when implementation scope evolves.
-- **Production wording risk**: M28-M39 must keep status evidence-bound; no single milestone is enough to claim production readiness, security, or interoperability.
-- **Crypto provider boundary risk**: M28 adds external provider capability evidence only; future work must not treat provider-shaped values as an in-tree crypto backend or a production security claim.
-- **Crypto vector risk**: M29 validates selected RFC 9001 Initial vectors through OpenSSL only when explicitly enabled; passing these vectors is not a production TLS, packet-protection, or interoperability claim.
-- **Transport-parameter risk**: M30 encodes, decodes, preserves unknown parameters, and maps selected values into config only; TLS extension binding and authenticated negotiation remain future work.
-- **TLS handshake boundary risk**: M31 routes opaque CRYPTO bytes and observes handshake/key state only; external provider wiring, certificate validation, TLS transcript handling, and real key schedule remain M31b/future work.
-- **TLS provider surface risk**: M31b-a adds only default-off OpenSSL QUIC TLS API detection and provider metadata; complete TLS handshakes, certificate-policy validation, and key lifecycle proof remain future work.
-- **Short-header shell risk**: M32 models RFC-shaped short headers and a test-mode parser shell only; header-protection removal, packet-number reconstruction from protected headers, 1-RTT AEAD, and interoperability remain future work.
-- **Key lifecycle risk**: M33 tracks deterministic availability and packet-space discard gates only; external TLS/crypto must still supply real secrets, key material, key updates, and packet-protection installation.
-+- **Congestion baseline risk**: M34 adds deterministic bytes-in-flight accounting and NewReno-style congestion behavior only; pacing, ECN, and production performance tuning remain separate.
-+- **Connection routing risk**: M35 adds deterministic routing table, version negotiation, and retry interface helpers only; production server listeners, real retry integrity, and full address-validation remain future work.
+- **Production wording risk**: public status wording must remain evidence-bound; no local-only milestone is enough to claim production readiness, security, or interoperability.
+- **Crypto provider boundary risk**: provider capability evidence must not be treated as an audit result or TLS certificate-policy proof.
+- **Crypto vector risk**: selected RFC 9001 vectors prove packet-protection primitives, not complete peer interoperability.
+- **Transport-parameter risk**: encoding, decoding, unknown preservation, and config mapping exist; authenticated negotiation must be proven through TLS/interop paths.
+- **TLS handshake boundary risk**: CRYPTO byte routing and state observation exist; certificate policy and transcript correctness need explicit evidence.
+- **TLS provider surface risk**: OpenSSL QUIC TLS API availability is modeled; interop runs must record backend versions and negotiated parameters.
+- **Short-header risk**: short-header modeling and packet-protection seams must stay aligned with 1-RTT AEAD and packet-number reconstruction tests.
+- **Key lifecycle risk**: deterministic availability and packet-space discard gates exist; live AEAD key update installation is still outside current evidence.
+- **Congestion baseline risk**: deterministic bytes-in-flight accounting and NewReno-style congestion behavior exist; pacing, ECN, and production performance tuning remain separate.
+- **Connection routing risk**: routing table, version negotiation, retry helpers, and endpoint lifecycle exist; full address validation and peer interop remain open gates.

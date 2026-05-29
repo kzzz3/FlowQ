@@ -890,6 +890,20 @@ private:
         return {};
     }
 
+    [[nodiscard]] flowq::error apply_path_validation_frames(packet_number_space space, const std::vector<frame>& frames) {
+        for (const auto& item : frames) {
+            if (const auto* challenge = std::get_if<path_challenge_frame>(&item)) {
+                if (space != packet_number_space::application) {
+                    return flowq::error{flowq::error_code::protocol_error, "PATH_CHALLENGE is only valid in Application packet space"};
+                }
+                packet_spaces_.get(packet_number_space::application).queue.push_back(frame{path_response_frame{challenge->data}});
+            } else if (std::holds_alternative<path_response_frame>(item) && space != packet_number_space::application) {
+                return flowq::error{flowq::error_code::protocol_error, "PATH_RESPONSE is only valid in Application packet space"};
+            }
+        }
+        return {};
+    }
+
     void process_parsed_packet(parsed_packet parsed, flowq::endpoint peer, std::size_t received_size, std::chrono::steady_clock::time_point received_at) {
         const auto newly_observed = received_tracker(parsed.number.space).observe(parsed.number.value);
         if (!newly_observed) {
@@ -902,6 +916,10 @@ private:
         mark_activity(received_at);
         if (auto error = peer_close_error(parsed.frames); error.has_value()) {
             enter_draining(std::move(*error), received_at);
+            return;
+        }
+        if (auto error = apply_path_validation_frames(parsed.number.space, parsed.frames); !error.ok()) {
+            enter_closing(error, received_at);
             return;
         }
         apply_ack_frames(parsed.number.space, parsed.frames);

@@ -1,6 +1,6 @@
 # FlowQ Documentation
 
-FlowQ is a modern C++20 QUIC-like protocol library.
+FlowQ is a C++20 QUIC transport library under production hardening.
 
 ## Documentation Structure
 
@@ -32,20 +32,18 @@ docs/
 
 ## Project Status
 
-**Version**: 1.0.0  
-**Tests**: 471/471 passing
-**Status**: Non-production baseline (all M20-M39 milestones complete)
+- **Status**: Non-production; production-candidate gate is tracked in [readiness-gate.md](production/readiness-gate.md).
+- **Tests**: Use the CMake/CTest commands in [Testing](guides/testing.md) and the root README.
 
 ### Completed Features
 
-- ✅ QUIC transport core (varint, frame, header codecs, packet pipeline)
+- ✅ QUIC transport core (varint, frame, header codecs, packet pipeline, packet-number helpers, transport parameters)
 - ✅ Connection management (connection loop, streams, flow control)
-- ✅ Security boundaries (crypto provider, TLS adapter, key lifecycle)
+- ✅ Packet-protection boundaries (crypto provider, TLS adapter, key lifecycle, OpenSSL-gated AES-128-GCM packet protector)
 - ✅ Recovery (ACK/loss, congestion control, recovery timers)
 - ✅ Diagnostics (event sink, qlog-style observability)
-- ✅ HTTP/3 (experimental: QPACK, frame encoding, basic server)
-- ✅ WebTransport (experimental: session management, stream multiplexing)
+- ✅ PATH_CHALLENGE/PATH_RESPONSE frame codec and Application-space response scheduling
+- ✅ HTTP/3/QPACK (structural module)
+- ✅ WebTransport (structural module)
 - ✅ 0-RTT (experimental: early data support, replay protection)
 - ✅ Congestion control (NewReno, BBR, CUBIC)
-
-All milestones M20-M39 are complete. See [Roadmap](milestones/roadmap.md) for details.

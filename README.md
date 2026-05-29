@@ -2,9 +2,9 @@
 
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-blue)
 ![CMake](https://img.shields.io/badge/build-CMake-informational)
-![Tests](https://img.shields.io/badge/tests-495%20passing-green)
+![Tests](https://img.shields.io/badge/tests-CMake%2FCTest-green)
 
-FlowQ is a modern C++ QUIC-like protocol library that builds deterministic protocol primitives first, then layers connection behavior and loopback tests without claiming production QUIC security.
+FlowQ is a C++20 QUIC transport library under production hardening. The current codebase provides deterministic QUIC transport primitives, connection-loop behavior, stream and flow-control state, recovery/congestion primitives, routing/retry helpers, OpenSSL-gated AES-128-GCM packet protection, and local session/endpoint adapters. It does not carry a production-candidate claim until external peer interop evidence and human review are recorded.
 
 ## Documentation
 
@@ -18,18 +18,16 @@ FlowQ is a modern C++ QUIC-like protocol library that builds deterministic proto
 - [Architecture](docs/reference/architecture.md) - System design overview
 - [API Reference](docs/api/html/index.html) - Generated API documentation (run `scripts/generate-docs.sh` to generate)
 
-## Design Overview
+## Current Architecture
 
-FlowQ is intentionally staged:
+FlowQ is organized around explicit protocol boundaries:
 
-1. Pure value codecs and protocol state machines.
-2. Deterministic unit tests without sockets or TLS.
-3. Connection-loop integration behind packet protection seams.
-4. Non-production loopback proof.
-5. Public QUIC library façade, UDP/ASIO adapter, examples, packaging, and CI.
-6. Fail-closed provider boundaries for future real TLS and packet protection.
-
-The current baseline is a testable QUIC-like core with an explicit crypto adapter seam and optional AEAD packet protection (gated behind `FLOWQ_ENABLE_OPENSSL_CRYPTO`). Real TLS 1.3 full handshake integration, production interoperability, and security audit are explicitly deferred.
+1. Value codecs for varints, frames, packet headers, transport parameters, and packet numbers.
+2. Deterministic connection-loop state for packet spaces, streams, ACK/loss, recovery, congestion, routing, retry, and lifecycle timers.
+3. Packet protection seams that reject test-only protectors when production protection is required.
+4. OpenSSL-gated AES-128-GCM packet protection and RFC 9001 header protection when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled.
+5. Public session, UDP/ASIO, endpoint-driver, diagnostics, fuzz, package-consumer, and CI surfaces.
+6. Structural HTTP/3, QPACK, WebTransport, 0-RTT, BBR, and CUBIC modules that are documented outside the production-candidate scope.
 
 ## Getting Started
 
@@ -67,7 +65,7 @@ The default Windows preset builds example executables alongside tests:
 - `flowq_example_udp_stream_echo`
 - `flowq_example_protection_policy`
 
-These examples demonstrate the current non-production QUIC-like library surface: deterministic in-memory stream exchange, a bounded local UDP smoke path, and packet-protection policy behavior showing that plaintext/test-only protection is rejected when production protection is required. They are not production QUIC, do not provide TLS, AEAD, header protection, congestion control, or interoperability guarantees, and should be treated as local smoke examples only.
+These examples demonstrate deterministic in-memory stream exchange, a bounded local UDP smoke path, and packet-protection policy behavior showing that plaintext/test-only protection is rejected when production protection is required. They are local smoke examples; they are not external peer interop evidence or TLS certificate-validation evidence.
 
 ### Install and package consumption
 
@@ -102,7 +100,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - `include/flowq/quic/frame.hpp`: structural frame codec.
 - `include/flowq/quic/packet_header.hpp`: structural packet header codec.
 - `include/flowq/quic/packet_pipeline.hpp`: packet assembly/parsing through protection seams.
-- `include/flowq/quic/openssl_aead_protector.hpp`: OpenSSL-backed AEAD packet protector (AES-128-GCM, ChaCha20-Poly1305, header protection, key updates) — gated behind `FLOWQ_ENABLE_OPENSSL_CRYPTO`.
+- `include/flowq/quic/openssl_aead_protector.hpp`: OpenSSL-backed AEAD packet protector (AES-128-GCM and header protection) — gated behind `FLOWQ_ENABLE_OPENSSL_CRYPTO`.
 - `include/flowq/quic/ack_loss.hpp`: ACK/loss and recovery primitives.
 - `include/flowq/quic/stream.hpp`: stream receive/send state and flow-control signals.
 - `include/flowq/quic/endpoint_driver.hpp`: production-shaped endpoint driver with explicit lifecycle, CID routing integration, and connection limits.
@@ -133,29 +131,34 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - **C++20** for value-oriented protocol code and strong type modeling.
 - **CMake presets** for repeatable configure/build/test commands.
 - **vcpkg** for dependency management.
-- **standalone Asio** for future UDP/timer integration boundaries.
+- **standalone Asio** for UDP/timer integration boundaries.
 - **stdexec** for sender/receiver-oriented execution direction.
 - **Catch2** for deterministic unit tests.
 
 ## Contribution Guide
 
-- Follow the milestone docs in `docs/milestones/` and keep `docs/plan.md` synchronized.
+- Keep implementation, tests, and production-gate documentation synchronized.
 - Use TDD for feature and bug work: add a focused failing test, verify RED, implement minimal GREEN, then refactor.
 - Keep changes atomic: implementation and direct tests together; docs in a separate commit when practical.
-- Do not introduce production TLS, AEAD, header protection, or security claims without an explicit adapter milestone.
+- Do not claim broader TLS, cipher-suite, peer-interop, or audited-security coverage without matching tests and readiness evidence.
 - Run the build and full CTest suite before considering work complete.
 
-## Current Status
+## Current Capability Snapshot
 
-**Phases 0-5 complete.** FlowQ has deterministic protocol primitives, TLS handshake adapter boundary, key lifecycle gates, congestion baseline, connection routing, endpoint driver, diagnostics, fuzz targets, and an opt-in interop harness. Recent hardening work added real AEAD packet protection (AES-128-GCM, ChaCha20-Poly1305), QPACK fixes, API surface hardening, fuzz targets, sanitizer CI gates, and noexcept move semantics across all movable types.
+- **Transport core**: QUIC varints, frames, packet headers, packet pipeline, packet-number helpers, transport parameters, ACK/loss, stream state, and flow-control frames.
+- **Connection behavior**: deterministic packet-space handling, connection lifecycle, recovery timers, congestion accounting, connection ID routing, version negotiation, retry helpers, and endpoint-driver lifecycle.
+- **Packet protection**: OpenSSL-backed AES-128-GCM packet protection with header protection when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled; unsupported cipher suites are rejected; creation fails closed when the OpenSSL crypto backend is not compiled in.
+- **Path validation primitives**: PATH_CHALLENGE/PATH_RESPONSE codec support and Application-space same-value response scheduling.
+- **Public surfaces**: session facade, UDP/ASIO smoke adapter, timer schedulers, diagnostics, examples, CMake package export, package-consumer check, fuzz targets, and sanitizer CI.
+- **Experimental surfaces**: HTTP/3/QPACK, WebTransport, 0-RTT, BBR, and CUBIC are structural modules and are not part of the production-candidate scope.
 
-**AEAD support** is available when OpenSSL is enabled via `FLOWQ_ENABLE_OPENSSL_CRYPTO`. The `openssl_aead_protector` implements the `packet_protector` interface with AES-128-GCM and ChaCha20-Poly1305, header protection per RFC 9001 §5.4, and key update support. When the flag is not set, the library falls back to the plaintext/test-only protector.
+The plaintext protector remains test-only and is rejected by production-required packet-protection policy.
 
-**495 tests passing** across protocol core, RFC compliance, integration, performance, fuzz, and AEAD modules.
+The test suite covers protocol core, RFC compliance, integration, performance, fuzz, and AEAD modules.
 
-FlowQ remains a **non-production** C++20 QUIC-like library baseline until interop validation against peer QUIC implementations (Phase 4) is complete and the release checklist in `docs/production/release-checklist.md` is fully satisfied.
+FlowQ is **non-production**. A production-candidate claim requires recorded peer interop results, release-gate evidence, and human review.
 
-See `docs/production/readiness-gate.md` for the exact evidence required before changing public wording from non-production baseline to production candidate. See `docs/plan.md` for the full milestone list and `docs/milestones/roadmap.md` for the detailed roadmap.
+See `docs/production/readiness-gate.md` for the current production-candidate gate.
 
 ### Production Hardening
 

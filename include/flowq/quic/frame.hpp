@@ -84,6 +84,14 @@ struct stream_data_blocked_frame {
     std::uint64_t maximum_stream_data{};
 };
 
+struct path_challenge_frame {
+    std::array<std::byte, 8> data{};
+};
+
+struct path_response_frame {
+    std::array<std::byte, 8> data{};
+};
+
 using frame = std::variant<
     padding_frame,
     ping_frame,
@@ -96,7 +104,9 @@ using frame = std::variant<
     max_data_frame,
     max_stream_data_frame,
     data_blocked_frame,
-    stream_data_blocked_frame>;
+    stream_data_blocked_frame,
+    path_challenge_frame,
+    path_response_frame>;
 
 struct frame_decode_result {
     std::vector<frame> frames;
@@ -232,6 +242,18 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
     return {flowq::buffer{output}, {}};
 }
 
+[[nodiscard]] inline frame_encode_result encode_path_validation_frame(
+    std::uint64_t type,
+    const std::array<std::byte, 8>& data,
+    const char* message) {
+    std::vector<std::byte> output;
+    if (!append_varint(output, type)) {
+        return {{}, codec_error(message)};
+    }
+    output.insert(output.end(), data.begin(), data.end());
+    return {flowq::buffer{output}, {}};
+}
+
 [[nodiscard]] inline bool read_varint_at(std::span<const std::byte> input, std::size_t& offset, std::uint64_t& value) {
     auto decoded = decode_varint(input.subspan(offset));
     if (!decoded.ok()) {
@@ -240,6 +262,20 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
 
     value = decoded.value;
     offset += decoded.bytes_read;
+    return true;
+}
+
+[[nodiscard]] inline bool read_path_validation_data(
+    std::span<const std::byte> input,
+    std::size_t& offset,
+    std::array<std::byte, 8>& data) {
+    if (input.size() - offset < data.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < data.size(); ++index) {
+        data[index] = input[offset + index];
+    }
+    offset += data.size();
     return true;
 }
 
@@ -293,6 +329,14 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
 
 [[nodiscard]] inline frame_encode_result encode_frame(const stream_data_blocked_frame& frame) {
     return detail::encode_stream_limit_frame(0x15, frame.stream_id, frame.maximum_stream_data, "failed to encode STREAM_DATA_BLOCKED frame");
+}
+
+[[nodiscard]] inline frame_encode_result encode_frame(const path_challenge_frame& frame) {
+    return detail::encode_path_validation_frame(0x1a, frame.data, "failed to encode PATH_CHALLENGE frame");
+}
+
+[[nodiscard]] inline frame_encode_result encode_frame(const path_response_frame& frame) {
+    return detail::encode_path_validation_frame(0x1b, frame.data, "failed to encode PATH_RESPONSE frame");
 }
 
 [[nodiscard]] inline frame_decode_result decode_frames(std::span<const std::byte> input) {
@@ -462,6 +506,24 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
                 return {{}, codec_error("truncated STREAM_DATA_BLOCKED frame")};
             }
             frames.emplace_back(stream_data_blocked_frame{stream_id, maximum_stream_data});
+            continue;
+        }
+
+        if (type == 0x1a) {
+            std::array<std::byte, 8> data{};
+            if (!detail::read_path_validation_data(input, offset, data)) {
+                return {{}, codec_error("truncated PATH_CHALLENGE frame")};
+            }
+            frames.emplace_back(path_challenge_frame{data});
+            continue;
+        }
+
+        if (type == 0x1b) {
+            std::array<std::byte, 8> data{};
+            if (!detail::read_path_validation_data(input, offset, data)) {
+                return {{}, codec_error("truncated PATH_RESPONSE frame")};
+            }
+            frames.emplace_back(path_response_frame{data});
             continue;
         }
 
