@@ -31,8 +31,10 @@ add_executable(
     unit/quic_initial_keys_tests.cpp
     unit/quic_initial_packet_protector_tests.cpp
     unit/quic_interop_tests.cpp
+    unit/quic_key_derivation_tests.cpp
     unit/quic_key_lifecycle_tests.cpp
     unit/quic_lifecycle_scheduler_tests.cpp
+    unit/quic_openssl_aead_protector_tests.cpp
     unit/quic_packet_header_tests.cpp
     unit/quic_packet_pipeline_tests.cpp
     unit/quic_protocol_compliance_tests.cpp

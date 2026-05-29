@@ -206,41 +206,29 @@ public:
 
     /// Encode a list of header fields.
     [[nodiscard]] encode_result encode(const std::vector<header_field>& headers) {
-        std::vector<std::byte> output;
+        std::vector<std::byte> body;
         
-        // Required Insert Count (number of dynamic table insertions)
-        std::uint64_t insert_count = 0;
-        for (const auto& header : headers) {
-            if (!find_in_static_table_fast(header.name, header.value).has_value()) {
-                // Will be inserted into dynamic table
-                ++insert_count;
-            }
-        }
-        
-        // Encode Required Insert Count
-        if (insert_count == 0) {
-            output.push_back(std::byte{0x00});
-        } else {
-            encode_varint_to(output, insert_count);
-        }
-        
-        // Delta Base (0 for now)
-        output.push_back(std::byte{0x00});
+        // Track the base index (total dynamic table entries referenced or inserted)
+        std::uint64_t base_index = 0;
+        std::uint64_t required_insert_count = 0;
         
         for (const auto& header : headers) {
             // Try static table first (fast path)
             auto static_index = find_in_static_table_fast(header.name, header.value);
             if (static_index.has_value()) {
                 // Static table reference with value
-                encode_static_reference(output, *static_index);
+                encode_static_reference(body, *static_index);
                 continue;
             }
             
             // Try dynamic table
             auto dynamic_index = dynamic_table_.find(header.name, header.value);
             if (dynamic_index.has_value()) {
-                // Dynamic table reference
-                encode_dynamic_reference(output, *dynamic_index);
+                // Dynamic table reference — track the referenced index
+                encode_dynamic_reference(body, *dynamic_index);
+                if (*dynamic_index >= base_index) {
+                    base_index = *dynamic_index + 1;
+                }
                 continue;
             }
             
@@ -248,9 +236,11 @@ public:
             auto static_name_index = find_static_name_fast(header.name);
             if (static_name_index.has_value()) {
                 // Static name reference + literal value
-                encode_static_name_with_literal_value(output, *static_name_index, header.value);
+                encode_static_name_with_literal_value(body, *static_name_index, header.value);
                 // Insert into dynamic table
                 dynamic_table_.add(header.name, header.value);
+                ++required_insert_count;
+                base_index = required_insert_count;
                 continue;
             }
             
@@ -258,17 +248,44 @@ public:
             auto dynamic_name_index = dynamic_table_.find_name(header.name);
             if (dynamic_name_index.has_value()) {
                 // Dynamic name reference + literal value
-                encode_dynamic_name_with_literal_value(output, *dynamic_name_index, header.value);
+                encode_dynamic_name_with_literal_value(body, *dynamic_name_index, header.value);
                 // Insert into dynamic table
                 dynamic_table_.add(header.name, header.value);
+                ++required_insert_count;
+                base_index = required_insert_count;
                 continue;
             }
             
             // Literal name and value
-            encode_literal_header(output, header.name, header.value);
+            encode_literal_header(body, header.name, header.value);
             // Insert into dynamic table
             dynamic_table_.add(header.name, header.value);
+            ++required_insert_count;
+            base_index = required_insert_count;
         }
+        
+        // Build output with prefix (RIC + Delta Base) followed by body
+        std::vector<std::byte> output;
+        
+        // Encode Required Insert Count
+        if (required_insert_count == 0) {
+            output.push_back(std::byte{0x00});
+        } else {
+            encode_varint_to(output, required_insert_count);
+        }
+        
+        // Encode Delta Base: difference between base index and required insert count.
+        // Per RFC 9204 §4.5.2:
+        //   T=0 (sign bit): Base = Required Insert Count + Delta Base
+        //   T=1 (sign bit): Base = Required Insert Count - Delta Base
+        // Since base_index >= required_insert_count in our encoding, use T=0.
+        std::uint64_t delta = base_index - required_insert_count;
+        // Encode sign bit (0 for positive) + 7-bit delta value
+        std::uint8_t delta_base_byte = static_cast<std::uint8_t>(delta & 0x7f);
+        output.push_back(static_cast<std::byte>(delta_base_byte));
+        
+        // Append encoded body
+        output.insert(output.end(), body.begin(), body.end());
         
         return {flowq::buffer{output}, {}};
     }
@@ -394,16 +411,12 @@ private:
     }
 
     static void encode_varint_to(std::vector<std::byte>& output, std::uint64_t value) {
-        if (value < 128) {
-            output.push_back(static_cast<std::byte>(value));
-        } else {
+        // LEB128-style encoding: high bit set on all bytes except the last
+        while (value >= 0x80) {
             output.push_back(static_cast<std::byte>(0x80 | (value & 0x7f)));
             value >>= 7;
-            while (value > 0) {
-                output.push_back(static_cast<std::byte>(value & 0x7f));
-                value >>= 7;
-            }
         }
+        output.push_back(static_cast<std::byte>(value));
     }
 };
 
@@ -476,12 +489,20 @@ private:
             return std::nullopt;
         }
         
-        // Decode length
-        auto length = static_cast<std::uint8_t>(data[offset++]);
-        if (length & 0x80) {
-            // Multi-byte length
-            length &= 0x7f;
-            // Simplified: assume single byte for now
+        // Decode length using LEB128-style variable-length integer.
+        // High bit (0x80) of each byte is the continuation flag:
+        //   1 = more bytes follow, 0 = final byte.
+        // Bits 6-0 of each byte contribute 7 bits to the integer value
+        // (least significant group first).
+        std::uint64_t length = 0;
+        int shift = 0;
+        while (offset < size) {
+            auto byte = static_cast<std::uint8_t>(data[offset++]);
+            length |= static_cast<std::uint64_t>(byte & 0x7f) << shift;
+            if (!(byte & 0x80)) {
+                break;  // Final byte (continuation bit clear)
+            }
+            shift += 7;
         }
         
         if (offset + length > size) {
