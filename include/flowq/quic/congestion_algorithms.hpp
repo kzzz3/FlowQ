@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cmath>
+#include <limits>
 
 namespace flowq::quic {
 
@@ -217,7 +218,7 @@ public:
 private:
     std::uint64_t bytes_in_flight_{};
     std::uint64_t congestion_window_{default_initial_window()};
-    std::uint64_t ssthresh_{UINT64_MAX};
+    std::uint64_t ssthresh_{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t W_max_{};
     std::chrono::steady_clock::time_point epoch_start_{};
     congestion_phase phase_{congestion_phase::slow_start};

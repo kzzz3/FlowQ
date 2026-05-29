@@ -6,11 +6,11 @@
 
 #include <algorithm>
 #include <string>
-#include <stdexcept>
 #include <utility>
 
 namespace flowq::quic {
 
+/// @note This class is NOT thread-safe. All methods must be called from the same thread.
 class connection_loop {
 public:
     explicit connection_loop(connection_loop_config config)

@@ -315,6 +315,7 @@ public:
     }
 
 private:
+    /// @pre The socket must outlive this session.
     ::asio::ip::udp::socket* socket_;
     ::asio::ip::udp::endpoint peer_;
     std::size_t receive_max_size_;

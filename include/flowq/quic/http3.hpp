@@ -94,8 +94,17 @@ struct goaway_frame {
 /// HTTP/3 frame variant.
 using http3_frame_variant = std::variant<data_frame, headers_frame, goaway_frame>;
 
+/// HTTP/3 encode result.
+struct http3_encode_result {
+    flowq::buffer payload;
+    flowq::error error;
+    [[nodiscard]] bool ok() const noexcept { return error.ok(); }
+    [[nodiscard]] std::size_t size() const noexcept { return payload.size(); }
+    [[nodiscard]] const std::byte* data() const noexcept { return payload.data(); }
+};
+
 /// Encode an HTTP/3 DATA frame.
-[[nodiscard]] inline flowq::buffer encode_data_frame(const flowq::buffer& payload) {
+[[nodiscard]] inline http3_encode_result encode_data_frame(const flowq::buffer& payload) {
     std::vector<std::byte> output;
 
     // Encode frame type (0x00 = DATA)
@@ -110,16 +119,16 @@ using http3_frame_variant = std::variant<data_frame, headers_frame, goaway_frame
 
     // Append payload
     output.insert(output.end(), payload.data(), payload.data() + payload.size());
-    return flowq::buffer{output};
+    return {flowq::buffer{output}, {}};
 }
 
 /// Encode an HTTP/3 GOAWAY frame.
-[[nodiscard]] inline flowq::buffer encode_goaway_frame(std::uint64_t stream_id) {
+[[nodiscard]] inline http3_encode_result encode_goaway_frame(std::uint64_t stream_id) {
     std::vector<std::byte> output;
     std::byte id_buf[8]{};
     auto id_result = encode_varint(stream_id, std::span<std::byte>{id_buf, 8});
     if (!id_result.ok()) {
-        return flowq::buffer{};
+        return {{}, flowq::error{flowq::error_code::internal_error, "failed to encode GOAWAY stream id varint"}};
     }
 
     // Encode frame type (0x07 = GOAWAY)
@@ -135,11 +144,11 @@ using http3_frame_variant = std::variant<data_frame, headers_frame, goaway_frame
     // Encode stream ID
     output.insert(output.end(), id_buf, id_buf + id_result.bytes_written);
 
-    return flowq::buffer{output};
+    return {flowq::buffer{output}, {}};
 }
 
 /// Encode HTTP/3 SETTINGS frame.
-[[nodiscard]] inline flowq::buffer encode_settings_frame(const settings& s) {
+[[nodiscard]] inline http3_encode_result encode_settings_frame(const settings& s) {
     std::vector<std::byte> output;
 
     // Encode frame type (0x04 = SETTINGS)
@@ -176,7 +185,7 @@ using http3_frame_variant = std::variant<data_frame, headers_frame, goaway_frame
 
     // Append payload
     output.insert(output.end(), payload.begin(), payload.end());
-    return flowq::buffer{output};
+    return {flowq::buffer{output}, {}};
 }
 
 } // namespace flowq::quic::http3

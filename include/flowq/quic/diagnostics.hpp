@@ -66,10 +66,13 @@ public:
     }
 };
 
+/// @note The sink pointer is read without synchronization. Ensure the sink outlives this instance and is not modified concurrently.
 class diagnostics {
 public:
+    /// @pre If non-null, the sink must outlive this diagnostics instance.
     explicit diagnostics(diagnostic_sink* sink = nullptr) : sink_{sink} {}
 
+    /// @pre If non-null, the sink must outlive this diagnostics instance.
     void set_sink(diagnostic_sink* sink) noexcept {
         sink_ = sink;
     }
@@ -175,6 +178,7 @@ public:
     }
 
 private:
+    /// @pre Non-owning pointer; must outlive this instance.
     diagnostic_sink* sink_{};
 };
 

@@ -20,8 +20,11 @@ struct session_config {
     connection_id local_connection_id;
     connection_id remote_connection_id;
     flowq::endpoint peer;
+    /// @pre The protector must outlive this session.
     const packet_protector* initial_protector{};
+    /// @pre The protector must outlive this session.
     const packet_protector* handshake_protector{};
+    /// @pre The protector must outlive this session.
     const packet_protector* application_protector{};
     packet_pipeline_config pipeline{};
     std::uint64_t initial_stream_send_max_data{std::numeric_limits<std::uint64_t>::max()};
@@ -37,6 +40,7 @@ struct session_config {
     std::uint64_t max_udp_payload_size{1200};
     std::uint64_t active_connection_id_limit{2};
     bool disable_active_migration{};
+    /// @pre The adapter must outlive this session.
     tls_handshake_adapter* tls_adapter{};
     key_lifecycle_state key_lifecycle{};
     std::chrono::milliseconds closing_draining_timeout{std::chrono::seconds{3}};
@@ -75,6 +79,7 @@ inline void apply_transport_parameters(session_config& config, const transport_p
 // Note: apply_transport_parameters for session_config is defined above.
 // The connection_loop_config variant is in connection.hpp.
 
+/// @note This class is NOT thread-safe. All methods must be called from the same thread.
 class session {
 public:
     explicit session(session_config config)

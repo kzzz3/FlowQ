@@ -3,6 +3,7 @@
 #include <flowq/buffer.hpp>
 #include <flowq/error.hpp>
 #include <flowq/quic/http3.hpp>
+#include <flowq/quic/http3_request.hpp>
 
 #include <cstdint>
 #include <functional>
@@ -12,25 +13,12 @@
 
 namespace flowq::quic::http3 {
 
-/// HTTP/3 request (simplified for server).
-struct server_request {
-    std::string method;
-    std::string path;
-    std::string authority;
-    std::string scheme;
-    std::unordered_map<std::string, std::string> headers;
-    flowq::buffer body;
-};
-
-/// HTTP/3 response (simplified for server).
-struct server_response {
-    std::uint64_t status_code{};
-    std::unordered_map<std::string, std::string> headers;
-    flowq::buffer body;
-};
+// Backward-compatible aliases for the canonical request/response types from http3_request.hpp.
+using server_request = request;
+using server_response = response;
 
 /// HTTP/3 request handler function type.
-using request_handler = std::function<server_response(const server_request&)>;
+using request_handler = std::function<response(const request&)>;
 
 /// HTTP/3 server configuration.
 struct server_config {
@@ -55,6 +43,7 @@ struct server_result {
     }
 };
 
+/// @warning This is a structural stub for testing only. NOT production-ready.
 /// HTTP/3 server.
 /// Handles HTTP/3 requests and generates responses.
 class server {
@@ -98,7 +87,7 @@ public:
     }
 
     /// Process an incoming HTTP/3 request.
-    [[nodiscard]] server_response handle_request(const server_request& req) {
+    [[nodiscard]] response handle_request(const request& req) {
         // Find handler for path
         auto it = handlers_.find(req.path);
         if (it != handlers_.end()) {
@@ -106,13 +95,13 @@ public:
         }
 
         // Default 404 response
-        server_response response{};
-        response.status_code = 404;
-        response.headers["content-type"] = "text/plain";
-        response.body = flowq::buffer{std::vector<std::byte>{
+        response result{};
+        result.status_code = 404;
+        result.headers["content-type"] = "text/plain";
+        result.body = flowq::buffer{std::vector<std::byte>{
             std::byte{0x4e}, std::byte{0x6f}, std::byte{0x74}, std::byte{0x20}, std::byte{0x46}, std::byte{0x6f}, std::byte{0x75}, std::byte{0x6e}, std::byte{0x64}  // "Not Found"
         }};
-        return response;
+        return result;
     }
 
     /// Get server configuration.

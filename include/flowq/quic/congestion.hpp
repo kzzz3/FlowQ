@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace flowq::quic {
@@ -45,6 +46,7 @@ struct congestion_packet {
     return std::max(rtt, minimum) + max_ack_delay;
 }
 
+/// @note This class is NOT thread-safe.
 class congestion_controller {
 public:
     explicit congestion_controller() = default;
@@ -159,7 +161,7 @@ public:
 private:
     std::uint64_t bytes_in_flight_{};
     std::uint64_t congestion_window_{default_initial_window()};
-    std::uint64_t ssthresh_{UINT64_MAX};
+    std::uint64_t ssthresh_{std::numeric_limits<std::uint64_t>::max()};
     congestion_phase phase_{congestion_phase::slow_start};
     rtt_estimator rtt_{};
 };

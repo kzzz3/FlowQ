@@ -50,6 +50,7 @@ struct interop_config {
     std::uint64_t timeout_ms{30000};
 };
 
+/// @warning This is a structural stub for testing only. NOT production-ready.
 /// Interop test runner.
 /// Provides a framework for testing FlowQ against other QUIC implementations.
 class interop_runner {
