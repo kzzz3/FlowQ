@@ -143,7 +143,6 @@ struct sent_packet_stream_ranges {
 using connection_loop_action = std::variant<outbound_datagram, received_packet_event, close_action>;
 
 // Detail namespace with helper functions
-#ifndef FLOWQ_HIDE_DETAIL
 namespace detail {
 
 [[nodiscard]] inline bool is_ack_eliciting(const std::vector<frame>& frames) noexcept {
@@ -185,6 +184,5 @@ namespace detail {
 }
 
 } // namespace detail
-#endif // FLOWQ_HIDE_DETAIL
 
 } // namespace flowq::quic
