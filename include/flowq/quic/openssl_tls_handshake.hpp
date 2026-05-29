@@ -6,11 +6,14 @@
 
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <vector>
 
 #if defined(FLOWQ_ENABLE_OPENSSL_QUIC_TLS)
+#include <openssl/core_dispatch.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/tls1.h>
 #endif
 
 namespace flowq::quic {
@@ -98,6 +101,16 @@ public:
 
     [[nodiscard]] tls_key_availability key_availability() const noexcept override {
         return keys_;
+    }
+
+    [[nodiscard]] crypto_provider_status provider_status() const noexcept override {
+        const auto suite = negotiated_cipher_suite();
+        if (!level_key_schedule_owned(tls_encryption_level::application) || suite == cipher_suite::unknown) {
+            return crypto_provider_status::unavailable();
+        }
+        return crypto_provider_status::available(
+            suite,
+            crypto_capabilities{false, false, false, false, true});
     }
 
     [[nodiscard]] flowq::error receive_crypto(crypto_bytes bytes) override {
@@ -242,21 +255,30 @@ private:
 
     // OpenSSL callback: receive traffic secret for key export
     static int yield_secret_cb(SSL* /*ssl*/, uint32_t prot_level, int direction,
-                               const unsigned char* /*secret*/, size_t /*len*/, void* arg) {
+                               const unsigned char* secret, size_t len, void* arg) {
         auto* self = static_cast<openssl_tls_handshake_adapter*>(arg);
 
-        auto level = map_protection_level(prot_level);
+        auto mapped_level = map_protection_level(prot_level);
+        if (!mapped_level.has_value() || (direction != 0 && direction != 1) || secret == nullptr || len == 0) {
+            self->state_ = handshake_state::failed;
+            return 0;
+        }
+        auto level = *mapped_level;
+
+        const auto* first = reinterpret_cast<const std::byte*>(secret);
+        auto& stored_secret = self->secret_for(level, direction);
+        stored_secret.assign(first, first + len);
 
         // Update key availability
         switch (level) {
         case tls_encryption_level::initial:
-            if (direction == 0) self->keys_.initial = true;  // RX
+            self->keys_.initial = self->level_key_schedule_owned(level);
             break;
         case tls_encryption_level::handshake:
-            if (direction == 0) self->keys_.handshake = true;  // RX
+            self->keys_.handshake = self->level_key_schedule_owned(level);
             break;
         case tls_encryption_level::application:
-            if (direction == 0) self->keys_.application = true;  // RX
+            self->keys_.application = self->level_key_schedule_owned(level);
             break;
         }
 
@@ -283,7 +305,7 @@ private:
     }
 
     // OpenSSL callback: receive TLS alert
-    static int alert_cb(SSL* /*ssl*/, uint8_t alert_code, void* arg) {
+    static int alert_cb(SSL* /*ssl*/, unsigned char alert_code, void* arg) {
         auto* self = static_cast<openssl_tls_handshake_adapter*>(arg);
         self->alert_received_ = true;
         self->alert_code_ = alert_code;
@@ -291,35 +313,84 @@ private:
         return 1;
     }
 
+    template <typename Callback>
+    [[nodiscard]] static void (*dispatch_callback(Callback callback) noexcept)(void) {
+        return reinterpret_cast<void (*)(void)>(callback);
+    }
+
     // Build the OSSL_DISPATCH table for SSL_set_quic_tls_cbs
     static const OSSL_DISPATCH* quic_tls_dispatch_table() noexcept {
-        // Callback IDs from openssl/core_dispatch.h
         static const OSSL_DISPATCH table[] = {
-            {2001, reinterpret_cast<OSSL_FUNC*>(crypto_send_cb)},
-            {2002, reinterpret_cast<OSSL_FUNC*>(crypto_recv_rcd_cb)},
-            {2003, reinterpret_cast<OSSL_FUNC*>(crypto_release_rcd_cb)},
-            {2004, reinterpret_cast<OSSL_FUNC*>(yield_secret_cb)},
-            {2005, reinterpret_cast<OSSL_FUNC*>(got_transport_params_cb)},
-            {2006, reinterpret_cast<OSSL_FUNC*>(alert_cb)},
-            {0, nullptr}  // sentinel
+            {OSSL_FUNC_SSL_QUIC_TLS_CRYPTO_SEND, dispatch_callback(crypto_send_cb)},
+            {OSSL_FUNC_SSL_QUIC_TLS_CRYPTO_RECV_RCD, dispatch_callback(crypto_recv_rcd_cb)},
+            {OSSL_FUNC_SSL_QUIC_TLS_CRYPTO_RELEASE_RCD, dispatch_callback(crypto_release_rcd_cb)},
+            {OSSL_FUNC_SSL_QUIC_TLS_YIELD_SECRET, dispatch_callback(yield_secret_cb)},
+            {OSSL_FUNC_SSL_QUIC_TLS_GOT_TRANSPORT_PARAMS, dispatch_callback(got_transport_params_cb)},
+            {OSSL_FUNC_SSL_QUIC_TLS_ALERT, dispatch_callback(alert_cb)},
+            OSSL_DISPATCH_END
         };
         return table;
     }
 
     // Map OpenSSL protection level to FlowQ encryption level
-    [[nodiscard]] static tls_encryption_level map_protection_level(uint32_t prot_level) noexcept {
+    [[nodiscard]] static std::optional<tls_encryption_level> map_protection_level(uint32_t prot_level) noexcept {
         // OSSL_RECORD_PROTECTION_LEVEL_* constants
         switch (prot_level) {
         case 0: return tls_encryption_level::initial;      // NONE
         case 1: return tls_encryption_level::handshake;     // HANDSHAKE
         case 2: return tls_encryption_level::application;   // APPLICATION
-        default: return tls_encryption_level::initial;
+        default: return std::nullopt;
         }
     }
 
     // Update current TX level
     void update_tx_level(tls_encryption_level level) noexcept {
         current_tx_level_ = level;
+    }
+
+    [[nodiscard]] std::vector<std::byte>& secret_for(tls_encryption_level level, int direction) noexcept {
+        const auto is_tx = direction == 1;
+        switch (level) {
+        case tls_encryption_level::initial:
+            return is_tx ? initial_tx_secret_ : initial_rx_secret_;
+        case tls_encryption_level::handshake:
+            return is_tx ? handshake_tx_secret_ : handshake_rx_secret_;
+        case tls_encryption_level::application:
+            return is_tx ? application_tx_secret_ : application_rx_secret_;
+        }
+        return initial_rx_secret_;
+    }
+
+    [[nodiscard]] bool level_key_schedule_owned(tls_encryption_level level) const noexcept {
+        switch (level) {
+        case tls_encryption_level::initial:
+            return !initial_rx_secret_.empty() && !initial_tx_secret_.empty();
+        case tls_encryption_level::handshake:
+            return !handshake_rx_secret_.empty() && !handshake_tx_secret_.empty();
+        case tls_encryption_level::application:
+            return !application_rx_secret_.empty() && !application_tx_secret_.empty();
+        }
+        return false;
+    }
+
+    [[nodiscard]] cipher_suite negotiated_cipher_suite() const noexcept {
+        if (ssl_ == nullptr) {
+            return cipher_suite::unknown;
+        }
+        const auto* current_cipher = SSL_get_current_cipher(ssl_);
+        if (current_cipher == nullptr) {
+            return cipher_suite::unknown;
+        }
+        switch (SSL_CIPHER_get_id(current_cipher)) {
+        case TLS1_3_CK_AES_128_GCM_SHA256:
+            return cipher_suite::aes_128_gcm_sha256;
+        case TLS1_3_CK_AES_256_GCM_SHA384:
+            return cipher_suite::aes_256_gcm_sha384;
+        case TLS1_3_CK_CHACHA20_POLY1305_SHA256:
+            return cipher_suite::chacha20_poly1305_sha256;
+        default:
+            return cipher_suite::unknown;
+        }
     }
 
     // Drive handshake after receiving new CRYPTO bytes
@@ -377,6 +448,14 @@ private:
     std::vector<std::byte> application_inbound_;
     std::size_t application_read_pos_{};
 
+    // TLS traffic secrets captured from OpenSSL callbacks.
+    std::vector<std::byte> initial_rx_secret_;
+    std::vector<std::byte> initial_tx_secret_;
+    std::vector<std::byte> handshake_rx_secret_;
+    std::vector<std::byte> handshake_tx_secret_;
+    std::vector<std::byte> application_rx_secret_;
+    std::vector<std::byte> application_tx_secret_;
+
     // Peer transport parameters
     std::vector<std::byte> peer_transport_params_;
 
@@ -390,7 +469,7 @@ private:
 
 #else  // !FLOWQ_ENABLE_OPENSSL_QUIC_TLS
 
-// Stub implementation when OpenSSL QUIC TLS is disabled
+// Fail-closed adapter used when OpenSSL QUIC TLS is disabled at build time.
 class openssl_tls_handshake_adapter final : public tls_handshake_adapter {
 public:
     explicit openssl_tls_handshake_adapter(openssl_tls_config) {}

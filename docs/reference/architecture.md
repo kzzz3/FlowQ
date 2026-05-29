@@ -12,7 +12,7 @@ FlowQ is a modern C++20 QUIC-like protocol library that builds deterministic pro
 │  session.hpp, udp_session.hpp, endpoint_driver.hpp          │
 ├─────────────────────────────────────────────────────────────┤
 │                  Connection Layer                            │
-│  connection.hpp, session.hpp, recovery_scheduler.hpp        │
+│  connection.hpp, session.hpp, timer schedulers              │
 ├─────────────────────────────────────────────────────────────┤
 │                  Protocol Layer                              │
 │  packet_pipeline.hpp, ack_loss.hpp, congestion.hpp          │
@@ -44,12 +44,14 @@ FlowQ is a modern C++20 QUIC-like protocol library that builds deterministic pro
 - **connection.hpp**: Deterministic connection loop with packet space management
 - **session.hpp**: Public session façade over connection loop
 - **stream.hpp**: Stream receive/send state with flow control
+- **recovery_scheduler.hpp**: ASIO sender for deterministic recovery timers
+- **lifecycle_scheduler.hpp**: ASIO sender for idle, closing, and draining lifecycle timers
+- **timer_scheduler.hpp**: Unified ASIO sender that selects the earliest recovery or lifecycle timer
 
 ### Recovery and Congestion
 
 - **ack_loss.hpp**: ACK/loss detection, RTT estimation, PTO
 - **congestion.hpp**: NewReno-style congestion controller
-- **recovery_scheduler.hpp**: ASIO-based recovery timer scheduling
 
 ### Security Boundaries
 

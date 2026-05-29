@@ -9,6 +9,7 @@
 #include <span>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -124,6 +125,30 @@ flowq::quic::session_config make_config(
     return config;
 }
 
+flowq::quic::connection_loop make_loop(
+    flowq::quic::connection_id local,
+    flowq::quic::connection_id remote,
+    flowq::endpoint peer,
+    const flowq::quic::packet_protector& protector) {
+    return flowq::quic::connection_loop{flowq::quic::connection_loop_config{
+        flowq::quic::connection_role::client,
+        1,
+        std::move(local),
+        std::move(remote),
+        std::move(peer),
+        &protector,
+        &protector,
+        &protector,
+        flowq::quic::packet_pipeline_config{1200}
+    }};
+}
+
+flowq::quic::outbound_datagram require_single_outbound(std::vector<flowq::quic::connection_loop_action> actions) {
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::outbound_datagram>(actions[0]));
+    return std::get<flowq::quic::outbound_datagram>(std::move(actions[0]));
+}
+
 } // namespace
 
 TEST_CASE("QUIC session public header exposes basic client configuration") {
@@ -208,7 +233,7 @@ TEST_CASE("QUIC session receives Application datagrams as stream deliveries") {
     REQUIRE(sent.ok());
     REQUIRE(sent.datagrams.size() == 1);
 
-    auto received = server.on_datagram(flowq::quic::inbound_datagram{std::move(sent.datagrams[0].payload), sent.datagrams[0].peer});
+    auto received = server.on_datagram(flowq::quic::inbound_datagram{std::move(sent.datagrams[0].payload), flowq::endpoint{"client", 1111, "hq-interop"}});
 
     REQUIRE(received.ok());
     REQUIRE(received.stream_deliveries.size() == 1);
@@ -235,7 +260,7 @@ TEST_CASE("QUIC session acknowledges received Application datagrams") {
     auto sent = client.flush(at(0ms));
     REQUIRE(sent.ok());
     REQUIRE(sent.datagrams.size() == 1);
-    REQUIRE(server.on_datagram(flowq::quic::inbound_datagram{std::move(sent.datagrams[0].payload), sent.datagrams[0].peer}).ok());
+    REQUIRE(server.on_datagram(flowq::quic::inbound_datagram{std::move(sent.datagrams[0].payload), flowq::endpoint{"client", 1111, "hq-interop"}}).ok());
 
     auto acked = server.acknowledge(flowq::quic::packet_number_space::application);
 
@@ -262,6 +287,68 @@ TEST_CASE("QUIC session forwards packet-space discard gates") {
     REQUIRE(acked.ok());
     CHECK(acked.datagrams.empty());
     CHECK(acked.closes.empty());
+}
+
+TEST_CASE("QUIC session rejects stream work after peer connection close") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto peer = make_loop(
+        cid({0x01}),
+        cid({0x02}),
+        flowq::endpoint{"server", 4433, "hq-interop"},
+        protector);
+    auto session = flowq::quic::session{make_config(
+        cid({0x02}),
+        cid({0x01}),
+        flowq::endpoint{"client", 1111, "hq-interop"},
+        protector)};
+
+    peer.queue_initial({flowq::quic::frame{flowq::quic::connection_close_frame{0, 0, "peer closed"}}});
+    peer.flush(at(0ms));
+    auto datagram = require_single_outbound(peer.drain_actions());
+
+    auto received = session.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer});
+    CHECK_FALSE(received.ok());
+    REQUIRE(received.closes.size() == 1);
+    CHECK(received.error.code() == flowq::error_code::connection_closed);
+
+    auto appended = session.append_stream_data(0, text("late"));
+    CHECK_FALSE(appended.ok());
+    CHECK(appended.error.code() == flowq::error_code::connection_closed);
+
+    auto queued = session.queue_stream_data({0});
+    CHECK_FALSE(queued.ok());
+    CHECK(queued.error.code() == flowq::error_code::connection_closed);
+
+    auto flushed = session.flush(at(1ms));
+    CHECK(flushed.ok());
+    CHECK(flushed.datagrams.empty());
+    CHECK(flushed.closes.empty());
+}
+
+TEST_CASE("QUIC session exposes lifecycle timer and returns idle timeout close") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto config = make_config(
+        cid({0x01}),
+        cid({0x02}),
+        flowq::endpoint{"server", 4433, "hq-interop"},
+        protector);
+    config.max_idle_timeout = 10ms;
+    auto session = flowq::quic::session{std::move(config)};
+
+    REQUIRE(session.append_stream_data(0, text("hello")).ok());
+    REQUIRE(session.queue_stream_data({0}).ok());
+    REQUIRE(session.flush(at(0ms)).ok());
+
+    auto timer = session.next_lifecycle_timer(at(1ms));
+    REQUIRE(timer.has_value());
+    CHECK(timer->kind == flowq::quic::connection_lifecycle_timer_kind::idle);
+    CHECK(timer->deadline == at(10ms));
+
+    auto expired = session.on_lifecycle_timer(timer->kind, timer->deadline);
+
+    CHECK_FALSE(expired.ok());
+    REQUIRE(expired.closes.size() == 1);
+    CHECK(expired.error.code() == flowq::error_code::timeout);
 }
 
 TEST_CASE("QUIC session does not arm Application recovery timer before handshake confirmation") {

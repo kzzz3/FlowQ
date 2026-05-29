@@ -1,9 +1,11 @@
 #pragma once
 
+#include <flowq/quic/connection_packet_spaces.hpp>
 #include <flowq/quic/connection_types.hpp>
 #include <flowq/quic/congestion.hpp>
 
 #include <algorithm>
+#include <string>
 #include <stdexcept>
 #include <utility>
 
@@ -13,25 +15,35 @@ class connection_loop {
 public:
     explicit connection_loop(connection_loop_config config)
         : config_{std::move(config)},
-          initial_sent_{packet_number_space::initial},
-          handshake_sent_{packet_number_space::handshake},
-          application_sent_{packet_number_space::application},
           send_streams_{config_.initial_stream_send_max_data},
-          connection_send_max_data_{config_.initial_connection_send_max_data} {}
+          connection_send_max_data_{config_.initial_connection_send_max_data},
+          peer_address_validated_{config_.peer_address_validated} {}
 
     void queue_initial(std::vector<frame> frames) {
-        initial_queue_ = std::move(frames);
+        if (!active()) {
+            return;
+        }
+        packet_spaces_.get(packet_number_space::initial).queue = std::move(frames);
     }
 
     void queue_handshake(std::vector<frame> frames) {
-        handshake_queue_ = std::move(frames);
+        if (!active()) {
+            return;
+        }
+        packet_spaces_.get(packet_number_space::handshake).queue = std::move(frames);
     }
 
     void queue_application(std::vector<frame> frames) {
-        application_queue_ = std::move(frames);
+        if (!active()) {
+            return;
+        }
+        packet_spaces_.get(packet_number_space::application).queue = std::move(frames);
     }
 
     [[nodiscard]] stream_operation_result append_stream_data(std::uint64_t stream_id, const flowq::buffer& data) {
+        if (!active()) {
+            return {flowq::error{flowq::error_code::connection_closed, "connection is closed"}};
+        }
         return send_streams_.append(stream_id, data);
     }
 
@@ -40,6 +52,10 @@ public:
         std::size_t max_frames,
         std::size_t max_stream_data_size) {
         stream_frame_schedule_result result{};
+        if (!active()) {
+            result.error = flowq::error{flowq::error_code::connection_closed, "connection is closed"};
+            return result;
+        }
         result.frames.reserve(std::min(max_frames, stream_ids.size()));
         if (max_frames == 0) {
             return result;
@@ -91,12 +107,27 @@ public:
     }
 
     void flush(std::chrono::steady_clock::time_point sent_at) {
+        if (!active()) {
+            return;
+        }
         refresh_key_lifecycle();
+        if (!active()) {
+            return;
+        }
         pump_tls_crypto();
         refresh_key_lifecycle();
-        flush_space(packet_number_space::initial, initial_queue_, next_initial_packet_number_, sent_at);
-        flush_space(packet_number_space::handshake, handshake_queue_, next_handshake_packet_number_, sent_at);
-        flush_space(packet_number_space::application, application_queue_, next_application_packet_number_, sent_at);
+        if (!active()) {
+            return;
+        }
+        flush_space(packet_number_space::initial, sent_at);
+        if (!active()) {
+            return;
+        }
+        flush_space(packet_number_space::handshake, sent_at);
+        if (!active()) {
+            return;
+        }
+        flush_space(packet_number_space::application, sent_at);
     }
 
     void update_rtt(const rtt_sample& sample) {
@@ -104,7 +135,13 @@ public:
     }
 
     [[nodiscard]] std::optional<connection_recovery_timer> next_recovery_timer(std::chrono::steady_clock::time_point now) {
+        if (!active()) {
+            return std::nullopt;
+        }
         refresh_key_lifecycle();
+        if (!active()) {
+            return std::nullopt;
+        }
         auto selected = recovery_timer_for(packet_number_space::initial, now);
         auto handshake = recovery_timer_for(packet_number_space::handshake, now);
         if (handshake.has_value() && (!selected.has_value() || handshake->deadline < selected->deadline)) {
@@ -117,12 +154,57 @@ public:
         return selected;
     }
 
+    [[nodiscard]] std::optional<connection_lifecycle_timer> next_lifecycle_timer(std::chrono::steady_clock::time_point now) {
+        if (state_ == connection_loop_state::closed) {
+            return std::nullopt;
+        }
+        if (state_ == connection_loop_state::active) {
+            if (config_.max_idle_timeout <= std::chrono::milliseconds{0}) {
+                return std::nullopt;
+            }
+            if (!last_activity_at_.has_value()) {
+                last_activity_at_ = now;
+            }
+            return connection_lifecycle_timer{connection_lifecycle_timer_kind::idle, *last_activity_at_ + config_.max_idle_timeout};
+        }
+
+        if (!close_state_entered_at_.has_value()) {
+            close_state_entered_at_ = now;
+        }
+        const auto kind = state_ == connection_loop_state::closing ?
+            connection_lifecycle_timer_kind::closing :
+            connection_lifecycle_timer_kind::draining;
+        return connection_lifecycle_timer{kind, *close_state_entered_at_ + config_.closing_draining_timeout};
+    }
+
+    void on_lifecycle_timer(connection_lifecycle_timer_kind kind, std::chrono::steady_clock::time_point now) {
+        auto timer = next_lifecycle_timer(now);
+        if (!timer.has_value() || timer->kind != kind || now < timer->deadline) {
+            return;
+        }
+
+        if (kind == connection_lifecycle_timer_kind::idle && active()) {
+            enter_closing(flowq::error{flowq::error_code::timeout, "idle timeout expired"}, now);
+            return;
+        }
+        if ((kind == connection_lifecycle_timer_kind::closing && state_ == connection_loop_state::closing) ||
+            (kind == connection_lifecycle_timer_kind::draining && state_ == connection_loop_state::draining)) {
+            enter_closed();
+        }
+    }
+
     [[nodiscard]] connection_recovery_result on_recovery_timer(packet_number_space space, std::chrono::steady_clock::time_point now) {
         connection_recovery_result result{space, {}, {}};
+        if (!active()) {
+            return result;
+        }
         if (!detail::is_connection_loop_space(space)) {
             return result;
         }
         refresh_key_lifecycle();
+        if (!active()) {
+            return result;
+        }
         if (packet_space_discarded(space)) {
             clear_packet_space(space);
             return result;
@@ -149,7 +231,17 @@ public:
     }
 
     void on_datagram(inbound_datagram datagram) {
+        on_datagram(std::move(datagram), std::chrono::steady_clock::now());
+    }
+
+    void on_datagram(inbound_datagram datagram, std::chrono::steady_clock::time_point received_at) {
+        if (!active()) {
+            return;
+        }
         refresh_key_lifecycle();
+        if (!active()) {
+            return;
+        }
         if (!datagram.payload.empty() && datagram.payload.data()[0] == std::byte{0x50}) {
             if (packet_space_discarded(packet_number_space::application)) {
                 clear_packet_space(packet_number_space::application);
@@ -157,16 +249,16 @@ public:
             }
             auto parsed = parse_application_packet(datagram.payload, detail::protector_for(packet_number_space::application, config_), config_.protection_policy);
             if (!parsed.ok()) {
-                actions_.emplace_back(close_action{parsed.error});
+                enter_closing(parsed.error, received_at);
                 return;
             }
-            process_parsed_packet(std::move(parsed), std::move(datagram.peer));
+            process_parsed_packet(std::move(parsed), std::move(datagram.peer), datagram.payload.size(), received_at);
             return;
         }
 
         const auto header = decode_packet_header(datagram.payload);
         if (!header.ok()) {
-            actions_.emplace_back(close_action{header.error});
+            enter_closing(header.error, received_at);
             return;
         }
 
@@ -178,19 +270,29 @@ public:
         const auto* protector = detail::protector_for(space, config_);
         auto parsed = parse_long_packet(datagram.payload, protector, config_.protection_policy);
         if (!parsed.ok()) {
-            actions_.emplace_back(close_action{parsed.error});
+            enter_closing(parsed.error, received_at);
             return;
         }
 
-        process_parsed_packet(std::move(parsed), std::move(datagram.peer));
+        process_parsed_packet(std::move(parsed), std::move(datagram.peer), datagram.payload.size(), received_at);
     }
 
     void acknowledge(packet_number_space space) {
+        acknowledge(space, std::chrono::steady_clock::now());
+    }
+
+    void acknowledge(packet_number_space space, std::chrono::steady_clock::time_point sent_at) {
+        if (!active()) {
+            return;
+        }
         if (!detail::is_connection_loop_space(space)) {
-            actions_.emplace_back(close_action{flowq::error{flowq::error_code::protocol_error, "unsupported packet number space for M4b connection loop"}});
+            enter_closing(flowq::error{flowq::error_code::protocol_error, "unsupported packet number space for M4b connection loop"}, sent_at);
             return;
         }
         refresh_key_lifecycle();
+        if (!active()) {
+            return;
+        }
         if (packet_space_discarded(space)) {
             clear_packet_space(space);
             return;
@@ -206,7 +308,10 @@ public:
         auto packet_number_value = next_packet_number_for(space);
         const auto assembled = assemble_space(space, packet_number_value, frames);
         if (!assembled.ok()) {
-            actions_.emplace_back(close_action{assembled.error});
+            enter_closing(assembled.error, sent_at);
+            return;
+        }
+        if (!anti_amplification_allows(assembled.datagram.size())) {
             return;
         }
 
@@ -214,7 +319,8 @@ public:
         set_next_packet_number(space, packet_number_value);
 
         sent_tracker(space).on_packet_sent(assembled.number.value, false);
-        recovery_packets_.push_back(recovery_packet{space, assembled.number.value, std::chrono::steady_clock::now(), false, sent_packet_state::outstanding});
+        recovery_packets_.push_back(recovery_packet{space, assembled.number.value, sent_at, false, sent_packet_state::outstanding});
+        record_peer_bytes_sent(assembled.datagram.size());
         actions_.emplace_back(outbound_datagram{std::move(assembled.datagram), config_.peer});
     }
 
@@ -229,7 +335,7 @@ public:
     }
 
     [[nodiscard]] const sent_packet_tracker& sent_packets(packet_number_space space) const {
-        return space == packet_number_space::application ? application_sent_ : (space == packet_number_space::handshake ? handshake_sent_ : initial_sent_);
+        return packet_spaces_.get(space).sent;
     }
 
     [[nodiscard]] std::vector<sent_stream_range> sent_stream_ranges(packet_number_space space, std::uint64_t packet_number) const {
@@ -253,34 +359,119 @@ public:
         return send_streams_.find(stream_id);
     }
 
+    [[nodiscard]] connection_loop_state state() const noexcept {
+        return state_;
+    }
+
 private:
     connection_loop_config config_;
+    connection_loop_state state_{connection_loop_state::active};
+    connection_packet_spaces packet_spaces_{};
     std::vector<connection_loop_action> actions_{};
-    std::vector<frame> initial_queue_{};
-    std::vector<frame> handshake_queue_{};
-    std::vector<frame> application_queue_{};
-    std::uint64_t next_initial_packet_number_{};
-    std::uint64_t next_handshake_packet_number_{};
-    std::uint64_t next_application_packet_number_{};
-    received_packet_tracker initial_received_{};
-    received_packet_tracker handshake_received_{};
-    received_packet_tracker application_received_{};
-    sent_packet_tracker initial_sent_;
-    sent_packet_tracker handshake_sent_;
-    sent_packet_tracker application_sent_;
     stream_receive_set receive_streams_{};
     stream_send_set send_streams_{};
     std::uint64_t connection_send_max_data_{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t connection_data_sent_{};
+    bool peer_address_validated_{};
+    std::uint64_t peer_bytes_received_{};
+    std::uint64_t peer_bytes_sent_{};
     rtt_estimator recovery_rtt_{};
     pto_config recovery_pto_config_{};
     congestion_controller congestion_{};
     std::vector<recovery_packet> recovery_packets_{};
     bool lifecycle_dirty_{true};
+    std::optional<std::chrono::steady_clock::time_point> last_activity_at_{};
+    std::optional<std::chrono::steady_clock::time_point> close_state_entered_at_{};
     std::optional<std::uint64_t> largest_initial_acknowledged_{};
     std::optional<std::uint64_t> largest_handshake_acknowledged_{};
     std::optional<std::uint64_t> largest_application_acknowledged_{};
     std::vector<sent_packet_stream_ranges> sent_stream_ranges_{};
+
+    [[nodiscard]] bool active() const noexcept {
+        return state_ == connection_loop_state::active;
+    }
+
+    void mark_activity(std::chrono::steady_clock::time_point at) noexcept {
+        last_activity_at_ = at;
+    }
+
+    [[nodiscard]] static std::uint64_t clamp_size_to_u64(std::size_t value) noexcept {
+        constexpr auto max = std::numeric_limits<std::uint64_t>::max();
+        if constexpr (sizeof(std::size_t) > sizeof(std::uint64_t)) {
+            if (value > static_cast<std::size_t>(max)) {
+                return max;
+            }
+        }
+        return static_cast<std::uint64_t>(value);
+    }
+
+    static void saturating_add(std::uint64_t& target, std::size_t value) noexcept {
+        const auto increment = clamp_size_to_u64(value);
+        const auto remaining = std::numeric_limits<std::uint64_t>::max() - target;
+        target = increment > remaining ? std::numeric_limits<std::uint64_t>::max() : target + increment;
+    }
+
+    void enter_closing(flowq::error error) {
+        enter_closing(std::move(error), std::chrono::steady_clock::now());
+    }
+
+    void enter_closing(flowq::error error, std::chrono::steady_clock::time_point at) {
+        if (!active()) {
+            return;
+        }
+        state_ = connection_loop_state::closing;
+        close_state_entered_at_ = at;
+        clear_all_packet_spaces();
+        actions_.emplace_back(close_action{std::move(error)});
+    }
+
+    void enter_draining(flowq::error error) {
+        enter_draining(std::move(error), std::chrono::steady_clock::now());
+    }
+
+    void enter_draining(flowq::error error, std::chrono::steady_clock::time_point at) {
+        if (state_ == connection_loop_state::draining || state_ == connection_loop_state::closed) {
+            return;
+        }
+        state_ = connection_loop_state::draining;
+        close_state_entered_at_ = at;
+        clear_all_packet_spaces();
+        actions_.emplace_back(close_action{std::move(error)});
+    }
+
+    void enter_closed() {
+        state_ = connection_loop_state::closed;
+        close_state_entered_at_.reset();
+        clear_all_packet_spaces();
+        actions_.clear();
+    }
+
+    [[nodiscard]] static std::optional<flowq::error> peer_close_error(const std::vector<frame>& frames) {
+        for (const auto& item : frames) {
+            if (const auto* close = std::get_if<connection_close_frame>(&item)) {
+                auto message = close->reason.empty() ? std::string{"peer closed connection"} : close->reason;
+                return flowq::error{flowq::error_code::connection_closed, std::move(message)};
+            }
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] static bool same_endpoint(const flowq::endpoint& lhs, const flowq::endpoint& rhs) noexcept {
+        return lhs.host == rhs.host && lhs.port == rhs.port && lhs.alpn == rhs.alpn;
+    }
+
+    [[nodiscard]] bool accept_peer(flowq::endpoint peer, std::chrono::steady_clock::time_point received_at) {
+        if (same_endpoint(peer, config_.peer)) {
+            return true;
+        }
+        if (config_.disable_active_migration) {
+            enter_closing(flowq::error{flowq::error_code::protocol_error, "peer address changed while active migration is disabled"}, received_at);
+            return false;
+        }
+        config_.peer = std::move(peer);
+        reset_peer_path_validation();
+        return true;
+    }
 
     [[nodiscard]] static packet_number_space packet_space_for(const packet_header& header) noexcept {
         if (std::holds_alternative<structural_application_header>(header)) {
@@ -290,15 +481,15 @@ private:
     }
 
     [[nodiscard]] received_packet_tracker& received_tracker(packet_number_space space) noexcept {
-        return space == packet_number_space::application ? application_received_ : (space == packet_number_space::handshake ? handshake_received_ : initial_received_);
+        return packet_spaces_.get(space).received;
     }
 
     [[nodiscard]] const received_packet_tracker& received_tracker(packet_number_space space) const noexcept {
-        return space == packet_number_space::application ? application_received_ : (space == packet_number_space::handshake ? handshake_received_ : initial_received_);
+        return packet_spaces_.get(space).received;
     }
 
     [[nodiscard]] sent_packet_tracker& sent_tracker(packet_number_space space) noexcept {
-        return space == packet_number_space::application ? application_sent_ : (space == packet_number_space::handshake ? handshake_sent_ : initial_sent_);
+        return packet_spaces_.get(space).sent;
     }
 
     [[nodiscard]] assembled_packet assemble_space(packet_number_space space, std::uint64_t packet_number_value, const std::vector<frame>& frames) const {
@@ -327,28 +518,63 @@ private:
     }
 
     [[nodiscard]] std::uint64_t next_packet_number_for(packet_number_space space) const noexcept {
-        if (space == packet_number_space::application) {
-            return next_application_packet_number_;
-        }
-        return space == packet_number_space::handshake ? next_handshake_packet_number_ : next_initial_packet_number_;
+        return packet_spaces_.get(space).next_packet_number;
     }
 
     void set_next_packet_number(packet_number_space space, std::uint64_t value) noexcept {
-        if (space == packet_number_space::application) {
-            next_application_packet_number_ = value;
-            return;
-        }
-        if (space == packet_number_space::handshake) {
-            next_handshake_packet_number_ = value;
-            return;
-        }
-        next_initial_packet_number_ = value;
+        packet_spaces_.get(space).next_packet_number = value;
     }
 
     [[nodiscard]] bool application_send_allowed() const noexcept {
         return config_.protection_policy == packet_protection_policy::test_allowed ||
             (config_.tls_adapter != nullptr && application_data_ready(*config_.tls_adapter) &&
              config_.key_lifecycle.available(encryption_level::one_rtt, key_direction::send));
+    }
+
+    [[nodiscard]] bool anti_amplification_limited() const noexcept {
+        return config_.role == connection_role::server && !peer_address_validated_;
+    }
+
+    [[nodiscard]] bool anti_amplification_allows(std::size_t datagram_size) const noexcept {
+        if (!anti_amplification_limited()) {
+            return true;
+        }
+        const auto outbound_size = clamp_size_to_u64(datagram_size);
+        if (peer_bytes_received_ > std::numeric_limits<std::uint64_t>::max() / 3U) {
+            return true;
+        }
+        const auto allowance = peer_bytes_received_ * 3U;
+        return allowance >= peer_bytes_sent_ && outbound_size <= allowance - peer_bytes_sent_;
+    }
+
+    void refresh_peer_address_validation() noexcept {
+        if (!anti_amplification_limited() || config_.tls_adapter == nullptr) {
+            return;
+        }
+        if (config_.tls_adapter->state() == handshake_state::handshake_confirmed) {
+            peer_address_validated_ = true;
+        }
+    }
+
+    void reset_peer_path_validation() noexcept {
+        if (config_.role != connection_role::server) {
+            return;
+        }
+        peer_address_validated_ = false;
+        peer_bytes_received_ = 0;
+        peer_bytes_sent_ = 0;
+    }
+
+    void record_peer_bytes_received(std::size_t datagram_size) noexcept {
+        if (anti_amplification_limited()) {
+            saturating_add(peer_bytes_received_, datagram_size);
+        }
+    }
+
+    void record_peer_bytes_sent(std::size_t datagram_size) noexcept {
+        if (anti_amplification_limited()) {
+            saturating_add(peer_bytes_sent_, datagram_size);
+        }
     }
 
     void refresh_key_lifecycle() {
@@ -359,6 +585,7 @@ private:
             clear_discarded_packet_spaces();
             lifecycle_dirty_ = false;
         }
+        refresh_peer_address_validation();
     }
 
     void mark_lifecycle_dirty() noexcept {
@@ -373,7 +600,9 @@ private:
         if (config_.tls_adapter == nullptr) {
             return;
         }
-        for (auto& item : config_.tls_adapter->drain_crypto()) {
+        auto outbound = config_.tls_adapter->drain_crypto();
+        mark_lifecycle_dirty();
+        for (auto& item : outbound) {
             const auto space = detail::packet_space_for(item.level);
             if (packet_space_discarded(space)) {
                 continue;
@@ -381,19 +610,21 @@ private:
             auto frame = flowq::quic::frame{crypto_frame{item.offset, std::move(item.data)}};
             switch (space) {
             case packet_number_space::initial:
-                initial_queue_.push_back(std::move(frame));
+                packet_spaces_.get(packet_number_space::initial).queue.push_back(std::move(frame));
                 break;
             case packet_number_space::handshake:
-                handshake_queue_.push_back(std::move(frame));
+                packet_spaces_.get(packet_number_space::handshake).queue.push_back(std::move(frame));
                 break;
             case packet_number_space::application:
-                application_queue_.push_back(std::move(frame));
+                packet_spaces_.get(packet_number_space::application).queue.push_back(std::move(frame));
                 break;
             }
         }
     }
 
-    void flush_space(packet_number_space space, std::vector<frame>& queue, std::uint64_t& next_packet_number, std::chrono::steady_clock::time_point sent_at) {
+    void flush_space(packet_number_space space, std::chrono::steady_clock::time_point sent_at) {
+        auto& state = packet_spaces_.get(space);
+        auto& queue = state.queue;
         if (queue.empty()) {
             return;
         }
@@ -405,33 +636,38 @@ private:
             return;
         }
         if (space == packet_number_space::application && !application_send_allowed()) {
-            actions_.emplace_back(close_action{flowq::error{flowq::error_code::protocol_error, "production Application data requires confirmed TLS handshake and application keys"}});
+            enter_closing(flowq::error{flowq::error_code::protocol_error, "production Application data requires confirmed TLS handshake and application keys"}, sent_at);
             return;
         }
 
         auto selected = select_frames_for_payload_budget(queue, config_.max_packet_payload_size);
         if (!selected.ok()) {
-            actions_.emplace_back(close_action{selected.error});
+            enter_closing(selected.error, sent_at);
             return;
         }
         if (selected.frames.empty()) {
-            actions_.emplace_back(close_action{flowq::error{flowq::error_code::protocol_error, "frame exceeds packet payload budget"}});
+            enter_closing(flowq::error{flowq::error_code::protocol_error, "frame exceeds packet payload budget"}, sent_at);
             return;
         }
 
         const auto ack_eliciting = detail::is_ack_eliciting(selected.frames);
-        auto assembled = assemble_space(space, next_packet_number, selected.frames);
+        auto assembled = assemble_space(space, state.next_packet_number, selected.frames);
         if (!assembled.ok()) {
-            actions_.emplace_back(close_action{assembled.error});
+            enter_closing(assembled.error, sent_at);
+            return;
+        }
+        if (!anti_amplification_allows(assembled.datagram.size())) {
             return;
         }
 
-        ++next_packet_number;
+        ++state.next_packet_number;
         sent_tracker(space).on_packet_sent(assembled.number.value, ack_eliciting);
         recovery_packets_.push_back(recovery_packet{space, assembled.number.value, sent_at, ack_eliciting, sent_packet_state::outstanding});
         record_sent_stream_ranges(space, assembled.number.value, selected.frames);
         congestion_.on_packet_sent(assembled.datagram.size(), ack_eliciting);
+        record_peer_bytes_sent(assembled.datagram.size());
         queue.erase(queue.begin(), queue.begin() + static_cast<std::ptrdiff_t>(selected.next_index));
+        mark_activity(sent_at);
         actions_.emplace_back(outbound_datagram{std::move(assembled.datagram), config_.peer});
     }
 
@@ -519,14 +755,14 @@ private:
     }
 
     void record_largest_acknowledged(packet_number_space space, std::uint64_t packet_number) noexcept {
-        auto& stored = space == packet_number_space::application ? largest_application_acknowledged_ : (space == packet_number_space::handshake ? largest_handshake_acknowledged_ : largest_initial_acknowledged_);
+        auto& stored = packet_spaces_.get(space).largest_acknowledged;
         if (!stored.has_value() || packet_number > *stored) {
             stored = packet_number;
         }
     }
 
     [[nodiscard]] std::optional<std::uint64_t> largest_acknowledged(packet_number_space space) const noexcept {
-        return space == packet_number_space::application ? largest_application_acknowledged_ : (space == packet_number_space::handshake ? largest_handshake_acknowledged_ : largest_initial_acknowledged_);
+        return packet_spaces_.get(space).largest_acknowledged;
     }
 
     void clear_discarded_packet_spaces() {
@@ -539,6 +775,12 @@ private:
         if (packet_space_discarded(packet_number_space::application)) {
             clear_packet_space(packet_number_space::application);
         }
+    }
+
+    void clear_all_packet_spaces() {
+        clear_packet_space(packet_number_space::initial);
+        clear_packet_space(packet_number_space::handshake);
+        clear_packet_space(packet_number_space::application);
     }
 
     void clear_packet_space(packet_number_space space) {
@@ -565,17 +807,11 @@ private:
     }
 
     [[nodiscard]] std::vector<frame>& queue_for(packet_number_space space) noexcept {
-        if (space == packet_number_space::application) {
-            return application_queue_;
-        }
-        return space == packet_number_space::handshake ? handshake_queue_ : initial_queue_;
+        return packet_spaces_.get(space).queue;
     }
 
     [[nodiscard]] std::optional<std::uint64_t>& largest_acknowledged_ref(packet_number_space space) noexcept {
-        if (space == packet_number_space::application) {
-            return largest_application_acknowledged_;
-        }
-        return space == packet_number_space::handshake ? largest_handshake_acknowledged_ : largest_initial_acknowledged_;
+        return packet_spaces_.get(space).largest_acknowledged;
     }
 
     void mark_recovery_packets(packet_number_space space, const std::vector<std::uint64_t>& packet_numbers, sent_packet_state state) noexcept {
@@ -642,24 +878,33 @@ private:
         return {};
     }
 
-    void process_parsed_packet(parsed_packet parsed, flowq::endpoint peer) {
+    void process_parsed_packet(parsed_packet parsed, flowq::endpoint peer, std::size_t received_size, std::chrono::steady_clock::time_point received_at) {
         const auto newly_observed = received_tracker(parsed.number.space).observe(parsed.number.value);
         if (!newly_observed) {
+            return;
+        }
+        if (!accept_peer(std::move(peer), received_at)) {
+            return;
+        }
+        record_peer_bytes_received(received_size);
+        mark_activity(received_at);
+        if (auto error = peer_close_error(parsed.frames); error.has_value()) {
+            enter_draining(std::move(*error), received_at);
             return;
         }
         apply_ack_frames(parsed.number.space, parsed.frames);
         apply_flow_control_frames(parsed.frames);
         if (auto error = apply_stream_control_frames(parsed.frames); !error.ok()) {
-            actions_.emplace_back(close_action{error});
+            enter_closing(error, received_at);
             return;
         }
         if (auto error = receive_crypto_frames(parsed.number.space, parsed.frames); !error.ok()) {
-            actions_.emplace_back(close_action{error});
+            enter_closing(error, received_at);
             return;
         }
         refresh_key_lifecycle();
         auto stream_deliveries = receive_stream_frames(parsed.frames);
-        actions_.emplace_back(received_packet_event{parsed.number, std::move(parsed.frames), std::move(peer), std::move(stream_deliveries)});
+        actions_.emplace_back(received_packet_event{parsed.number, std::move(parsed.frames), config_.peer, std::move(stream_deliveries)});
     }
 };
 

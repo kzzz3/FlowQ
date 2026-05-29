@@ -58,6 +58,11 @@ struct packet_protection_result {
     }
 };
 
+struct packet_protection_context {
+    packet_number number{};
+    std::span<const std::byte> associated_data;
+};
+
 class packet_protector {
 public:
     virtual ~packet_protector() = default;
@@ -67,8 +72,30 @@ public:
     [[nodiscard]] virtual crypto_provider_status provider_status() const noexcept {
         return crypto_provider_status::unavailable();
     }
+    [[nodiscard]] virtual std::size_t protection_overhead() const noexcept {
+        return 0;
+    }
+    [[nodiscard]] virtual bool header_protection_enabled() const noexcept {
+        return false;
+    }
+    [[nodiscard]] virtual header_protection_mask_result header_protection_mask(std::span<const std::byte> sample) const {
+        (void)sample;
+        return {{}, flowq::error{flowq::error_code::protocol_error, "packet protector does not provide header protection"}};
+    }
     [[nodiscard]] virtual packet_protection_result protect(std::span<const std::byte> plaintext) const = 0;
     [[nodiscard]] virtual packet_protection_result unprotect(std::span<const std::byte> protected_payload) const = 0;
+    [[nodiscard]] virtual packet_protection_result protect(
+        const packet_protection_context& context,
+        std::span<const std::byte> plaintext) const {
+        (void)context;
+        return protect(plaintext);
+    }
+    [[nodiscard]] virtual packet_protection_result unprotect(
+        const packet_protection_context& context,
+        std::span<const std::byte> protected_payload) const {
+        (void)context;
+        return unprotect(protected_payload);
+    }
 };
 
 class plaintext_packet_protector final : public packet_protector {
@@ -153,6 +180,8 @@ namespace detail {
     return flowq::error{flowq::error_code::protocol_error, message};
 }
 
+inline constexpr std::size_t fixed_packet_number_length = 4;
+
 inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t value) {
     output.push_back(static_cast<std::byte>((value >> 24U) & 0xffU));
     output.push_back(static_cast<std::byte>((value >> 16U) & 0xffU));
@@ -170,11 +199,11 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
 [[nodiscard]] inline std::byte long_header_first_byte(long_packet_type type) {
     switch (type) {
     case long_packet_type::initial:
-        return std::byte{0xc0};
+        return std::byte{0xc3};
     case long_packet_type::handshake:
-        return std::byte{0xe0};
+        return std::byte{0xe3};
     }
-    return std::byte{0xc0};
+    return std::byte{0xc3};
 }
 
 [[nodiscard]] inline packet_number_space space_for(long_packet_type type) {
@@ -195,7 +224,7 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
 
 [[nodiscard]] inline bool production_protection_satisfied(const packet_protector& protector, packet_protection_policy policy) noexcept {
     return policy == packet_protection_policy::test_allowed ||
-        (protector.security_level() == packet_security_level::authenticated_encrypted && protector.provider_status().production_ready());
+        (protector.security_level() == packet_security_level::authenticated_encrypted && protector.provider_status().packet_protection_ready());
 }
 
 [[nodiscard]] inline flowq::error validate_protection_policy(const packet_protector& protector, packet_protection_policy policy) {
@@ -225,6 +254,94 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
         return &handshake->protected_payload;
     }
     return nullptr;
+}
+
+[[nodiscard]] inline packet_protection_result protect_payload(
+    const packet_protector& protector,
+    const packet_protection_context& context,
+    std::span<const std::byte> plaintext) {
+    return protector.protect(context, plaintext);
+}
+
+[[nodiscard]] inline packet_protection_result unprotect_payload(
+    const packet_protector& protector,
+    const packet_protection_context& context,
+    std::span<const std::byte> protected_payload) {
+    return protector.unprotect(context, protected_payload);
+}
+
+[[nodiscard]] inline packet_protection_result protect_payload(
+    const packet_protector& protector,
+    std::span<const std::byte> plaintext) {
+    return protector.protect(plaintext);
+}
+
+[[nodiscard]] inline packet_protection_result unprotect_payload(
+    const packet_protector& protector,
+    std::span<const std::byte> protected_payload) {
+    return protector.unprotect(protected_payload);
+}
+
+[[nodiscard]] inline flowq::error apply_long_header_protection(
+    std::span<std::byte> datagram,
+    std::size_t protected_payload_size,
+    const packet_protector& protector) {
+    if (protected_payload_size < fixed_packet_number_length + 16U || datagram.size() < protected_payload_size) {
+        return pipeline_error("packet payload too short for header protection sample");
+    }
+
+    const auto packet_number_offset = datagram.size() - protected_payload_size;
+    const auto sample_offset = packet_number_offset + fixed_packet_number_length;
+    if (datagram.size() - sample_offset < 16U) {
+        return pipeline_error("packet payload too short for header protection sample");
+    }
+
+    const auto packet_number_length = static_cast<std::size_t>(static_cast<std::uint8_t>(datagram[0]) & 0x03U) + 1U;
+    if (packet_number_length != fixed_packet_number_length) {
+        return pipeline_error("FlowQ packet pipeline requires fixed 4-byte packet numbers");
+    }
+    auto mask = protector.header_protection_mask(std::span<const std::byte>{datagram.data() + static_cast<std::ptrdiff_t>(sample_offset), 16});
+    if (!mask.ok()) {
+        return mask.error;
+    }
+
+    datagram[0] ^= static_cast<std::byte>(static_cast<std::uint8_t>(mask.mask[0]) & 0x0fU);
+    for (std::size_t index = 0; index < packet_number_length; ++index) {
+        datagram[packet_number_offset + index] ^= mask.mask[index + 1U];
+    }
+
+    return {};
+}
+
+[[nodiscard]] inline flowq::error remove_long_header_protection(
+    std::vector<std::byte>& datagram,
+    std::size_t protected_payload_size,
+    const packet_protector& protector) {
+    if (protected_payload_size < fixed_packet_number_length + 16U || datagram.size() < protected_payload_size) {
+        return pipeline_error("packet payload too short for header protection sample");
+    }
+
+    const auto packet_number_offset = datagram.size() - protected_payload_size;
+    const auto sample_offset = packet_number_offset + fixed_packet_number_length;
+    if (datagram.size() - sample_offset < 16U) {
+        return pipeline_error("packet payload too short for header protection sample");
+    }
+
+    auto mask = protector.header_protection_mask(std::span<const std::byte>{datagram.data() + static_cast<std::ptrdiff_t>(sample_offset), 16});
+    if (!mask.ok()) {
+        return mask.error;
+    }
+
+    datagram[0] ^= static_cast<std::byte>(static_cast<std::uint8_t>(mask.mask[0]) & 0x0fU);
+    const auto packet_number_length = static_cast<std::size_t>(static_cast<std::uint8_t>(datagram[0]) & 0x03U) + 1U;
+    if (packet_number_length != fixed_packet_number_length) {
+        return pipeline_error("FlowQ packet pipeline requires fixed 4-byte packet numbers");
+    }
+    for (std::size_t index = 0; index < packet_number_length; ++index) {
+        datagram[packet_number_offset + index] ^= mask.mask[index + 1U];
+    }
+
+    return {};
 }
 
 } // namespace detail
@@ -288,18 +405,8 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
         frame_bytes.insert(frame_bytes.end(), encoded.payload.data(), encoded.payload.data() + static_cast<std::ptrdiff_t>(encoded.payload.size()));
     }
 
-    const auto protected_frames = request.protector->protect(frame_bytes);
-    if (!protected_frames.ok()) {
-        return {{}, request.number, request.protector->level(), protected_frames.error};
-    }
-
-    std::vector<std::byte> protected_payload;
-    protected_payload.reserve(4 + protected_frames.payload.size());
-    detail::append_packet_number(protected_payload, request.number.value);
-    protected_payload.insert(
-        protected_payload.end(),
-        protected_frames.payload.data(),
-        protected_frames.payload.data() + static_cast<std::ptrdiff_t>(protected_frames.payload.size()));
+    const auto protected_payload_length = detail::fixed_packet_number_length + frame_bytes.size() + request.protector->protection_overhead();
+    auto placeholder_payload = flowq::buffer{std::vector<std::byte>(protected_payload_length, std::byte{0x00})};
 
     packet_header header;
     if (request.type == long_packet_type::initial) {
@@ -309,8 +416,8 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
             request.destination_connection_id,
             request.source_connection_id,
             request.token,
-            protected_payload.size(),
-            flowq::buffer{protected_payload}
+            protected_payload_length,
+            placeholder_payload
         };
     } else {
         header = handshake_header{
@@ -318,14 +425,68 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
             request.version,
             request.destination_connection_id,
             request.source_connection_id,
-            protected_payload.size(),
-            flowq::buffer{protected_payload}
+            protected_payload_length,
+            std::move(placeholder_payload)
         };
+    }
+
+    std::vector<std::byte> packet_number_bytes;
+    packet_number_bytes.reserve(detail::fixed_packet_number_length);
+    detail::append_packet_number(packet_number_bytes, request.number.value);
+
+    const auto aad_prefix = encode_packet_header(header);
+    if (!aad_prefix.ok()) {
+        return {{}, request.number, request.protector->level(), aad_prefix.error};
+    }
+    if (aad_prefix.payload.size() < protected_payload_length) {
+        return {{}, request.number, request.protector->level(), detail::pipeline_error("encoded long header is shorter than protected payload")};
+    }
+    const auto header_prefix_size = aad_prefix.payload.size() - protected_payload_length;
+    std::vector<std::byte> associated_data{
+        aad_prefix.payload.data(),
+        aad_prefix.payload.data() + static_cast<std::ptrdiff_t>(header_prefix_size)};
+    associated_data.insert(associated_data.end(), packet_number_bytes.begin(), packet_number_bytes.end());
+
+    const auto protected_frames = detail::protect_payload(
+        *request.protector,
+        packet_protection_context{
+            request.number,
+            std::span<const std::byte>{associated_data.data(), associated_data.size()}
+        },
+        frame_bytes);
+    if (!protected_frames.ok()) {
+        return {{}, request.number, request.protector->level(), protected_frames.error};
+    }
+
+    std::vector<std::byte> protected_payload;
+    protected_payload.reserve(packet_number_bytes.size() + protected_frames.payload.size());
+    protected_payload.insert(protected_payload.end(), packet_number_bytes.begin(), packet_number_bytes.end());
+    protected_payload.insert(
+        protected_payload.end(),
+        protected_frames.payload.data(),
+        protected_frames.payload.data() + static_cast<std::ptrdiff_t>(protected_frames.payload.size()));
+
+    if (auto* initial = std::get_if<initial_header>(&header)) {
+        initial->protected_payload = flowq::buffer{protected_payload};
+    } else if (auto* handshake = std::get_if<handshake_header>(&header)) {
+        handshake->protected_payload = flowq::buffer{protected_payload};
     }
 
     auto encoded = encode_packet_header(header);
     if (!encoded.ok()) {
         return {{}, request.number, request.protector->level(), encoded.error};
+    }
+    if (request.protector->header_protection_enabled()) {
+        auto datagram = std::vector<std::byte>{
+            encoded.payload.data(),
+            encoded.payload.data() + static_cast<std::ptrdiff_t>(encoded.payload.size())};
+        if (auto error = detail::apply_long_header_protection(
+                std::span<std::byte>{datagram.data(), datagram.size()},
+                protected_payload.size(),
+                *request.protector); !error.ok()) {
+            return {{}, request.number, request.protector->level(), error};
+        }
+        encoded.payload = flowq::buffer{std::move(datagram)};
     }
     if (encoded.payload.size() > request.config.max_datagram_size) {
         return {{}, request.number, request.protector->level(), detail::pipeline_error("QUIC datagram exceeds maximum size")};
@@ -404,9 +565,27 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
         return {{}, {}, {}, protector->level(), {}, error};
     }
 
-    auto decoded_header = decode_packet_header(datagram);
+    std::span<const std::byte> decoded_datagram = datagram;
+    std::vector<std::byte> unmasked_datagram;
+
+    auto decoded_header = decode_packet_header(decoded_datagram);
     if (!decoded_header.ok()) {
         return {{}, {}, {}, protector->level(), {}, decoded_header.error};
+    }
+    if (protector->header_protection_enabled()) {
+        const auto* masked_payload = detail::protected_payload_for(decoded_header.header);
+        if (masked_payload == nullptr) {
+            return {std::move(decoded_header.header), {}, {}, protector->level(), {}, detail::pipeline_error("unsupported packet type for header protection removal")};
+        }
+        unmasked_datagram.assign(datagram.begin(), datagram.end());
+        if (auto error = detail::remove_long_header_protection(unmasked_datagram, masked_payload->size(), *protector); !error.ok()) {
+            return {std::move(decoded_header.header), {}, {}, protector->level(), {}, error};
+        }
+        decoded_datagram = std::span<const std::byte>{unmasked_datagram.data(), unmasked_datagram.size()};
+        decoded_header = decode_packet_header(decoded_datagram);
+        if (!decoded_header.ok()) {
+            return {{}, {}, {}, protector->level(), {}, decoded_header.error};
+        }
     }
     if (!std::holds_alternative<initial_header>(decoded_header.header) && !std::holds_alternative<handshake_header>(decoded_header.header)) {
         return {std::move(decoded_header.header), {}, {}, protector->level(), {}, detail::pipeline_error("unsupported packet type for frame parsing")};
@@ -423,7 +602,16 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     const std::span<const std::byte> payload{protected_payload->data(), protected_payload->size()};
     const auto number = packet_number{detail::space_for_header(decoded_header.header), detail::read_packet_number(std::span<const std::byte, 4>{payload.data(), 4})};
 
-    const auto plaintext = protector->unprotect(payload.subspan(4));
+    std::vector<std::byte> associated_data{
+        decoded_datagram.begin(),
+        decoded_datagram.begin() + static_cast<std::ptrdiff_t>(decoded_datagram.size() - protected_payload->size() + detail::fixed_packet_number_length)};
+    const auto plaintext = detail::unprotect_payload(
+        *protector,
+        packet_protection_context{
+            number,
+            std::span<const std::byte>{associated_data.data(), associated_data.size()}
+        },
+        payload.subspan(detail::fixed_packet_number_length));
     if (!plaintext.ok()) {
         return {std::move(decoded_header.header), number, number.space, protector->level(), {}, plaintext.error};
     }

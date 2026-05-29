@@ -24,6 +24,19 @@ enum class connection_role {
     server
 };
 
+enum class connection_loop_state {
+    active,
+    closing,
+    draining,
+    closed
+};
+
+enum class connection_lifecycle_timer_kind {
+    idle,
+    closing,
+    draining
+};
+
 // Connection loop configuration
 struct connection_loop_config {
     connection_role role{};
@@ -48,6 +61,8 @@ struct connection_loop_config {
     bool disable_active_migration{};
     tls_handshake_adapter* tls_adapter{};
     key_lifecycle_state key_lifecycle{};
+    std::chrono::milliseconds closing_draining_timeout{std::chrono::seconds{3}};
+    bool peer_address_validated{};
 };
 
 // Apply transport parameters to connection config
@@ -92,6 +107,11 @@ struct received_packet_event {
 struct connection_recovery_timer {
     packet_number_space space{};
     loss_timer_mode mode{loss_timer_mode::none};
+    std::chrono::steady_clock::time_point deadline{};
+};
+
+struct connection_lifecycle_timer {
+    connection_lifecycle_timer_kind kind{connection_lifecycle_timer_kind::idle};
     std::chrono::steady_clock::time_point deadline{};
 };
 

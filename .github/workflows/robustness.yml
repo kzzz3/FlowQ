@@ -1,6 +1,8 @@
 name: Robustness
 
 on:
+  push:
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -27,7 +29,7 @@ jobs:
 
   fuzz:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -45,6 +47,6 @@ jobs:
       - name: Build fuzz targets
         run: cmake --build build-fuzz
       - name: Run packet header fuzz (short)
-        run: timeout 60 ./build-fuzz/flowq_packet_header_fuzz -max_total_time=30 || true
+        run: timeout 60 ./build-fuzz/flowq_packet_header_fuzz -max_total_time=30
       - name: Run frame codec fuzz (short)
-        run: timeout 60 ./build-fuzz/flowq_frame_codec_fuzz -max_total_time=30 || true
+        run: timeout 60 ./build-fuzz/flowq_frame_codec_fuzz -max_total_time=30

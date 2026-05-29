@@ -294,6 +294,18 @@ TEST_CASE("QUIC frame codec rejects malformed ACK CRYPTO and STREAM frames") {
     // ACK range count is 1 but the Gap/Range pair is missing.
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x02, 0x64, 0x00, 0x01, 0x04})).ok());
 
+    // ACK range count is the largest possible varint but no ranges follow.
+    CHECK_NOTHROW([&] {
+        auto decoded = flowq::quic::decode_frames(bytes({
+            0x02,
+            0x00,
+            0x00,
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0x00
+        }));
+        CHECK_FALSE(decoded.ok());
+    }());
+
     // CRYPTO declares two bytes but only one byte is present.
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x06, 0x00, 0x02, 0xaa})).ok());
 

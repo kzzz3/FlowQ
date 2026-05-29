@@ -333,6 +333,11 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
                 return {{}, codec_error("truncated ACK frame")};
             }
 
+            const auto remaining = input.size() - offset;
+            if (range_count > static_cast<std::uint64_t>(remaining / 2)) {
+                return {{}, codec_error("truncated ACK range")};
+            }
+
             std::vector<ack_range> ranges;
             ranges.reserve(static_cast<std::size_t>(range_count));
             for (std::uint64_t index = 0; index < range_count; ++index) {

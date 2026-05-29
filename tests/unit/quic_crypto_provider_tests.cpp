@@ -21,8 +21,22 @@ TEST_CASE("crypto provider capabilities require every production primitive") {
 
 TEST_CASE("crypto provider status is unavailable until backed by external TLS and packet protection") {
     const auto unavailable = flowq::quic::crypto_provider_status::unavailable();
+    CHECK_FALSE(unavailable.packet_protection_ready());
     CHECK_FALSE(unavailable.production_ready());
     CHECK(unavailable.suite == flowq::quic::cipher_suite::unknown);
+
+    const auto packet_ready = flowq::quic::crypto_provider_status::available(
+        flowq::quic::cipher_suite::aes_128_gcm_sha256,
+        flowq::quic::crypto_capabilities{
+            true,
+            true,
+            true,
+            true,
+            false
+        });
+
+    CHECK(packet_ready.packet_protection_ready());
+    CHECK_FALSE(packet_ready.production_ready());
 
     const auto ready = flowq::quic::crypto_provider_status::available(
         flowq::quic::cipher_suite::aes_128_gcm_sha256,
@@ -34,6 +48,7 @@ TEST_CASE("crypto provider status is unavailable until backed by external TLS an
             true
         });
 
+    CHECK(ready.packet_protection_ready());
     CHECK(ready.production_ready());
     CHECK(ready.suite == flowq::quic::cipher_suite::aes_128_gcm_sha256);
 }

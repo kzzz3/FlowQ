@@ -116,20 +116,23 @@ using http3_frame_variant = std::variant<data_frame, headers_frame, goaway_frame
 /// Encode an HTTP/3 GOAWAY frame.
 [[nodiscard]] inline flowq::buffer encode_goaway_frame(std::uint64_t stream_id) {
     std::vector<std::byte> output;
+    std::byte id_buf[8]{};
+    auto id_result = encode_varint(stream_id, std::span<std::byte>{id_buf, 8});
+    if (!id_result.ok()) {
+        return flowq::buffer{};
+    }
 
     // Encode frame type (0x07 = GOAWAY)
     std::byte type_buf[8]{};
     auto type_result = encode_varint(0x07, std::span<std::byte>{type_buf, 8});
     output.insert(output.end(), type_buf, type_buf + type_result.bytes_written);
 
-    // Encode payload length (1 byte varint for stream ID)
+    // Encode payload length to match the actual stream ID varint size.
     std::byte length_buf[8]{};
-    auto length_result = encode_varint(1, std::span<std::byte>{length_buf, 8});
+    auto length_result = encode_varint(id_result.bytes_written, std::span<std::byte>{length_buf, 8});
     output.insert(output.end(), length_buf, length_buf + length_result.bytes_written);
 
     // Encode stream ID
-    std::byte id_buf[8]{};
-    auto id_result = encode_varint(stream_id, std::span<std::byte>{id_buf, 8});
     output.insert(output.end(), id_buf, id_buf + id_result.bytes_written);
 
     return flowq::buffer{output};

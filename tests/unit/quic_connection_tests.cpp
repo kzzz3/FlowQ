@@ -52,6 +52,10 @@ public:
         return keys;
     }
 
+    flowq::quic::crypto_provider_status provider_status() const noexcept override {
+        return status;
+    }
+
     flowq::error receive_crypto(flowq::quic::crypto_bytes bytes) override {
         received.push_back(std::move(bytes));
         if (install_handshake_keys_on_receive) {
@@ -69,6 +73,10 @@ public:
     std::vector<flowq::quic::crypto_bytes> drain_crypto() override {
         auto output = std::move(outbound);
         outbound.clear();
+        if (install_handshake_keys_on_drain) {
+            state_value = flowq::quic::handshake_state::handshaking;
+            keys.handshake = true;
+        }
         if (confirm_handshake_on_drain) {
             state_value = flowq::quic::handshake_state::handshake_confirmed;
             keys.handshake = true;
@@ -79,8 +87,10 @@ public:
 
     flowq::quic::handshake_state state_value{flowq::quic::handshake_state::idle};
     flowq::quic::tls_key_availability keys{};
+    flowq::quic::crypto_provider_status status{flowq::quic::crypto_provider_status::unavailable()};
     bool install_handshake_keys_on_receive{};
     bool confirm_handshake_on_receive{};
+    bool install_handshake_keys_on_drain{};
     bool confirm_handshake_on_drain{};
     std::vector<flowq::quic::crypto_bytes> received;
     std::vector<flowq::quic::crypto_bytes> outbound;
@@ -133,8 +143,9 @@ flowq::quic::connection_loop make_loop(
     std::uint64_t initial_stream_send_max_data = UINT64_MAX,
     std::uint64_t initial_connection_send_max_data = UINT64_MAX,
     std::size_t max_packet_payload_size = SIZE_MAX,
-    flowq::quic::packet_protection_policy protection_policy = flowq::quic::packet_protection_policy::test_allowed) {
-    return flowq::quic::connection_loop{flowq::quic::connection_loop_config{
+    flowq::quic::packet_protection_policy protection_policy = flowq::quic::packet_protection_policy::test_allowed,
+    bool disable_active_migration = false) {
+    flowq::quic::connection_loop_config config{
         flowq::quic::connection_role::client,
         1,
         std::move(local),
@@ -148,7 +159,9 @@ flowq::quic::connection_loop make_loop(
         initial_connection_send_max_data,
         max_packet_payload_size,
         protection_policy
-    }};
+    };
+    config.disable_active_migration = disable_active_migration;
+    return flowq::quic::connection_loop{std::move(config)};
 }
 
 flowq::quic::outbound_datagram require_single_outbound(std::vector<flowq::quic::connection_loop_action> actions) {
@@ -232,6 +245,81 @@ TEST_CASE("connection loop parses inbound Initial packets and generates ACK pack
     REQUIRE(parsed_ack.frames.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::ack_frame>(parsed_ack.frames[0]));
     CHECK(std::get<flowq::quic::ack_frame>(parsed_ack.frames[0]).largest_acknowledged == 0);
+}
+
+TEST_CASE("connection loop enforces server anti-amplification limit before peer address validation") {
+    flowq::quic::plaintext_packet_protector protector{};
+    flowq::endpoint client_peer{"client", 1111, "hq-interop"};
+    flowq::endpoint server_peer{"server", 4433, "hq-interop"};
+    auto client = make_loop(cid({0x01}), cid({0x02}), server_peer, protector);
+
+    flowq::quic::connection_loop_config server_config{};
+    server_config.role = flowq::quic::connection_role::server;
+    server_config.local_connection_id = cid({0x02});
+    server_config.remote_connection_id = cid({0x01});
+    server_config.peer = client_peer;
+    server_config.initial_protector = &protector;
+    server_config.handshake_protector = &protector;
+    server_config.application_protector = &protector;
+    server_config.pipeline = flowq::quic::packet_pipeline_config{8192};
+    auto server = flowq::quic::connection_loop{std::move(server_config)};
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto first_client_datagram = require_single_outbound(client.drain_actions());
+    const auto first_client_datagram_size = first_client_datagram.payload.size();
+
+    server.on_datagram(
+        flowq::quic::inbound_datagram{std::move(first_client_datagram.payload), client_peer},
+        at(1ms));
+    REQUIRE(server.drain_actions().size() == 1);
+
+    const auto oversized_response_bytes = (first_client_datagram_size * 3U) + 128U;
+    server.queue_initial({
+        flowq::quic::frame{flowq::quic::crypto_frame{0, text(std::string(oversized_response_bytes, 's'))}}
+    });
+    server.flush(at(2ms));
+
+    CHECK(server.drain_actions().empty());
+    CHECK(server.sent_packets(flowq::quic::packet_number_space::initial).packets().empty());
+
+    client.queue_initial({
+        flowq::quic::frame{flowq::quic::crypto_frame{0, text(std::string(600, 'c'))}}
+    });
+    client.flush(at(3ms));
+    auto second_client_datagram = require_single_outbound(client.drain_actions());
+    server.on_datagram(
+        flowq::quic::inbound_datagram{std::move(second_client_datagram.payload), client_peer},
+        at(4ms));
+    REQUIRE(server.drain_actions().size() == 1);
+
+    server.flush(at(5ms));
+
+    auto unblocked = require_single_outbound(server.drain_actions());
+    CHECK_FALSE(unblocked.payload.empty());
+    CHECK(server.sent_packets(flowq::quic::packet_number_space::initial).packets().size() == 1);
+}
+
+TEST_CASE("connection loop lets prevalidated server peer send before receiving packets") {
+    flowq::quic::plaintext_packet_protector protector{};
+
+    flowq::quic::connection_loop_config server_config{};
+    server_config.role = flowq::quic::connection_role::server;
+    server_config.local_connection_id = cid({0x02});
+    server_config.remote_connection_id = cid({0x01});
+    server_config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
+    server_config.initial_protector = &protector;
+    server_config.handshake_protector = &protector;
+    server_config.application_protector = &protector;
+    server_config.peer_address_validated = true;
+    auto server = flowq::quic::connection_loop{std::move(server_config)};
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    server.flush(at(0ms));
+
+    auto datagram = require_single_outbound(server.drain_actions());
+    CHECK_FALSE(datagram.payload.empty());
+    CHECK(server.sent_packets(flowq::quic::packet_number_space::initial).packets().size() == 1);
 }
 
 TEST_CASE("connection loop ignores discarded Initial packet space") {
@@ -352,6 +440,7 @@ TEST_CASE("connection loop refreshes key lifecycle after inbound TLS CRYPTO chan
     server_config.handshake_protector = &protector;
     server_config.application_protector = &protector;
     server_config.tls_adapter = &adapter;
+    server_config.peer_address_validated = true;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
     server.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
@@ -402,6 +491,31 @@ TEST_CASE("connection loop refreshes key lifecycle after draining TLS CRYPTO") {
     CHECK_FALSE(loop.next_recovery_timer(at(1ms)).has_value());
 }
 
+TEST_CASE("connection loop discards Initial space after draining TLS handshake keys") {
+    flowq::quic::plaintext_packet_protector protector{};
+    recording_tls_adapter adapter{};
+    adapter.outbound.push_back(flowq::quic::crypto_bytes{flowq::quic::tls_encryption_level::initial, 0, text("late initial flight")});
+    adapter.install_handshake_keys_on_drain = true;
+
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::server;
+    config.local_connection_id = cid({0x02});
+    config.remote_connection_id = cid({0x01});
+    config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
+    config.initial_protector = &protector;
+    config.handshake_protector = &protector;
+    config.application_protector = &protector;
+    config.tls_adapter = &adapter;
+    auto loop = flowq::quic::connection_loop{std::move(config)};
+
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+
+    CHECK(loop.drain_actions().empty());
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets().empty());
+    CHECK_FALSE(loop.next_recovery_timer(at(1ms)).has_value());
+}
+
 TEST_CASE("connection loop feeds inbound CRYPTO frames to TLS adapter by packet space") {
     flowq::quic::plaintext_packet_protector protector{};
     recording_tls_adapter adapter{};
@@ -442,6 +556,7 @@ TEST_CASE("connection loop pumps TLS adapter CRYPTO bytes into packet-space fram
     config.handshake_protector = &protector;
     config.application_protector = &protector;
     config.tls_adapter = &adapter;
+    config.peer_address_validated = true;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
     loop.flush();
@@ -1276,6 +1391,330 @@ TEST_CASE("connection loop converts invalid inbound datagrams to close actions")
     CHECK_FALSE(std::get<flowq::quic::close_action>(actions[0]).error.ok());
 }
 
+TEST_CASE("connection loop suppresses outbound work after a local close") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+
+    loop.on_datagram(flowq::quic::inbound_datagram{flowq::buffer{bytes({0xc0})}, flowq::endpoint{"peer", 9999, ""}});
+
+    auto close_actions = loop.drain_actions();
+    REQUIRE(close_actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(close_actions[0]));
+    CHECK(loop.state() == flowq::quic::connection_loop_state::closing);
+
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(1ms));
+
+    CHECK(loop.drain_actions().empty());
+    CHECK_FALSE(loop.next_recovery_timer(at(2ms)).has_value());
+}
+
+TEST_CASE("connection loop ignores inbound packets after a local close") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto closed = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto peer = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    peer.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    peer.flush(at(0ms));
+    auto datagram = require_single_outbound(peer.drain_actions());
+
+    closed.on_datagram(flowq::quic::inbound_datagram{flowq::buffer{bytes({0xc0})}, flowq::endpoint{"peer", 9999, ""}});
+    (void)closed.drain_actions();
+
+    closed.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer});
+
+    CHECK(closed.drain_actions().empty());
+    CHECK(closed.state() == flowq::quic::connection_loop_state::closing);
+}
+
+TEST_CASE("connection loop enters draining after peer connection close and suppresses sends") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::connection_close_frame{0x1d, 0, "peer closed"}}});
+    client.flush(at(0ms));
+    auto datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer});
+
+    auto close_actions = server.drain_actions();
+    REQUIRE(close_actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(close_actions[0]));
+    const auto& error = std::get<flowq::quic::close_action>(close_actions[0]).error;
+    CHECK(error.code() == flowq::error_code::connection_closed);
+    CHECK(error.message() == "peer closed");
+    CHECK(server.state() == flowq::quic::connection_loop_state::draining);
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    server.flush(at(1ms));
+
+    CHECK(server.drain_actions().empty());
+}
+
+TEST_CASE("connection loop closes on peer address change when active migration is disabled") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(
+        cid({0x02}),
+        cid({0x01}),
+        flowq::endpoint{"client", 1111, "hq-interop"},
+        protector,
+        UINT64_MAX,
+        UINT64_MAX,
+        SIZE_MAX,
+        flowq::quic::packet_protection_policy::test_allowed,
+        true);
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), flowq::endpoint{"client-alt", 2222, "hq-interop"}});
+
+    auto actions = server.drain_actions();
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(actions[0]));
+    const auto& error = std::get<flowq::quic::close_action>(actions[0]).error;
+    CHECK(error.code() == flowq::error_code::protocol_error);
+    CHECK(server.state() == flowq::quic::connection_loop_state::closing);
+}
+
+TEST_CASE("connection loop updates peer for subsequent sends when active migration is allowed") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), flowq::endpoint{"client-alt", 2222, "hq-interop"}});
+    auto received = server.drain_actions();
+    REQUIRE(received.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(received[0]));
+
+    server.acknowledge(flowq::quic::packet_number_space::initial);
+    auto ack = require_single_outbound(server.drain_actions());
+
+    CHECK(ack.peer.host == "client-alt");
+    CHECK(ack.peer.port == 2222);
+}
+
+TEST_CASE("connection loop resets server anti-amplification budget after peer address migration") {
+    flowq::quic::plaintext_packet_protector protector{};
+    flowq::endpoint client_peer{"client", 1111, "hq-interop"};
+    flowq::endpoint migrated_peer{"client-alt", 2222, "hq-interop"};
+    flowq::endpoint server_peer{"server", 4433, "hq-interop"};
+    auto client = make_loop(cid({0x01}), cid({0x02}), server_peer, protector);
+
+    flowq::quic::connection_loop_config server_config{};
+    server_config.role = flowq::quic::connection_role::server;
+    server_config.local_connection_id = cid({0x02});
+    server_config.remote_connection_id = cid({0x01});
+    server_config.peer = client_peer;
+    server_config.initial_protector = &protector;
+    server_config.handshake_protector = &protector;
+    server_config.application_protector = &protector;
+    server_config.pipeline = flowq::quic::packet_pipeline_config{8192};
+    server_config.peer_address_validated = true;
+    auto server = flowq::quic::connection_loop{std::move(server_config)};
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto migrated_datagram = require_single_outbound(client.drain_actions());
+    const auto migrated_datagram_size = migrated_datagram.payload.size();
+
+    server.on_datagram(
+        flowq::quic::inbound_datagram{std::move(migrated_datagram.payload), migrated_peer},
+        at(1ms));
+    auto received = server.drain_actions();
+    REQUIRE(received.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(received[0]));
+    CHECK(std::get<flowq::quic::received_packet_event>(received[0]).peer.host == "client-alt");
+
+    const auto oversized_response_bytes = (migrated_datagram_size * 3U) + 128U;
+    server.queue_initial({
+        flowq::quic::frame{flowq::quic::crypto_frame{0, text(std::string(oversized_response_bytes, 'm'))}}
+    });
+    server.flush(at(2ms));
+
+    CHECK(server.drain_actions().empty());
+    CHECK(server.sent_packets(flowq::quic::packet_number_space::initial).packets().empty());
+}
+
+TEST_CASE("connection loop exposes idle lifecycle timer after outbound activity") {
+    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = cid({0x01});
+    config.remote_connection_id = cid({0x02});
+    config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
+    config.initial_protector = &protector;
+    config.handshake_protector = &protector;
+    config.application_protector = &protector;
+    config.max_idle_timeout = 10ms;
+    auto loop = flowq::quic::connection_loop{std::move(config)};
+
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+    (void)loop.drain_actions();
+
+    auto timer = loop.next_lifecycle_timer(at(1ms));
+
+    REQUIRE(timer.has_value());
+    CHECK(timer->kind == flowq::quic::connection_lifecycle_timer_kind::idle);
+    CHECK(timer->deadline == at(10ms));
+}
+
+TEST_CASE("connection loop closes on expired idle lifecycle timer") {
+    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = cid({0x01});
+    config.remote_connection_id = cid({0x02});
+    config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
+    config.initial_protector = &protector;
+    config.handshake_protector = &protector;
+    config.application_protector = &protector;
+    config.max_idle_timeout = 10ms;
+    auto loop = flowq::quic::connection_loop{std::move(config)};
+
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+    (void)loop.drain_actions();
+
+    loop.on_lifecycle_timer(flowq::quic::connection_lifecycle_timer_kind::idle, at(10ms));
+
+    auto actions = loop.drain_actions();
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(actions[0]));
+    CHECK(std::get<flowq::quic::close_action>(actions[0]).error.code() == flowq::error_code::timeout);
+    CHECK(loop.state() == flowq::quic::connection_loop_state::closing);
+
+    loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(11ms));
+    CHECK(loop.drain_actions().empty());
+}
+
+TEST_CASE("connection loop refreshes idle lifecycle timer after inbound activity") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    flowq::quic::connection_loop_config server_config{};
+    server_config.role = flowq::quic::connection_role::server;
+    server_config.local_connection_id = cid({0x02});
+    server_config.remote_connection_id = cid({0x01});
+    server_config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
+    server_config.initial_protector = &protector;
+    server_config.handshake_protector = &protector;
+    server_config.application_protector = &protector;
+    server_config.max_idle_timeout = 10ms;
+    auto server = flowq::quic::connection_loop{std::move(server_config)};
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer}, at(5ms));
+    (void)server.drain_actions();
+
+    auto timer = server.next_lifecycle_timer(at(6ms));
+    REQUIRE(timer.has_value());
+    CHECK(timer->kind == flowq::quic::connection_lifecycle_timer_kind::idle);
+    CHECK(timer->deadline == at(15ms));
+}
+
+TEST_CASE("connection loop does not refresh idle lifecycle timer for ACK-only packets") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    flowq::quic::connection_loop_config server_config{};
+    server_config.role = flowq::quic::connection_role::server;
+    server_config.local_connection_id = cid({0x02});
+    server_config.remote_connection_id = cid({0x01});
+    server_config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
+    server_config.initial_protector = &protector;
+    server_config.handshake_protector = &protector;
+    server_config.application_protector = &protector;
+    server_config.max_idle_timeout = 10ms;
+    auto server = flowq::quic::connection_loop{std::move(server_config)};
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto datagram = require_single_outbound(client.drain_actions());
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer}, at(0ms));
+    (void)server.drain_actions();
+
+    server.acknowledge(flowq::quic::packet_number_space::initial, at(5ms));
+    (void)server.drain_actions();
+
+    auto timer = server.next_lifecycle_timer(at(6ms));
+    REQUIRE(timer.has_value());
+    CHECK(timer->kind == flowq::quic::connection_lifecycle_timer_kind::idle);
+    CHECK(timer->deadline == at(10ms));
+}
+
+TEST_CASE("connection loop expires draining lifecycle state to closed") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    flowq::quic::connection_loop_config server_config{};
+    server_config.role = flowq::quic::connection_role::server;
+    server_config.local_connection_id = cid({0x02});
+    server_config.remote_connection_id = cid({0x01});
+    server_config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
+    server_config.initial_protector = &protector;
+    server_config.handshake_protector = &protector;
+    server_config.application_protector = &protector;
+    server_config.closing_draining_timeout = 25ms;
+    auto server = flowq::quic::connection_loop{std::move(server_config)};
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::connection_close_frame{0, 0, "peer closed"}}});
+    client.flush(at(0ms));
+    auto datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer}, at(0ms));
+    (void)server.drain_actions();
+
+    auto timer = server.next_lifecycle_timer(at(0ms));
+    REQUIRE(timer.has_value());
+    CHECK(timer->kind == flowq::quic::connection_lifecycle_timer_kind::draining);
+    CHECK(timer->deadline == at(25ms));
+
+    server.on_lifecycle_timer(flowq::quic::connection_lifecycle_timer_kind::draining, at(25ms));
+
+    CHECK(server.state() == flowq::quic::connection_loop_state::closed);
+    CHECK_FALSE(server.next_lifecycle_timer(at(26ms)).has_value());
+    auto appended = server.append_stream_data(0, text("late"));
+    CHECK_FALSE(appended.ok());
+    CHECK(appended.error.code() == flowq::error_code::connection_closed);
+}
+
+TEST_CASE("connection loop expires closing lifecycle state to closed") {
+    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = cid({0x01});
+    config.remote_connection_id = cid({0x02});
+    config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
+    config.initial_protector = &protector;
+    config.handshake_protector = &protector;
+    config.application_protector = &protector;
+    config.closing_draining_timeout = 25ms;
+    auto loop = flowq::quic::connection_loop{std::move(config)};
+
+    loop.on_datagram(flowq::quic::inbound_datagram{flowq::buffer{bytes({0xc0})}, flowq::endpoint{"peer", 9999, ""}}, at(0ms));
+    (void)loop.drain_actions();
+
+    auto timer = loop.next_lifecycle_timer(at(0ms));
+    REQUIRE(timer.has_value());
+    CHECK(timer->kind == flowq::quic::connection_lifecycle_timer_kind::closing);
+    CHECK(timer->deadline == at(25ms));
+
+    loop.on_lifecycle_timer(flowq::quic::connection_lifecycle_timer_kind::closing, at(25ms));
+
+    CHECK(loop.state() == flowq::quic::connection_loop_state::closed);
+    CHECK_FALSE(loop.next_lifecycle_timer(at(26ms)).has_value());
+}
+
 TEST_CASE("connection loop rejects test-only protection when production protection is required") {
     flowq::quic::plaintext_packet_protector protector{};
     auto loop = make_loop(
@@ -1304,6 +1743,67 @@ TEST_CASE("connection loop blocks production Application data before TLS handsha
     recording_tls_adapter adapter{};
     adapter.state_value = flowq::quic::handshake_state::handshaking;
     adapter.keys.application = true;
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = cid({0x01});
+    config.remote_connection_id = cid({0x02});
+    config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
+    config.initial_protector = &initial_protector;
+    config.handshake_protector = &handshake_protector;
+    config.application_protector = &application_protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::production_required;
+    config.tls_adapter = &adapter;
+    auto loop = flowq::quic::connection_loop{std::move(config)};
+
+    loop.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+
+    auto actions = loop.drain_actions();
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(actions[0]));
+    CHECK_FALSE(std::get<flowq::quic::close_action>(actions[0]).error.ok());
+}
+
+TEST_CASE("connection loop allows production Application data with confirmed TLS-owned key schedule") {
+    provider_backed_packet_protector initial_protector{flowq::quic::protection_level::initial};
+    provider_backed_packet_protector handshake_protector{flowq::quic::protection_level::handshake};
+    provider_backed_packet_protector application_protector{flowq::quic::protection_level::application};
+    recording_tls_adapter adapter{};
+    adapter.state_value = flowq::quic::handshake_state::handshake_confirmed;
+    adapter.keys.application = true;
+    adapter.status = flowq::quic::crypto_provider_status::available(
+        flowq::quic::cipher_suite::aes_128_gcm_sha256,
+        flowq::quic::crypto_capabilities{false, false, false, false, true});
+
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = cid({0x01});
+    config.remote_connection_id = cid({0x02});
+    config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
+    config.initial_protector = &initial_protector;
+    config.handshake_protector = &handshake_protector;
+    config.application_protector = &application_protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::production_required;
+    config.tls_adapter = &adapter;
+    auto loop = flowq::quic::connection_loop{std::move(config)};
+
+    loop.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+
+    auto actions = loop.drain_actions();
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::outbound_datagram>(actions[0]));
+    CHECK_FALSE(std::get<flowq::quic::outbound_datagram>(actions[0]).payload.empty());
+}
+
+TEST_CASE("connection loop blocks production Application data when TLS adapter lacks key schedule ownership") {
+    provider_backed_packet_protector initial_protector{flowq::quic::protection_level::initial};
+    provider_backed_packet_protector handshake_protector{flowq::quic::protection_level::handshake};
+    provider_backed_packet_protector application_protector{flowq::quic::protection_level::application};
+    recording_tls_adapter adapter{};
+    adapter.state_value = flowq::quic::handshake_state::handshake_confirmed;
+    adapter.keys.application = true;
+
     flowq::quic::connection_loop_config config{};
     config.role = flowq::quic::connection_role::client;
     config.local_connection_id = cid({0x01});

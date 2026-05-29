@@ -39,6 +39,8 @@ struct session_config {
     bool disable_active_migration{};
     tls_handshake_adapter* tls_adapter{};
     key_lifecycle_state key_lifecycle{};
+    std::chrono::milliseconds closing_draining_timeout{std::chrono::seconds{3}};
+    bool peer_address_validated{};
 };
 
 inline void apply_transport_parameters(session_config& config, const transport_parameters& parameters) {
@@ -125,12 +127,26 @@ public:
         return drain_receive_actions();
     }
 
+    [[nodiscard]] session_receive_result on_datagram(inbound_datagram datagram, std::chrono::steady_clock::time_point received_at) {
+        loop_.on_datagram(std::move(datagram), received_at);
+        return drain_receive_actions();
+    }
+
     [[nodiscard]] std::optional<connection_recovery_timer> next_recovery_timer(std::chrono::steady_clock::time_point now) {
         return loop_.next_recovery_timer(now);
     }
 
     [[nodiscard]] connection_recovery_result on_recovery_timer(packet_number_space space, std::chrono::steady_clock::time_point now) {
         return loop_.on_recovery_timer(space, now);
+    }
+
+    [[nodiscard]] std::optional<connection_lifecycle_timer> next_lifecycle_timer(std::chrono::steady_clock::time_point now) {
+        return loop_.next_lifecycle_timer(now);
+    }
+
+    [[nodiscard]] session_send_result on_lifecycle_timer(connection_lifecycle_timer_kind kind, std::chrono::steady_clock::time_point now) {
+        loop_.on_lifecycle_timer(kind, now);
+        return drain_send_actions();
     }
 
 private:
@@ -160,7 +176,9 @@ private:
             config.active_connection_id_limit,
             config.disable_active_migration,
             config.tls_adapter,
-            config.key_lifecycle
+            config.key_lifecycle,
+            config.closing_draining_timeout,
+            config.peer_address_validated
         };
     }
 

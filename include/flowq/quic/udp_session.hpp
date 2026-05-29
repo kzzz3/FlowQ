@@ -290,6 +290,14 @@ public:
         return receive_max_size_;
     }
 
+    [[nodiscard]] session& quic_session() noexcept {
+        return quic_;
+    }
+
+    [[nodiscard]] const session& quic_session() const noexcept {
+        return quic_;
+    }
+
     [[nodiscard]] stream_operation_result append_stream_data(std::uint64_t stream_id, const flowq::buffer& data) {
         return quic_.append_stream_data(stream_id, data);
     }

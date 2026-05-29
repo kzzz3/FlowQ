@@ -46,6 +46,20 @@ TEST_CASE("zero_rtt_replay_protection rejects duplicate packet") {
     CHECK_FALSE(protection.check_and_record(5));
 }
 
+TEST_CASE("zero_rtt_replay_protection rejects duplicate after window advances") {
+    flowq::quic::zero_rtt_replay_protection protection{64};
+
+    CHECK(protection.check_and_record(5));
+    CHECK(protection.check_and_record(6));
+    CHECK_FALSE(protection.check_and_record(5));
+}
+
+TEST_CASE("zero_rtt_replay_protection rejects packets when window is zero") {
+    flowq::quic::zero_rtt_replay_protection protection{0};
+
+    CHECK_FALSE(protection.check_and_record(1));
+}
+
 TEST_CASE("zero_rtt_replay_protection accepts packet within window") {
     flowq::quic::zero_rtt_replay_protection protection{64};
 
@@ -72,9 +86,9 @@ TEST_CASE("zero_rtt_replay_protection handles large gap") {
 TEST_CASE("zero_rtt_replay_protection tracks largest seen") {
     flowq::quic::zero_rtt_replay_protection protection{64};
 
-    protection.check_and_record(10);
-    protection.check_and_record(20);
-    protection.check_and_record(15);
+    (void)protection.check_and_record(10);
+    (void)protection.check_and_record(20);
+    (void)protection.check_and_record(15);
 
     CHECK(protection.largest_seen() == 20);
 }

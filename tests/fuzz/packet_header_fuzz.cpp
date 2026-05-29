@@ -1,4 +1,4 @@
-#include <flowq/quic/packet_header.hpp>
+#include "quic_codec_fuzz_harness.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -8,8 +8,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     const std::span<const std::byte> input{
         reinterpret_cast<const std::byte*>(data), size};
 
-    auto result = flowq::quic::decode_packet_header(input);
-    (void)result;
+    flowq::quic::test_fuzz::exercise_packet_header_input(input);
 
     return 0;
 }

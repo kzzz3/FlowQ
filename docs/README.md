@@ -33,7 +33,7 @@ docs/
 ## Project Status
 
 **Version**: 1.0.0  
-**Tests**: 427/427 passing  
+**Tests**: 471/471 passing
 **Status**: Non-production baseline (all M20-M39 milestones complete)
 
 ### Completed Features

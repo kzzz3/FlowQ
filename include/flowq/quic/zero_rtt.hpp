@@ -4,6 +4,7 @@
 #include <flowq/error.hpp>
 #include <flowq/quic/tls_handshake.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -113,32 +114,31 @@ public:
     /// Check if a 0-RTT packet number is potentially replayed.
     /// Returns true if the packet should be accepted (not a replay).
     [[nodiscard]] bool check_and_record(std::uint64_t packet_number) noexcept {
-        if (largest_seen_ == 0 && bitmap_.empty()) {
+        if (window_size_ == 0) {
+            return false;
+        }
+
+        if (bitmap_.empty()) {
             // First packet
             largest_seen_ = packet_number;
-            bitmap_.resize(window_size_, false);
-            bitmap_[packet_number % window_size_] = true;
+            bitmap_.resize(static_cast<std::size_t>(window_size_), false);
+            bitmap_[static_cast<std::size_t>(packet_number % window_size_)] = true;
             return true;
         }
 
         if (packet_number > largest_seen_) {
-            // New largest - shift window
-            auto shift = packet_number - largest_seen_;
+            const auto previous_largest = largest_seen_;
+            const auto shift = packet_number - previous_largest;
             if (shift < window_size_) {
-                // Shift bitmap
-                for (std::size_t i = 0; i < window_size_ - shift; ++i) {
-                    bitmap_[i] = bitmap_[i + shift];
-                }
-                for (std::size_t i = window_size_ - shift; i < window_size_; ++i) {
-                    bitmap_[i] = false;
+                for (std::uint64_t offset = 1; offset <= shift; ++offset) {
+                    bitmap_[static_cast<std::size_t>((previous_largest + offset) % window_size_)] = false;
                 }
             } else {
-                // Complete reset
                 std::fill(bitmap_.begin(), bitmap_.end(), false);
             }
 
             largest_seen_ = packet_number;
-            bitmap_[packet_number % window_size_] = true;
+            bitmap_[static_cast<std::size_t>(packet_number % window_size_)] = true;
             return true;
         }
 
@@ -148,7 +148,7 @@ public:
         }
 
         // Check the bitmap
-        auto index = packet_number % window_size_;
+        auto index = static_cast<std::size_t>(packet_number % window_size_);
         if (bitmap_[index]) {
             return false;  // Already seen
         }
