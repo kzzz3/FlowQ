@@ -1,5 +1,8 @@
 name: Robustness
 
+# Runs sanitizer-instrumented builds and fuzz targets to catch memory errors,
+# undefined behavior, and logic bugs before they reach production.
+
 on:
   push:
   pull_request:
@@ -7,6 +10,14 @@ on:
 
 jobs:
   sanitize:
+    # ASan (AddressSanitizer): detects use-after-free, buffer overflows, stack
+    #   overflow, and other memory safety violations at runtime.
+    # UBSan (UndefinedBehaviorSanitizer): catches signed integer overflow, null
+    #   pointer dereference, misaligned access, and other undefined behavior
+    #   per the C++ standard.
+    # -fno-omit-frame-pointer: preserves frame pointers in all functions so that
+    #   sanitizer stack traces include full call chains, greatly improving
+    #   diagnosability of any reported issue.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +39,9 @@ jobs:
         run: ctest --test-dir build -C Debug --timeout 30 --output-on-failure
 
   fuzz:
+    # Builds fuzz targets with libFuzzer + ASan + UBSan, then runs each for a
+    # short smoke period to catch crashes and sanitizer violations in codec
+    # paths exposed to random input.
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
@@ -50,3 +64,5 @@ jobs:
         run: timeout 60 ./build-fuzz/flowq_packet_header_fuzz -max_total_time=30
       - name: Run frame codec fuzz (short)
         run: timeout 60 ./build-fuzz/flowq_frame_codec_fuzz -max_total_time=30
+      - name: Run QPACK fuzz (short)
+        run: timeout 60 ./build-fuzz/flowq_fuzz_qpack -max_total_time=30

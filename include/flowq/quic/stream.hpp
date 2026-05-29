@@ -73,6 +73,9 @@ class stream_receive_state {
 public:
     explicit stream_receive_state(std::uint64_t max_data = std::numeric_limits<std::uint64_t>::max()) noexcept : max_data_{max_data} {}
 
+    stream_receive_state(stream_receive_state&&) noexcept = default;
+    stream_receive_state& operator=(stream_receive_state&&) noexcept = default;
+
     [[nodiscard]] stream_receive_result receive(const stream_frame& frame) {
         if (reset_received_) {
             return failure("STREAM data received after RESET_STREAM");
@@ -385,6 +388,9 @@ class stream_send_state {
 public:
     explicit stream_send_state(std::uint64_t stream_id, std::uint64_t max_data = std::numeric_limits<std::uint64_t>::max())
         : stream_id_{stream_id}, max_data_{max_data} {}
+
+    stream_send_state(stream_send_state&&) noexcept = default;
+    stream_send_state& operator=(stream_send_state&&) noexcept = default;
 
     [[nodiscard]] stream_operation_result append(const flowq::buffer& data) {
         if (stop_requested_) {
