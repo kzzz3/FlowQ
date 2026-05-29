@@ -37,7 +37,6 @@ struct loss_detection_result {
     std::vector<std::uint64_t> newly_lost;
 };
 
-#ifndef FLOWQ_HIDE_DETAIL
 namespace detail {
 
 [[nodiscard]] inline std::chrono::steady_clock::duration scale_duration(
@@ -98,7 +97,6 @@ namespace detail {
 }
 
 } // namespace detail
-#endif // FLOWQ_HIDE_DETAIL
 
 struct rtt_sample {
     std::chrono::steady_clock::duration latest_rtt{};

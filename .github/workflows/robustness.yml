@@ -61,8 +61,8 @@ jobs:
       - name: Build fuzz targets
         run: cmake --build build-fuzz
       - name: Run packet header fuzz (short)
-        run: timeout 60 ./build-fuzz/flowq_packet_header_fuzz -max_total_time=30
+        run: timeout 60 ./build-fuzz/flowq_fuzz_packet_header -max_total_time=30
       - name: Run frame codec fuzz (short)
-        run: timeout 60 ./build-fuzz/flowq_frame_codec_fuzz -max_total_time=30
+        run: timeout 60 ./build-fuzz/flowq_fuzz_frame_decode -max_total_time=30
       - name: Run QPACK fuzz (short)
         run: timeout 60 ./build-fuzz/flowq_fuzz_qpack -max_total_time=30

@@ -176,7 +176,6 @@ struct frame_payload_budget_selection {
     }
 };
 
-#ifndef FLOWQ_HIDE_DETAIL
 namespace detail {
 
 [[nodiscard]] inline flowq::error pipeline_error(const char* message) {
@@ -348,7 +347,6 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
 }
 
 } // namespace detail
-#endif // FLOWQ_HIDE_DETAIL
 
 [[nodiscard]] inline frame_payload_budget_selection select_frames_for_payload_budget(std::span<const frame> candidates, std::size_t budget) {
     frame_payload_budget_selection result{};

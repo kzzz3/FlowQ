@@ -130,7 +130,6 @@ struct retry_token {
     flowq::buffer data;
 };
 
-#ifndef FLOWQ_HIDE_DETAIL
 namespace detail {
 
 /// Compare tag bytes without early exit on mismatch or length differences.
@@ -211,7 +210,6 @@ inline void append_string(std::vector<std::byte>& output, const std::string& val
 }
 
 } // namespace detail
-#endif // FLOWQ_HIDE_DETAIL
 
 /// Result of Retry integrity tag creation.
 struct retry_integrity_result {
@@ -312,7 +310,6 @@ struct retry_token_validation_result {
     }
 };
 
-#ifndef FLOWQ_HIDE_DETAIL
 namespace detail {
 
 struct retry_token_payload_encode_result {
@@ -481,7 +478,6 @@ struct retry_token_payload_decode_result {
 }
 
 } // namespace detail
-#endif // FLOWQ_HIDE_DETAIL
 
 /// Issues and validates address-bound Retry tokens.
 class retry_token_validator {

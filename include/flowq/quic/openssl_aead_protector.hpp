@@ -33,6 +33,9 @@ public:
         if (material.suite == cipher_suite::unknown) {
             return {flowq::error{flowq::error_code::tls_error, "cannot create AEAD protector with unknown cipher suite"}};
         }
+        if (material.suite != cipher_suite::aes_128_gcm_sha256) {
+            return {flowq::error{flowq::error_code::tls_error, "only aes_128_gcm_sha256 is currently supported by openssl_aead_packet_protector"}};
+        }
         const auto lengths = cipher_suite_key_lengths(material.suite);
         if (material.key.size() != lengths.key ||
             material.iv.size() != lengths.iv ||
@@ -45,6 +48,11 @@ public:
 
     /// Default constructor creates an invalid protector.
     openssl_aead_packet_protector() = default;
+
+    openssl_aead_packet_protector(const openssl_aead_packet_protector&) = delete;
+    openssl_aead_packet_protector& operator=(const openssl_aead_packet_protector&) = delete;
+    openssl_aead_packet_protector(openssl_aead_packet_protector&&) noexcept = default;
+    openssl_aead_packet_protector& operator=(openssl_aead_packet_protector&&) noexcept = default;
 
     [[nodiscard]] bool is_ready() const noexcept {
         return ready_;

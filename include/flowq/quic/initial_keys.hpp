@@ -66,7 +66,6 @@ struct initial_key_material_result {
 #endif
 }
 
-#ifndef FLOWQ_HIDE_DETAIL
 namespace detail {
 
 [[nodiscard]] inline std::vector<std::byte> tls13_hkdf_label(std::size_t length, std::string_view label) {
@@ -196,7 +195,6 @@ struct evp_cipher_context {
 #endif
 
 } // namespace detail
-#endif // FLOWQ_HIDE_DETAIL
 
 [[nodiscard]] inline initial_secrets_result derive_initial_secrets(std::span<const std::byte> destination_connection_id) {
 #if defined(FLOWQ_ENABLE_OPENSSL_CRYPTO)
