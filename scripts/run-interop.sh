@@ -24,6 +24,21 @@ SCENARIO=""
 OUTPUT_FILE="interop-results.json"
 BUILD_DIR="build/windows-msvc-vcpkg"
 
+resolve_harness_binary() {
+    local candidate
+    for candidate in \
+        "${BUILD_DIR}/Debug/flowq_interop_tests.exe" \
+        "${BUILD_DIR}/Debug/flowq_interop_tests" \
+        "${BUILD_DIR}/flowq_interop_tests"; do
+        if [[ -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    printf '%s\n' "${BUILD_DIR}/Debug/flowq_interop_tests.exe"
+}
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -65,14 +80,21 @@ FLOWQ_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 HOST_OS=$(uname -s 2>/dev/null || echo "unknown")
 HOST_ARCH=$(uname -m 2>/dev/null || echo "unknown")
+HARNESS_BIN=$(resolve_harness_binary)
+
+if [[ -x "$PEER_BIN" ]]; then
+    PEER_RESOLVED="$(cd "$(dirname "$PEER_BIN")" && pwd)/$(basename "$PEER_BIN")"
+else
+    PEER_RESOLVED=$(command -v "$PEER_BIN" 2>/dev/null || true)
+fi
 
 # Get peer version
 echo "Detecting peer version..."
 PEER_VERSION=""
-if [[ -x "$PEER_BIN" ]]; then
+if [[ -n "$PEER_RESOLVED" ]]; then
     # Try common version flags
     for flag in "--version" "-v" "-V" "version"; do
-        PEER_VERSION=$("$PEER_BIN" $flag 2>&1 | head -1 || true)
+        PEER_VERSION=$("$PEER_RESOLVED" $flag 2>&1 | head -1 || true)
         if [[ -n "$PEER_VERSION" ]]; then
             break
         fi
@@ -101,6 +123,7 @@ echo -e "FlowQ commit: ${GREEN}${FLOWQ_COMMIT}${NC}"
 echo -e "FlowQ branch: ${GREEN}${FLOWQ_BRANCH}${NC}"
 echo -e "Timestamp: ${GREEN}${TIMESTAMP}${NC}"
 echo -e "Host: ${GREEN}${HOST_OS}/${HOST_ARCH}${NC}"
+echo -e "Harness: ${GREEN}${HARNESS_BIN}${NC}"
 echo ""
 
 # Find scenarios
@@ -133,6 +156,7 @@ cat > "$RESULTS_FILE" <<EOF
     },
     "peer": {
         "binary": "${PEER_BIN}",
+        "resolved_binary": "${PEER_RESOLVED}",
         "version": "${PEER_VERSION}"
     },
     "scenarios": []
@@ -142,6 +166,7 @@ EOF
 TOTAL_SCENARIOS=0
 PASSED_SCENARIOS=0
 FAILED_SCENARIOS=0
+SKIPPED_SCENARIOS=0
 
 for scenario_file in "${SCENARIOS[@]}"; do
     scenario_name=$(basename "$scenario_file" .json)
@@ -153,27 +178,70 @@ for scenario_file in "${SCENARIOS[@]}"; do
     if [[ ! -f "$scenario_file" ]]; then
         echo -e "${RED}  FAILED: Scenario file not found${NC}"
         FAILED_SCENARIOS=$((FAILED_SCENARIOS + 1))
+        jq --arg name "$scenario_name" \
+           --arg status "error" \
+           --arg reason "Scenario file not found" \
+           '.scenarios += [{"name": $name, "status": $status, "reason": $reason}]' \
+           "$RESULTS_FILE" > "${RESULTS_FILE}.tmp" && mv "${RESULTS_FILE}.tmp" "$RESULTS_FILE"
+        continue
+    fi
+
+    if [[ ! -x "$HARNESS_BIN" ]]; then
+        echo -e "${RED}  FAILED: Interop harness not found or not executable${NC}"
+        FAILED_SCENARIOS=$((FAILED_SCENARIOS + 1))
+        jq --arg name "$scenario_name" \
+           --arg status "error" \
+           --arg reason "Interop harness not found" \
+           --arg harness "$HARNESS_BIN" \
+           '.scenarios += [{"name": $name, "status": $status, "reason": $reason, "harness": $harness}]' \
+           "$RESULTS_FILE" > "${RESULTS_FILE}.tmp" && mv "${RESULTS_FILE}.tmp" "$RESULTS_FILE"
         continue
     fi
 
     # Check if peer binary exists
-    if [[ ! -x "$PEER_BIN" ]]; then
+    if [[ -z "$PEER_RESOLVED" ]]; then
         echo -e "${RED}  FAILED: Peer binary not found or not executable${NC}"
         FAILED_SCENARIOS=$((FAILED_SCENARIOS + 1))
+        jq --arg name "$scenario_name" \
+           --arg status "error" \
+           --arg reason "Peer binary not found or not executable" \
+           --arg peer "$PEER_BIN" \
+           '.scenarios += [{"name": $name, "status": $status, "reason": $reason, "peer": $peer}]' \
+           "$RESULTS_FILE" > "${RESULTS_FILE}.tmp" && mv "${RESULTS_FILE}.tmp" "$RESULTS_FILE"
         continue
     fi
 
-    # Run scenario (placeholder - actual implementation would use the interop test binary)
-    # For now, we'll record that the scenario was attempted
-    echo -e "  ${YELLOW}SKIPPED: Interop test execution not yet implemented${NC}"
-    echo -e "  Scenario: ${scenario_name}"
-    echo -e "  Peer: ${PEER_BIN} (${PEER_VERSION})"
+    export FLOWQ_INTEROP_PEER_BIN="$PEER_RESOLVED"
+    export FLOWQ_INTEROP_SCENARIO="$scenario_name"
 
-    # Add to results
+    start_ms=$(date +%s%3N)
+    set +e
+    harness_output=$("$HARNESS_BIN" "*${scenario_name}*" 2>&1)
+    harness_exit=$?
+    set -e
+    end_ms=$(date +%s%3N)
+    duration_ms=$((end_ms - start_ms))
+
+    if [[ $harness_exit -eq 0 && "$harness_output" != *"SKIPPED:"* ]]; then
+        echo -e "  ${GREEN}PASSED${NC}"
+        PASSED_SCENARIOS=$((PASSED_SCENARIOS + 1))
+        status="passed"
+    elif [[ $harness_exit -eq 0 && "$harness_output" == *"SKIPPED:"* ]]; then
+        echo -e "  ${YELLOW}SKIPPED: Harness reported scenario skip${NC}"
+        SKIPPED_SCENARIOS=$((SKIPPED_SCENARIOS + 1))
+        status="skipped"
+    else
+        echo -e "${RED}  FAILED: Harness exit code ${harness_exit}${NC}"
+        FAILED_SCENARIOS=$((FAILED_SCENARIOS + 1))
+        status="failed"
+    fi
+
     jq --arg name "$scenario_name" \
-       --arg status "skipped" \
-       --arg reason "Interop test execution not yet implemented" \
-       '.scenarios += [{"name": $name, "status": $status, "reason": $reason}]' \
+       --arg status "$status" \
+       --argjson duration_ms "$duration_ms" \
+       --argjson harness_exit_code "$harness_exit" \
+       --arg output "$harness_output" \
+       '.scenarios += [{"name": $name, "status": $status, "duration_ms": $duration_ms, "harness_exit_code": $harness_exit_code, "output": $output}]' \
        "$RESULTS_FILE" > "${RESULTS_FILE}.tmp" && mv "${RESULTS_FILE}.tmp" "$RESULTS_FILE"
 done
 
@@ -182,7 +250,7 @@ echo -e "${CYAN}=== Summary ===${NC}"
 echo "Total scenarios: $TOTAL_SCENARIOS"
 echo "Passed: $PASSED_SCENARIOS"
 echo "Failed: $FAILED_SCENARIOS"
-echo "Skipped: $((TOTAL_SCENARIOS - PASSED_SCENARIOS - FAILED_SCENARIOS))"
+echo "Skipped: $SKIPPED_SCENARIOS"
 echo ""
 echo "Results written to: $RESULTS_FILE"
 

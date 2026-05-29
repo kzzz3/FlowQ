@@ -18,6 +18,21 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $RepoRoot
 
+function Resolve-PeerBinary {
+    param([string]$Value)
+
+    if (Test-Path $Value) {
+        return (Resolve-Path $Value).Path
+    }
+
+    $command = Get-Command $Value -ErrorAction SilentlyContinue
+    if ($command -and $command.Source) {
+        return $command.Source
+    }
+
+    return $null
+}
+
 Write-Host "=== FlowQ Interop Runner ===" -ForegroundColor Cyan
 Write-Host ""
 
@@ -31,15 +46,17 @@ if (-not $FlowQBranch) { $FlowQBranch = "unknown" }
 $Timestamp = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
 $HostOS = $env:OS
 $HostArch = $env:PROCESSOR_ARCHITECTURE
+$HarnessPath = Join-Path $BuildDir "Debug/flowq_interop_tests.exe"
+$ResolvedPeer = Resolve-PeerBinary $Peer
 
 # Get peer version
 Write-Host "Detecting peer version..."
 $PeerVersion = "unknown"
-if (Test-Path $Peer) {
+if ($ResolvedPeer) {
     # Try common version flags
     foreach ($flag in @("--version", "-v", "-V", "version")) {
         try {
-            $PeerVersion = & $Peer $flag 2>&1 | Select-Object -First 1
+            $PeerVersion = & $ResolvedPeer $flag 2>&1 | Select-Object -First 1
             if ($PeerVersion) { break }
         } catch {
             continue
@@ -69,6 +86,7 @@ Write-Host "FlowQ commit: $FlowQCommit" -ForegroundColor Green
 Write-Host "FlowQ branch: $FlowQBranch" -ForegroundColor Green
 Write-Host "Timestamp: $Timestamp" -ForegroundColor Green
 Write-Host "Host: $HostOS/$HostArch" -ForegroundColor Green
+Write-Host "Harness: $HarnessPath" -ForegroundColor Green
 Write-Host ""
 
 # Find scenarios
@@ -100,6 +118,7 @@ $Results = @{
     }
     peer = @{
         binary = $Peer
+        resolved_binary = $ResolvedPeer
         version = $PeerVersion
     }
     scenarios = @()
@@ -108,6 +127,7 @@ $Results = @{
 $TotalScenarios = 0
 $PassedScenarios = 0
 $FailedScenarios = 0
+$SkippedScenarios = 0
 
 foreach ($scenarioFile in $Scenarios) {
     $scenarioName = [System.IO.Path]::GetFileNameWithoutExtension($scenarioFile)
@@ -122,23 +142,62 @@ foreach ($scenarioFile in $Scenarios) {
         continue
     }
 
-    # Check if peer binary exists
-    if (-not (Test-Path $Peer)) {
-        Write-Host "  FAILED: Peer binary not found" -ForegroundColor Red
+    if (-not (Test-Path $HarnessPath)) {
+        Write-Host "  FAILED: Interop harness not found: $HarnessPath" -ForegroundColor Red
         $FailedScenarios++
+        $Results.scenarios += @{
+            name = $scenarioName
+            status = "error"
+            reason = "Interop harness not found"
+            harness = $HarnessPath
+        }
         continue
     }
 
-    # Run scenario (placeholder - actual implementation would use the interop test binary)
-    Write-Host "  SKIPPED: Interop test execution not yet implemented" -ForegroundColor Yellow
-    Write-Host "  Scenario: $scenarioName"
-    Write-Host "  Peer: $Peer ($PeerVersion)"
+    # Check if peer binary exists
+    if (-not $ResolvedPeer) {
+        Write-Host "  FAILED: Peer binary not found" -ForegroundColor Red
+        $FailedScenarios++
+        $Results.scenarios += @{
+            name = $scenarioName
+            status = "error"
+            reason = "Peer binary not found"
+            peer = $Peer
+        }
+        continue
+    }
 
-    # Add to results
+    $env:FLOWQ_INTEROP_PEER_BIN = $ResolvedPeer
+    $env:FLOWQ_INTEROP_SCENARIO = $scenarioName
+
+    $Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $HarnessOutput = & $HarnessPath "*$scenarioName*" 2>&1
+    $HarnessExitCode = $LASTEXITCODE
+    $Stopwatch.Stop()
+
+    $HarnessText = ($HarnessOutput | Out-String).Trim()
+    $WasSkipped = $HarnessText -match "SKIPPED:"
+
+    if ($HarnessExitCode -eq 0 -and -not $WasSkipped) {
+        Write-Host "  PASSED" -ForegroundColor Green
+        $PassedScenarios++
+        $Status = "passed"
+    } elseif ($HarnessExitCode -eq 0 -and $WasSkipped) {
+        Write-Host "  SKIPPED: Harness reported scenario skip" -ForegroundColor Yellow
+        $SkippedScenarios++
+        $Status = "skipped"
+    } else {
+        Write-Host "  FAILED: Harness exit code $HarnessExitCode" -ForegroundColor Red
+        $FailedScenarios++
+        $Status = "failed"
+    }
+
     $Results.scenarios += @{
         name = $scenarioName
-        status = "skipped"
-        reason = "Interop test execution not yet implemented"
+        status = $Status
+        duration_ms = $Stopwatch.ElapsedMilliseconds
+        harness_exit_code = $HarnessExitCode
+        output = $HarnessText
     }
 }
 
@@ -150,7 +209,7 @@ Write-Host "=== Summary ===" -ForegroundColor Cyan
 Write-Host "Total scenarios: $TotalScenarios"
 Write-Host "Passed: $PassedScenarios"
 Write-Host "Failed: $FailedScenarios"
-Write-Host "Skipped: $($TotalScenarios - $PassedScenarios - $FailedScenarios)"
+Write-Host "Skipped: $SkippedScenarios"
 Write-Host ""
 Write-Host "Results written to: $ResultsFile"
 

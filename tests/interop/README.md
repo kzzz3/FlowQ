@@ -27,11 +27,24 @@ cmake -S . -B build -DFLOWQ_BUILD_INTEROP=ON
 ## Requirements
 
 - Peer QUIC binary must be available in PATH or specified via `FLOWQ_INTEROP_PEER_BIN`
+- A selected scenario is provided with `FLOWQ_INTEROP_SCENARIO`
 - FlowQ must be configured with a provider-backed TLS adapter (M31b) for handshake/stream scenarios
-- Without a TLS adapter, handshake/stream scenarios are skipped with an explicit message
+- External peer runs should record the peer name, version, scenario, result, and harness output
 
 ## Running
 
 ```bash
 ctest --test-dir build -C Debug -R interop --output-on-failure
+```
+
+PowerShell wrapper:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-interop.ps1 -Peer <peer-binary> -Scenario basic_handshake -BuildDir build\windows-msvc-vcpkg-interop
+```
+
+Bash wrapper:
+
+```bash
+./scripts/run-interop.sh --peer <peer-binary> --scenario basic_handshake --build-dir build/windows-msvc-vcpkg-interop
 ```

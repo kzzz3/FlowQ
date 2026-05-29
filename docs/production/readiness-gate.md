@@ -36,6 +36,14 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ Application-space PATH_CHALLENGE scheduling emits a same-value PATH_RESPONSE.
 - ✅ PATH_CHALLENGE/PATH_RESPONSE outside Application packet space closes with protocol error.
 
+### Interop Harness
+
+- ✅ `interop_runner` executes configured scenarios through an injected executor.
+- ✅ Available peers no longer produce synthetic skip results; executor exit code, timeout, and exceptions map to pass/fail/error.
+- ✅ `scripts/run-interop.ps1` and `scripts/run-interop.sh` call the built harness binary and write per-scenario JSON results.
+- ✅ Harness wiring was verified locally with `FLOWQ_INTEROP_SCENARIO=basic_handshake` and a local executable peer.
+- ⚠️ Named external QUIC peers are not available in the current local environment: ngtcp2, quiche, MsQuic, picoquic, and lsquic were not found on PATH; Docker daemon was not running; WSL has no available distribution.
+
 ### Hardening
 
 - ✅ Fuzz targets: `fuzz_packet_header`, `fuzz_frame_decode`, `fuzz_qpack`.
@@ -74,7 +82,7 @@ FlowQ can only claim production-candidate status for the exact scope backed by l
 
 ## Open Gate Items
 
-- [ ] Real interop runner replaces the stub in `include/flowq/quic/interop_runner.hpp`.
+- [x] Real interop runner replaces synthetic skip behavior in `include/flowq/quic/interop_runner.hpp`.
 - [ ] Basic handshake passes against named external QUIC peer versions.
 - [ ] Stream echo passes against named external QUIC peer versions.
 - [ ] Loss recovery passes against named external QUIC peer versions.
