@@ -22,7 +22,7 @@ NC='\033[0m' # No Color
 PEER_BIN=""
 SCENARIO=""
 OUTPUT_FILE="interop-results.json"
-BUILD_DIR="build/windows-msvc-vcpkg"
+BUILD_DIR="build/windows-msvc-vcpkg-interop"
 
 resolve_harness_binary() {
     local candidate
@@ -37,6 +37,20 @@ resolve_harness_binary() {
     done
 
     printf '%s\n' "${BUILD_DIR}/Debug/flowq_interop_tests.exe"
+}
+
+is_quic_peer_name() {
+    local leaf
+    leaf="$(basename "$1")"
+    leaf="${leaf%.*}"
+    case "$leaf" in
+        ngtcp2|ngtcp2-client|ngtcp2-server|quiche|quiche-client|quiche-server|msquic|picoquic|picoquicdemo|lsquic|http_client|http_server)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 # Parse arguments
@@ -86,6 +100,11 @@ if [[ -x "$PEER_BIN" ]]; then
     PEER_RESOLVED="$(cd "$(dirname "$PEER_BIN")" && pwd)/$(basename "$PEER_BIN")"
 else
     PEER_RESOLVED=$(command -v "$PEER_BIN" 2>/dev/null || true)
+fi
+
+if [[ -n "$PEER_RESOLVED" ]] && ! is_quic_peer_name "$PEER_RESOLVED"; then
+    echo -e "${RED}ERROR${NC}: peer binary is not a recognized QUIC interop peer: $PEER_RESOLVED"
+    exit 1
 fi
 
 # Get peer version
@@ -216,7 +235,7 @@ for scenario_file in "${SCENARIOS[@]}"; do
 
     start_ms=$(date +%s%3N)
     set +e
-    harness_output=$("$HARNESS_BIN" "*${scenario_name}*" 2>&1)
+    harness_output=$("$HARNESS_BIN" "interop harness executes selected scenario through runner" 2>&1)
     harness_exit=$?
     set -e
     end_ms=$(date +%s%3N)
