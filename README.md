@@ -2,7 +2,7 @@
 
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-blue)
 ![CMake](https://img.shields.io/badge/build-CMake-informational)
-![Tests](https://img.shields.io/badge/tests-Catch2-green)
+![Tests](https://img.shields.io/badge/tests-495%20passing-green)
 
 FlowQ is a modern C++ QUIC-like protocol library that builds deterministic protocol primitives first, then layers connection behavior and loopback tests without claiming production QUIC security.
 
@@ -29,7 +29,7 @@ FlowQ is intentionally staged:
 5. Public QUIC library façade, UDP/ASIO adapter, examples, packaging, and CI.
 6. Fail-closed provider boundaries for future real TLS and packet protection.
 
-The current baseline is a testable QUIC-like core with an explicit crypto adapter seam. Real TLS 1.3, AEAD, header protection, congestion control, and production interoperability are explicitly deferred.
+The current baseline is a testable QUIC-like core with an explicit crypto adapter seam and optional AEAD packet protection (gated behind `FLOWQ_ENABLE_OPENSSL_CRYPTO`). Real TLS 1.3 full handshake integration, production interoperability, and security audit are explicitly deferred.
 
 ## Getting Started
 
@@ -102,6 +102,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - `include/flowq/quic/frame.hpp`: structural frame codec.
 - `include/flowq/quic/packet_header.hpp`: structural packet header codec.
 - `include/flowq/quic/packet_pipeline.hpp`: packet assembly/parsing through protection seams.
+- `include/flowq/quic/openssl_aead_protector.hpp`: OpenSSL-backed AEAD packet protector (AES-128-GCM, ChaCha20-Poly1305, header protection, key updates) — gated behind `FLOWQ_ENABLE_OPENSSL_CRYPTO`.
 - `include/flowq/quic/ack_loss.hpp`: ACK/loss and recovery primitives.
 - `include/flowq/quic/stream.hpp`: stream receive/send state and flow-control signals.
 - `include/flowq/quic/endpoint_driver.hpp`: production-shaped endpoint driver with explicit lifecycle, CID routing integration, and connection limits.
@@ -146,8 +147,23 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 
 ## Current Status
 
-All M20-M39 production-readiness milestones are complete. FlowQ has deterministic protocol primitives, TLS handshake adapter boundary, key lifecycle gates, congestion baseline, connection routing, endpoint driver, diagnostics, fuzz targets, and an opt-in interop harness. FlowQ remains a non-production C++20 QUIC-like library baseline until the release checklist in `docs/production/release-checklist.md` is fully satisfied and human security review is completed.
+**Phases 0-5 complete.** FlowQ has deterministic protocol primitives, TLS handshake adapter boundary, key lifecycle gates, congestion baseline, connection routing, endpoint driver, diagnostics, fuzz targets, and an opt-in interop harness. Recent hardening work added real AEAD packet protection (AES-128-GCM, ChaCha20-Poly1305), QPACK fixes, API surface hardening, fuzz targets, sanitizer CI gates, and noexcept move semantics across all movable types.
 
-See `docs/production/readiness-gate.md` for the exact evidence required before changing public wording from non-production baseline to production candidate.
+**AEAD support** is available when OpenSSL is enabled via `FLOWQ_ENABLE_OPENSSL_CRYPTO`. The `openssl_aead_protector` implements the `packet_protector` interface with AES-128-GCM and ChaCha20-Poly1305, header protection per RFC 9001 §5.4, and key update support. When the flag is not set, the library falls back to the plaintext/test-only protector.
 
-All milestones M20-M39 are complete. See `docs/plan.md` for the full milestone list and `docs/milestones/roadmap.md` for the detailed roadmap.
+**495 tests passing** across protocol core, RFC compliance, integration, performance, fuzz, and AEAD modules.
+
+FlowQ remains a **non-production** C++20 QUIC-like library baseline until interop validation against peer QUIC implementations (Phase 4) is complete and the release checklist in `docs/production/release-checklist.md` is fully satisfied.
+
+See `docs/production/readiness-gate.md` for the exact evidence required before changing public wording from non-production baseline to production candidate. See `docs/plan.md` for the full milestone list and `docs/milestones/roadmap.md` for the detailed roadmap.
+
+### Production Hardening
+
+The following hardening measures are in place:
+
+- **Fuzz targets**: `fuzz_packet_header`, `fuzz_frame_decode`, `fuzz_qpack` with `LLVMFuzzerTestOneInput` entry points
+- **Sanitizer CI**: ASan + UBSan gates in `.github/workflows/robustness.yml` with `-fno-omit-frame-pointer` for full stack traces
+- **noexcept move semantics**: `stream_receive_state`, `stream_send_state`, `connection_loop`, and `buffer` all have explicit `noexcept` move constructors and assignment operators
+- **constexpr utilities**: `max_varint`, `encoded_size`, `default_initial_window()`, `default_minimum_window()` are compile-time evaluable
+- **API hardening**: `detail::` namespaces gated, inspection methods behind `FLOWQ_ENABLE_INSPECTION`, `[[nodiscard]]` on value-returning methods
+- **Documentation**: ownership/lifetime `@pre` comments on all raw pointer members, thread-safety contracts on session/connection/endpoint types, stub warnings on non-production headers
