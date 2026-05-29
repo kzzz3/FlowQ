@@ -44,8 +44,11 @@ struct connection_loop_config {
     connection_id local_connection_id;
     connection_id remote_connection_id;
     flowq::endpoint peer;
+    /// @pre The protector must outlive this connection loop.
     const packet_protector* initial_protector{};
+    /// @pre The protector must outlive this connection loop.
     const packet_protector* handshake_protector{};
+    /// @pre The protector must outlive this connection loop.
     const packet_protector* application_protector{};
     packet_pipeline_config pipeline{};
     std::uint64_t initial_stream_send_max_data{std::numeric_limits<std::uint64_t>::max()};
@@ -59,6 +62,7 @@ struct connection_loop_config {
     std::uint64_t max_udp_payload_size{1200};
     std::uint64_t active_connection_id_limit{2};
     bool disable_active_migration{};
+    /// @pre The adapter must outlive this connection loop.
     tls_handshake_adapter* tls_adapter{};
     key_lifecycle_state key_lifecycle{};
     std::chrono::milliseconds closing_draining_timeout{std::chrono::seconds{3}};

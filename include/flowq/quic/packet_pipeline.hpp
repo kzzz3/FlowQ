@@ -125,6 +125,7 @@ struct packet_build_request {
     flowq::buffer token;
     packet_number number{};
     std::vector<frame> frames;
+    /// @pre The protector must outlive this request.
     const packet_protector* protector{};
     packet_pipeline_config config{};
     packet_protection_policy protection_policy{packet_protection_policy::test_allowed};
@@ -134,6 +135,7 @@ struct application_packet_build_request {
     connection_id destination_connection_id;
     packet_number number{};
     std::vector<frame> frames;
+    /// @pre The protector must outlive this request.
     const packet_protector* protector{};
     packet_pipeline_config config{};
     packet_protection_policy protection_policy{packet_protection_policy::test_allowed};

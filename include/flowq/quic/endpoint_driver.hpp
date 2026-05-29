@@ -16,6 +16,7 @@ struct endpoint_driver_config {
 
 /// Production-shaped endpoint driver with explicit lifecycle, CID routing, and connection limits.
 /// Provides a deterministic server-side connection management boundary.
+/// @note This class is NOT thread-safe. All methods must be called from the same thread.
 class endpoint_driver {
 public:
     explicit endpoint_driver(endpoint_driver_config config)

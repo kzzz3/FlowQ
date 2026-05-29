@@ -130,11 +130,14 @@ public:
         // Build DATA frame if body is present
         if (!req.body.empty()) {
             auto data_frame = encode_data_frame(req.body);
+            if (!data_frame.ok()) {
+                return {{}, data_frame.error};
+            }
             
             // Combine frames
             std::vector<std::byte> combined;
             combined.insert(combined.end(), headers_frame.data(), headers_frame.data() + headers_frame.size());
-            combined.insert(combined.end(), data_frame.data(), data_frame.data() + data_frame.size());
+            combined.insert(combined.end(), data_frame.payload.data(), data_frame.payload.data() + data_frame.payload.size());
             
             return {flowq::buffer{combined}, {}};
         }
@@ -196,11 +199,14 @@ public:
         // Build DATA frame if body is present
         if (!resp.body.empty()) {
             auto data_frame = encode_data_frame(resp.body);
+            if (!data_frame.ok()) {
+                return {{}, data_frame.error};
+            }
             
             // Combine frames
             std::vector<std::byte> combined;
             combined.insert(combined.end(), headers_frame.data(), headers_frame.data() + headers_frame.size());
-            combined.insert(combined.end(), data_frame.data(), data_frame.data() + data_frame.size());
+            combined.insert(combined.end(), data_frame.payload.data(), data_frame.payload.data() + data_frame.payload.size());
             
             return {flowq::buffer{combined}, {}};
         }

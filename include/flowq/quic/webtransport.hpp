@@ -73,6 +73,7 @@ struct session_result {
     }
 };
 
+/// @warning This is a structural stub for testing only. NOT production-ready.
 /// WebTransport session manager.
 /// Manages WebTransport sessions over HTTP/3.
 class webtransport_session {

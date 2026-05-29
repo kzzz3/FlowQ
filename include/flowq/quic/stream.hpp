@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <iterator>
 #include <map>
 #include <optional>
@@ -70,7 +71,7 @@ inline void append_stream_buffer(std::vector<std::byte>& output, const flowq::bu
 
 class stream_receive_state {
 public:
-    explicit stream_receive_state(std::uint64_t max_data = UINT64_MAX) noexcept : max_data_{max_data} {}
+    explicit stream_receive_state(std::uint64_t max_data = std::numeric_limits<std::uint64_t>::max()) noexcept : max_data_{max_data} {}
 
     [[nodiscard]] stream_receive_result receive(const stream_frame& frame) {
         if (reset_received_) {
@@ -79,7 +80,7 @@ public:
 
         const auto offset = frame.offset_present ? frame.offset : 0;
         const auto frame_size = static_cast<std::uint64_t>(frame.data.size());
-        if (offset > UINT64_MAX - frame_size) {
+        if (offset > std::numeric_limits<std::uint64_t>::max() - frame_size) {
             return failure("STREAM frame offset overflows");
         }
         const auto end = offset + frame_size;
@@ -162,7 +163,7 @@ public:
 
 private:
     std::uint64_t next_offset_{};
-    std::uint64_t max_data_{UINT64_MAX};
+    std::uint64_t max_data_{std::numeric_limits<std::uint64_t>::max()};
     std::vector<std::byte> delivered_{};
     std::map<std::uint64_t, flowq::buffer> pending_{};
     std::optional<std::uint64_t> final_size_{};
@@ -308,7 +309,7 @@ struct stream_delivery {
 
 class stream_receive_set {
 public:
-    explicit stream_receive_set(std::uint64_t initial_max_data = UINT64_MAX) noexcept
+    explicit stream_receive_set(std::uint64_t initial_max_data = std::numeric_limits<std::uint64_t>::max()) noexcept
         : initial_max_data_{initial_max_data} {}
 
     [[nodiscard]] stream_delivery receive(const stream_frame& frame) {
@@ -335,7 +336,7 @@ public:
     }
 
 private:
-    std::uint64_t initial_max_data_{UINT64_MAX};
+    std::uint64_t initial_max_data_{std::numeric_limits<std::uint64_t>::max()};
     std::map<std::uint64_t, stream_receive_state> streams_{};
 
     [[nodiscard]] stream_receive_state& state_for(std::uint64_t stream_id) {
@@ -382,7 +383,7 @@ struct stream_frame_schedule_result {
 
 class stream_send_state {
 public:
-    explicit stream_send_state(std::uint64_t stream_id, std::uint64_t max_data = UINT64_MAX)
+    explicit stream_send_state(std::uint64_t stream_id, std::uint64_t max_data = std::numeric_limits<std::uint64_t>::max())
         : stream_id_{stream_id}, max_data_{max_data} {}
 
     [[nodiscard]] stream_operation_result append(const flowq::buffer& data) {
@@ -392,7 +393,7 @@ public:
         if (finished_) {
             return {detail::stream_error("cannot append STREAM data after FIN")};
         }
-        if (bytes_.size() > static_cast<std::size_t>(UINT64_MAX) - data.size()) {
+        if (bytes_.size() > static_cast<std::size_t>(std::numeric_limits<std::uint64_t>::max()) - data.size()) {
             return {detail::stream_error("STREAM send offset overflows")};
         }
 
@@ -584,7 +585,7 @@ public:
 
 private:
     std::uint64_t stream_id_{};
-    std::uint64_t max_data_{UINT64_MAX};
+    std::uint64_t max_data_{std::numeric_limits<std::uint64_t>::max()};
     std::vector<std::byte> bytes_{};
     std::uint64_t next_unsent_offset_{};
     bool finished_{};
@@ -656,7 +657,7 @@ private:
 
 class stream_send_set {
 public:
-    explicit stream_send_set(std::uint64_t initial_max_data = UINT64_MAX) noexcept
+    explicit stream_send_set(std::uint64_t initial_max_data = std::numeric_limits<std::uint64_t>::max()) noexcept
         : initial_max_data_{initial_max_data} {}
 
     [[nodiscard]] stream_operation_result append(std::uint64_t stream_id, const flowq::buffer& data) {
@@ -758,7 +759,7 @@ public:
     }
 
 private:
-    std::uint64_t initial_max_data_{UINT64_MAX};
+    std::uint64_t initial_max_data_{std::numeric_limits<std::uint64_t>::max()};
     std::map<std::uint64_t, stream_send_state> streams_{};
 
     [[nodiscard]] stream_send_state& state_for(std::uint64_t stream_id) {
