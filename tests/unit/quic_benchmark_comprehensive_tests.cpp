@@ -202,8 +202,8 @@ TEST_CASE("benchmark WebTransport session") {
         config.max_streams_uni = 10;
 
         flowq::quic::webtransport::webtransport_session session{config};
-        session.connect();
-        session.close();
+        REQUIRE(session.connect().is_connected());
+        REQUIRE(session.close().error.ok());
     });
 
     suite.add("webtransport_open_streams", []() {
@@ -214,10 +214,10 @@ TEST_CASE("benchmark WebTransport session") {
         config.max_streams_uni = 100;
 
         flowq::quic::webtransport::webtransport_session session{config};
-        session.connect();
+        REQUIRE(session.connect().is_connected());
         for (int i = 0; i < 50; ++i) {
-            session.open_bidi_stream();
-            session.open_uni_stream();
+            CHECK(session.open_bidi_stream().has_value());
+            CHECK(session.open_uni_stream().has_value());
         }
     });
 

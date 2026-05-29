@@ -47,6 +47,19 @@ struct crypto_provider_status {
     [[nodiscard]] bool production_ready() const noexcept {
         return available_from_external_provider && suite != cipher_suite::unknown && production_crypto_capable(capabilities);
     }
+
+    [[nodiscard]] bool key_schedule_ready() const noexcept {
+        return available_from_external_provider && suite != cipher_suite::unknown && capabilities.tls_owns_key_schedule;
+    }
+
+    [[nodiscard]] bool packet_protection_ready() const noexcept {
+        return available_from_external_provider &&
+            suite != cipher_suite::unknown &&
+            capabilities.hkdf &&
+            capabilities.aead_seal &&
+            capabilities.aead_open &&
+            capabilities.header_protection;
+    }
 };
 
 struct crypto_bytes_result {

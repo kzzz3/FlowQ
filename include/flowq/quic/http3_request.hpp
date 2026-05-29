@@ -6,6 +6,8 @@
 #include <flowq/quic/qpack.hpp>
 
 #include <cstdint>
+#include <array>
+#include <cstddef>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -101,7 +103,7 @@ private:
 class request_encoder {
 public:
     /// Encode a request into HEADERS + DATA frames.
-    [[nodiscard]] encode_result encode(const request& req) {
+    [[nodiscard]] qpack::encode_result encode(const request& req) {
         std::vector<qpack::header_field> headers;
         
         // Pseudo-headers
@@ -145,17 +147,23 @@ private:
         std::vector<std::byte> output;
         
         // Frame type (0x01 = HEADERS)
-        auto type = encode_varint(0x01);
-        output.insert(output.end(), type.data(), type.data() + type.size());
+        append_varint(output, 0x01);
         
         // Frame length
-        auto length = encode_varint(headers.size());
-        output.insert(output.end(), length.data(), length.data() + length.size());
+        append_varint(output, headers.size());
         
         // Headers payload
         output.insert(output.end(), headers.data(), headers.data() + headers.size());
         
         return flowq::buffer{output};
+    }
+
+    static void append_varint(std::vector<std::byte>& output, std::uint64_t value) {
+        std::array<std::byte, 8> encoded{};
+        const auto result = encode_varint(value, encoded);
+        if (result.ok()) {
+            output.insert(output.end(), encoded.begin(), encoded.begin() + static_cast<std::ptrdiff_t>(result.bytes_written));
+        }
     }
 };
 
@@ -164,7 +172,7 @@ private:
 class response_encoder {
 public:
     /// Encode a response into HEADERS + DATA frames.
-    [[nodiscard]] encode_result encode(const response& resp) {
+    [[nodiscard]] qpack::encode_result encode(const response& resp) {
         std::vector<qpack::header_field> headers;
         
         // Pseudo-header
@@ -205,17 +213,23 @@ private:
         std::vector<std::byte> output;
         
         // Frame type (0x01 = HEADERS)
-        auto type = encode_varint(0x01);
-        output.insert(output.end(), type.data(), type.data() + type.size());
+        append_varint(output, 0x01);
         
         // Frame length
-        auto length = encode_varint(headers.size());
-        output.insert(output.end(), length.data(), length.data() + length.size());
+        append_varint(output, headers.size());
         
         // Headers payload
         output.insert(output.end(), headers.data(), headers.data() + headers.size());
         
         return flowq::buffer{output};
+    }
+
+    static void append_varint(std::vector<std::byte>& output, std::uint64_t value) {
+        std::array<std::byte, 8> encoded{};
+        const auto result = encode_varint(value, encoded);
+        if (result.ok()) {
+            output.insert(output.end(), encoded.begin(), encoded.begin() + static_cast<std::ptrdiff_t>(result.bytes_written));
+        }
     }
 };
 
@@ -230,6 +244,9 @@ public:
         for (const auto& frame : frames) {
             if (std::holds_alternative<headers_frame>(frame)) {
                 const auto& headers = std::get<headers_frame>(frame);
+                if (headers.headers.fields.empty()) {
+                    return std::nullopt;
+                }
                 // Decode QPACK headers
                 qpack::decoder qpack_decoder;
                 auto decoded = qpack_decoder.decode(
@@ -276,6 +293,9 @@ public:
         for (const auto& frame : frames) {
             if (std::holds_alternative<headers_frame>(frame)) {
                 const auto& headers = std::get<headers_frame>(frame);
+                if (headers.headers.fields.empty()) {
+                    return std::nullopt;
+                }
                 // Decode QPACK headers
                 qpack::decoder qpack_decoder;
                 auto decoded = qpack_decoder.decode(

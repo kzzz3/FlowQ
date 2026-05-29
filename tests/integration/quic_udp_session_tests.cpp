@@ -1,4 +1,5 @@
 #include <flowq/context.hpp>
+#include <flowq/quic/lifecycle_scheduler.hpp>
 #include <flowq/quic/udp_session.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -93,6 +94,17 @@ struct receive_receiver {
     friend void set_stopped(receive_receiver&&) noexcept {}
 };
 
+struct lifecycle_receiver {
+    std::optional<flowq::quic::lifecycle_scheduler_result>* result;
+
+    friend void set_value(lifecycle_receiver&& receiver, flowq::quic::lifecycle_scheduler_result result) noexcept {
+        receiver.result->emplace(std::move(result));
+    }
+
+    friend void set_error(lifecycle_receiver&&, flowq::error) noexcept {}
+    friend void set_stopped(lifecycle_receiver&&) noexcept {}
+};
+
 } // namespace
 
 TEST_CASE("UDP session binds an externally owned socket without taking ownership") {
@@ -152,4 +164,35 @@ TEST_CASE("UDP session sends flushed QUIC session datagrams over loopback") {
     CHECK(received->remote.port() == client_socket.local_endpoint().port());
     CHECK(received->session_result.stream_deliveries[0].stream_id == 0);
     CHECK(as_string(received->session_result.stream_deliveries[0].data) == "hello");
+}
+
+TEST_CASE("UDP session exposes QUIC lifecycle timer for scheduler integration") {
+    flowq::context context{};
+    udp::socket socket{context.io_context(), udp::endpoint{udp::v4(), 0}};
+    udp::endpoint peer{::asio::ip::address_v4::loopback(), 4433};
+    flowq::quic::plaintext_packet_protector protector{};
+    auto config = make_config(cid({0x01}), cid({0x02}), flowq::endpoint{"127.0.0.1", 4433, "hq-interop"}, protector);
+    config.max_idle_timeout = 5ms;
+
+    flowq::quic::udp_session adapter{socket, flowq::quic::udp_session_config{
+        std::move(config),
+        peer,
+        1200
+    }};
+    std::optional<flowq::quic::lifecycle_scheduler_result> result;
+
+    REQUIRE(adapter.append_stream_data(0, text("hello")).ok());
+    REQUIRE(adapter.queue_stream_data({0}).ok());
+    REQUIRE(adapter.quic_session().flush(at(0ms)).ok());
+
+    auto sender = flowq::quic::schedule_lifecycle(context, adapter.quic_session(), at(0ms));
+    auto operation = sender.connect(lifecycle_receiver{&result});
+
+    operation.start();
+    context.io_context().run();
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->send_result.has_value());
+    CHECK(result->fired->kind == flowq::quic::connection_lifecycle_timer_kind::idle);
+    CHECK(result->send_result->error.code() == flowq::error_code::timeout);
 }

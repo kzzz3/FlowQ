@@ -1,6 +1,9 @@
 #include <flowq/quic/http3.hpp>
+#include <flowq/quic/http3_request.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+
+#include <vector>
 
 TEST_CASE("http3 DATA frame encodes correctly") {
     flowq::buffer payload{std::vector<std::byte>{std::byte{0x01}, std::byte{0x02}, std::byte{0x03}}};
@@ -23,6 +26,17 @@ TEST_CASE("http3 GOAWAY frame encodes correctly") {
     CHECK(encoded.data()[0] == std::byte{0x07});  // GOAWAY type
     CHECK(encoded.data()[1] == std::byte{0x01});  // Length = 1
     CHECK(encoded.data()[2] == std::byte{0x2a});  // Stream ID = 42
+}
+
+TEST_CASE("http3 GOAWAY frame length matches multi-byte stream ID varint") {
+    auto encoded = flowq::quic::http3::encode_goaway_frame(64);
+
+    // Stream ID 64 is a two-byte QUIC varint, so GOAWAY payload length is 2.
+    REQUIRE(encoded.size() == 4);
+    CHECK(encoded.data()[0] == std::byte{0x07});
+    CHECK(encoded.data()[1] == std::byte{0x02});
+    CHECK(encoded.data()[2] == std::byte{0x40});
+    CHECK(encoded.data()[3] == std::byte{0x40});
 }
 
 TEST_CASE("http3 SETTINGS frame encodes correctly") {
@@ -56,4 +70,20 @@ TEST_CASE("http3 settings has correct defaults") {
     CHECK(s.max_field_section_size == 16384);
     CHECK(s.qpack_max_table_capacity == 0);
     CHECK(s.qpack_blocked_streams == 0);
+}
+
+TEST_CASE("http3 request decoder rejects empty HEADERS frame") {
+    flowq::quic::http3::request_decoder decoder{};
+    std::vector<flowq::quic::http3::http3_frame_variant> frames;
+    frames.emplace_back(flowq::quic::http3::headers_frame{flowq::quic::http3::header_block{}});
+
+    CHECK_FALSE(decoder.decode(frames).has_value());
+}
+
+TEST_CASE("http3 response decoder rejects empty HEADERS frame") {
+    flowq::quic::http3::response_decoder decoder{};
+    std::vector<flowq::quic::http3::http3_frame_variant> frames;
+    frames.emplace_back(flowq::quic::http3::headers_frame{flowq::quic::http3::header_block{}});
+
+    CHECK_FALSE(decoder.decode(frames).has_value());
 }

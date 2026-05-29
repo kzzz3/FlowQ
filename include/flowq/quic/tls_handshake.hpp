@@ -2,6 +2,7 @@
 
 #include <flowq/buffer.hpp>
 #include <flowq/error.hpp>
+#include <flowq/quic/crypto_provider.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -50,6 +51,11 @@ public:
     /// Return key availability for each encryption level.
     [[nodiscard]] virtual tls_key_availability key_availability() const noexcept = 0;
 
+    /// Return evidence that an external TLS provider owns the negotiated key schedule.
+    [[nodiscard]] virtual crypto_provider_status provider_status() const noexcept {
+        return crypto_provider_status::unavailable();
+    }
+
     /// Deliver inbound CRYPTO bytes to the TLS implementation.
     [[nodiscard]] virtual flowq::error receive_crypto(crypto_bytes bytes) = 0;
 
@@ -59,7 +65,9 @@ public:
 
 /// Check if application data can be sent: handshake confirmed AND application keys available.
 [[nodiscard]] inline bool application_data_ready(const tls_handshake_adapter& adapter) noexcept {
-    return adapter.state() == handshake_state::handshake_confirmed && adapter.key_availability().application;
+    return adapter.state() == handshake_state::handshake_confirmed &&
+        adapter.key_availability().application &&
+        adapter.provider_status().key_schedule_ready();
 }
 
 } // namespace flowq::quic

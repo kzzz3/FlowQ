@@ -112,6 +112,8 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - `include/flowq/quic/session.hpp`: synchronous public QUIC session façade over the deterministic connection loop.
 - `include/flowq/quic/udp_session.hpp`: bounded non-production UDP/ASIO adapter for local smoke paths.
 - `include/flowq/quic/recovery_scheduler.hpp`: ASIO scheduling adapter for deterministic QUIC recovery timer values.
+- `include/flowq/quic/lifecycle_scheduler.hpp`: ASIO scheduling adapter for idle, closing, and draining lifecycle timers.
+- `include/flowq/quic/timer_scheduler.hpp`: unified ASIO scheduling adapter that selects the earliest recovery or lifecycle timer.
 - `examples/in_memory_loopback.cpp`: deterministic in-memory session façade smoke example.
 - `examples/udp_stream_echo.cpp`: bounded local UDP session smoke example.
 - `examples/protection_policy.cpp`: packet-protection policy example showing plaintext rejection under production-required policy.

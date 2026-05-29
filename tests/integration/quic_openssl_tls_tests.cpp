@@ -15,7 +15,7 @@ TEST_CASE("openssl_tls_handshake_adapter constructs with default config") {
     CHECK_FALSE(adapter.key_availability().application);
 }
 
-TEST_CASE("openssl_tls_handshake_adapter returns error for disabled backend") {
+TEST_CASE("openssl_tls_handshake_adapter receive_crypto follows build-time backend mode") {
     flowq::quic::openssl_tls_config config{};
     config.is_client = true;
     
@@ -27,8 +27,13 @@ TEST_CASE("openssl_tls_handshake_adapter returns error for disabled backend") {
     bytes.offset = 0;
     
     auto result = adapter.receive_crypto(bytes);
-    // The stub implementation should return an error
+
+#if defined(FLOWQ_ENABLE_OPENSSL_QUIC_TLS)
+    CHECK(result.ok());
+    CHECK_FALSE(adapter.provider_status().key_schedule_ready());
+#else
     CHECK_FALSE(result.ok());
+#endif
 }
 
 TEST_CASE("openssl_tls_handshake_adapter drain_crypto returns empty") {

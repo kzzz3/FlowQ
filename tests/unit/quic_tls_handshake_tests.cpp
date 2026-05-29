@@ -37,6 +37,10 @@ public:
         return keys;
     }
 
+    flowq::quic::crypto_provider_status provider_status() const noexcept override {
+        return status;
+    }
+
     flowq::error receive_crypto(flowq::quic::crypto_bytes bytes) override {
         received.push_back(std::move(bytes));
         return {};
@@ -50,6 +54,7 @@ public:
 
     flowq::quic::handshake_state state_value{flowq::quic::handshake_state::idle};
     flowq::quic::tls_key_availability keys{};
+    flowq::quic::crypto_provider_status status{flowq::quic::crypto_provider_status::unavailable()};
     std::vector<flowq::quic::crypto_bytes> received;
     std::vector<flowq::quic::crypto_bytes> outbound;
 };
@@ -91,4 +96,23 @@ TEST_CASE("TLS handshake adapter moves CRYPTO bytes by encryption level") {
     CHECK(outbound[0].offset == 3);
     CHECK(as_string(outbound[0].data) == "world");
     CHECK(adapter.drain_crypto().empty());
+}
+
+TEST_CASE("TLS application data readiness requires TLS-owned key schedule evidence") {
+    recording_tls_adapter adapter{};
+    adapter.state_value = flowq::quic::handshake_state::handshake_confirmed;
+    adapter.keys.application = true;
+
+    CHECK_FALSE(flowq::quic::application_data_ready(adapter));
+}
+
+TEST_CASE("TLS application data readiness accepts confirmed TLS-owned key schedule evidence") {
+    recording_tls_adapter adapter{};
+    adapter.state_value = flowq::quic::handshake_state::handshake_confirmed;
+    adapter.keys.application = true;
+    adapter.status = flowq::quic::crypto_provider_status::available(
+        flowq::quic::cipher_suite::aes_128_gcm_sha256,
+        flowq::quic::crypto_capabilities{false, false, false, false, true});
+
+    CHECK(flowq::quic::application_data_ready(adapter));
 }

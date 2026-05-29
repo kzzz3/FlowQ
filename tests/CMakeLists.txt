@@ -20,15 +20,19 @@ add_executable(
     unit/quic_congestion_tests.cpp
     unit/quic_congestion_algorithms_tests.cpp
     unit/quic_connection_routing_tests.cpp
+    unit/quic_connection_packet_spaces_tests.cpp
     unit/quic_connection_tests.cpp
     unit/quic_crypto_provider_tests.cpp
     unit/quic_diagnostics_tests.cpp
     unit/quic_frame_tests.cpp
+    unit/quic_fuzz_regression_tests.cpp
     unit/quic_http3_tests.cpp
     unit/quic_http3_server_tests.cpp
     unit/quic_initial_keys_tests.cpp
+    unit/quic_initial_packet_protector_tests.cpp
     unit/quic_interop_tests.cpp
     unit/quic_key_lifecycle_tests.cpp
+    unit/quic_lifecycle_scheduler_tests.cpp
     unit/quic_packet_header_tests.cpp
     unit/quic_packet_pipeline_tests.cpp
     unit/quic_protocol_compliance_tests.cpp
@@ -39,6 +43,7 @@ add_executable(
     unit/quic_stream_tests.cpp
     unit/quic_tls_handshake_tests.cpp
     unit/quic_tls_provider_backend_tests.cpp
+    unit/quic_timer_scheduler_tests.cpp
     unit/quic_transport_parameters_tests.cpp
     unit/quic_varint_tests.cpp
     unit/quic_webtransport_tests.cpp

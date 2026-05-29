@@ -6,6 +6,7 @@
 # - TODO/FIXME comments in production code paths
 # - as any or type safety suppressions
 # - Empty catch blocks
+# - Documentation comments on selected public QUIC APIs
 # Exit code 0 if all checks pass, 1 if any violations found.
 
 param(
@@ -21,6 +22,77 @@ $Violations = 0
 Write-Host "=== FlowQ Checklist Validator ===" -ForegroundColor Cyan
 Write-Host "Scanning: $RepoRoot"
 Write-Host ""
+
+function Get-RepoRelativePath {
+    param([string]$Path)
+    $repoFull = (Resolve-Path $RepoRoot).Path.TrimEnd('\', '/')
+    $resolved = (Resolve-Path $Path).Path
+    if ($resolved.StartsWith($repoFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $resolved.Substring($repoFull.Length).TrimStart('\', '/').Replace('\', '/')
+    }
+    return $resolved.Replace('\', '/')
+}
+
+function Test-PolicyDocument {
+    param([string]$Path)
+    $normalized = $Path.Replace('\', '/')
+    return $normalized -eq "docs/production/release-checklist.md" -or
+           $normalized -eq "docs/production/readiness-gate.md"
+}
+
+function Test-NegatedForbiddenClaim {
+    param([string]$Line)
+    $normalized = $Line.ToLowerInvariant()
+    return $normalized -match "\bnot\s+production-ready\b" -or
+           $normalized -match "\bnot\s+production\s+quic\b" -or
+           $normalized -match "\bwithout\s+claiming\b" -or
+           $normalized -match "\bexplicitly\s+deferred\b" -or
+           $normalized -match "\bno\s+.*\bguarantees\b"
+}
+
+$ExperimentalPublicHeaders = @(
+    "include/flowq/quic/http3.hpp",
+    "include/flowq/quic/http3_request.hpp",
+    "include/flowq/quic/http3_server.hpp",
+    "include/flowq/quic/interop_runner.hpp",
+    "include/flowq/quic/qpack.hpp",
+    "include/flowq/quic/webtransport.hpp",
+    "include/flowq/quic/zero_rtt.hpp"
+)
+
+$DocumentedPublicApiHeaders = @(
+    "include/flowq/quic/recovery_scheduler.hpp",
+    "include/flowq/quic/lifecycle_scheduler.hpp",
+    "include/flowq/quic/timer_scheduler.hpp"
+)
+
+function Test-ExperimentalPublicHeader {
+    param([string]$Path)
+    $relative = Get-RepoRelativePath $Path
+    return $ExperimentalPublicHeaders -contains $relative
+}
+
+function Test-DocumentedPublicApiDeclaration {
+    param([string]$Line)
+    return $Line -match "^(enum class|struct|class)\s+[A-Za-z_][A-Za-z0-9_]*\b" -or
+           $Line -match '^\[\[nodiscard\]\]\s+(inline\s+)?(?:auto|[A-Za-z_:][A-Za-z0-9_:<>,&*\s]*?)\s+[A-Za-z_][A-Za-z0-9_]*\s*\('
+}
+
+function Test-HasLeadingDocComment {
+    param(
+        [string[]]$Lines,
+        [int]$Index
+    )
+
+    for ($lineIndex = $Index - 1; $lineIndex -ge 0; $lineIndex -= 1) {
+        $previous = $Lines[$lineIndex].Trim()
+        if ($previous.Length -eq 0 -or $previous -match "^template\s*<" -or $previous -match "^\[\[.*\]\]$") {
+            continue
+        }
+        return $previous.StartsWith("///") -or $previous.StartsWith("/**")
+    }
+    return $false
+}
 
 # 1. Check for forbidden wording in public-facing files
 Write-Host "Checking for forbidden wording..." -ForegroundColor Yellow
@@ -41,17 +113,29 @@ $DocFiles = @(
     "RELEASE_NOTES.md"
 )
 
+$forbiddenClaimCount = 0
 foreach ($word in $ForbiddenWords) {
     foreach ($file in $DocFiles) {
         if (Test-Path $file) {
             $matches = Select-String -Path $file -Pattern $word -AllMatches
             if ($matches) {
-                Write-Host "WARNING: Found '$word' in $file" -ForegroundColor Yellow
-                $matches | Select-Object -First 5 | ForEach-Object { Write-Host "  $_" }
-                Write-Host ""
+                foreach ($match in $matches) {
+                    if ((Test-PolicyDocument $file) -or (Test-NegatedForbiddenClaim $match.Line)) {
+                        continue
+                    }
+
+                    Write-Host "VIOLATION: Forbidden production claim '$word' in $file" -ForegroundColor Red
+                    Write-Host "  $match"
+                    $forbiddenClaimCount += 1
+                }
             }
         }
     }
+}
+
+if ($forbiddenClaimCount -gt 0) {
+    $Violations += $forbiddenClaimCount
+    Write-Host ""
 }
 
 # 2. Check for TODO/FIXME in production code paths
@@ -68,11 +152,47 @@ Get-ChildItem -Path include -Filter "*.hpp" -Recurse | ForEach-Object {
 }
 
 if ($todoCount -gt 0) {
-    Write-Host "WARNING: Found $todoCount TODO/FIXME comments in production headers" -ForegroundColor Yellow
+    Write-Host "VIOLATION: Found $todoCount TODO/FIXME comments in production headers" -ForegroundColor Red
+    $Violations += $todoCount
     Write-Host ""
 }
 
-# 3. Check for type safety suppressions
+# 3. Check for implementation placeholders in production public headers
+Write-Host ""
+Write-Host "Checking for placeholder implementations in production headers..." -ForegroundColor Yellow
+
+$PlaceholderPatterns = @(
+    "simulate successful",
+    "not implemented",
+    "For now",
+    "stub implementation",
+    "Deterministic stub",
+    "always succeeds"
+)
+
+$placeholderCount = 0
+Get-ChildItem -Path include -Filter "*.hpp" -Recurse | ForEach-Object {
+    if (Test-ExperimentalPublicHeader $_.FullName) {
+        return
+    }
+
+    foreach ($pattern in $PlaceholderPatterns) {
+        $matches = Select-String -Path $_.FullName -Pattern $pattern -AllMatches
+        if ($matches) {
+            $placeholderCount += $matches.Count
+            $relative = Get-RepoRelativePath $_.FullName
+            Write-Host "VIOLATION: Found placeholder wording '$pattern' in $relative" -ForegroundColor Red
+            $matches | Select-Object -First 5 | ForEach-Object { Write-Host "  $_" }
+        }
+    }
+}
+
+if ($placeholderCount -gt 0) {
+    $Violations += $placeholderCount
+    Write-Host ""
+}
+
+# 4. Check for type safety suppressions
 Write-Host ""
 Write-Host "Checking for type safety suppressions..." -ForegroundColor Yellow
 
@@ -91,7 +211,7 @@ if ($asAnyCount -gt 0) {
     Write-Host ""
 }
 
-# 4. Check for empty catch blocks
+# 5. Check for empty catch blocks
 Write-Host ""
 Write-Host "Checking for empty catch blocks..." -ForegroundColor Yellow
 
@@ -109,7 +229,7 @@ if ($emptyCatch -gt 0) {
     Write-Host ""
 }
 
-# 5. Check for hardcoded credentials
+# 6. Check for hardcoded credentials
 Write-Host ""
 Write-Host "Checking for hardcoded credentials..." -ForegroundColor Yellow
 
@@ -131,12 +251,55 @@ if ($credCount -gt 0) {
     Write-Host ""
 }
 
+# 7. Check for public API documentation comments on selected production QUIC headers
+Write-Host ""
+Write-Host "Checking public QUIC API documentation comments..." -ForegroundColor Yellow
+
+$publicApiDocGapCount = 0
+foreach ($file in $DocumentedPublicApiHeaders) {
+    if (!(Test-Path $file)) {
+        continue
+    }
+
+    $lines = Get-Content $file
+    $inDetailNamespace = $false
+    for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex += 1) {
+        $trimmed = $lines[$lineIndex].Trim()
+        if ($trimmed -eq "namespace detail {") {
+            $inDetailNamespace = $true
+            continue
+        }
+        if ($trimmed -eq "} // namespace detail") {
+            $inDetailNamespace = $false
+            continue
+        }
+        if ($inDetailNamespace -or !(Test-DocumentedPublicApiDeclaration $trimmed)) {
+            continue
+        }
+
+        if (!(Test-HasLeadingDocComment $lines $lineIndex)) {
+            $publicApiDocGapCount += 1
+            $lineNumber = $lineIndex + 1
+            Write-Host "VIOLATION: Public API declaration lacks documentation in ${file}:$lineNumber" -ForegroundColor Red
+            Write-Host "  $trimmed"
+        }
+    }
+}
+
+if ($publicApiDocGapCount -gt 0) {
+    $Violations += $publicApiDocGapCount
+    Write-Host ""
+}
+
 Write-Host ""
 Write-Host "=== Summary ===" -ForegroundColor Cyan
 Write-Host "Type safety suppressions: $asAnyCount"
 Write-Host "Empty catch blocks: $emptyCatch"
 Write-Host "Potential hardcoded credentials: $credCount"
 Write-Host "TODO/FIXME comments: $todoCount"
+Write-Host "Forbidden production claims: $forbiddenClaimCount"
+Write-Host "Placeholder implementation wording: $placeholderCount"
+Write-Host "Public API documentation gaps: $publicApiDocGapCount"
 
 if ($Violations -gt 0) {
     Write-Host "FAILED: Found $Violations violations" -ForegroundColor Red
