@@ -131,13 +131,28 @@ install(
 if(FLOWQ_BUILD_FUZZ)
     add_executable(flowq_packet_header_fuzz tests/fuzz/packet_header_fuzz.cpp)
     target_link_libraries(flowq_packet_header_fuzz PRIVATE FlowQ::flowq)
-    target_compile_options(flowq_packet_header_fuzz PRIVATE -fsanitize=fuzzer,address)
-    target_link_options(flowq_packet_header_fuzz PRIVATE -fsanitize=fuzzer,address)
+    target_compile_options(flowq_packet_header_fuzz PRIVATE -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
+    target_link_options(flowq_packet_header_fuzz PRIVATE -fsanitize=fuzzer,address,undefined)
 
     add_executable(flowq_frame_codec_fuzz tests/fuzz/frame_codec_fuzz.cpp)
     target_link_libraries(flowq_frame_codec_fuzz PRIVATE FlowQ::flowq)
-    target_compile_options(flowq_frame_codec_fuzz PRIVATE -fsanitize=fuzzer,address)
-    target_link_options(flowq_frame_codec_fuzz PRIVATE -fsanitize=fuzzer,address)
+    target_compile_options(flowq_frame_codec_fuzz PRIVATE -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
+    target_link_options(flowq_frame_codec_fuzz PRIVATE -fsanitize=fuzzer,address,undefined)
+
+    add_executable(flowq_fuzz_packet_header tests/fuzz/fuzz_packet_header.cpp)
+    target_link_libraries(flowq_fuzz_packet_header PRIVATE FlowQ::flowq)
+    target_compile_options(flowq_fuzz_packet_header PRIVATE -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
+    target_link_options(flowq_fuzz_packet_header PRIVATE -fsanitize=fuzzer,address,undefined)
+
+    add_executable(flowq_fuzz_frame_decode tests/fuzz/fuzz_frame_decode.cpp)
+    target_link_libraries(flowq_fuzz_frame_decode PRIVATE FlowQ::flowq)
+    target_compile_options(flowq_fuzz_frame_decode PRIVATE -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
+    target_link_options(flowq_fuzz_frame_decode PRIVATE -fsanitize=fuzzer,address,undefined)
+
+    add_executable(flowq_fuzz_qpack tests/fuzz/fuzz_qpack.cpp)
+    target_link_libraries(flowq_fuzz_qpack PRIVATE FlowQ::flowq)
+    target_compile_options(flowq_fuzz_qpack PRIVATE -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
+    target_link_options(flowq_fuzz_qpack PRIVATE -fsanitize=fuzzer,address,undefined)
 endif()
 
 if(FLOWQ_BUILD_INTEROP)

@@ -22,6 +22,9 @@ public:
           connection_send_max_data_{config_.initial_connection_send_max_data},
           peer_address_validated_{config_.peer_address_validated} {}
 
+    connection_loop(connection_loop&&) noexcept = default;
+    connection_loop& operator=(connection_loop&&) noexcept = default;
+
     void queue_initial(std::vector<frame> frames) {
         if (!active()) {
             return;

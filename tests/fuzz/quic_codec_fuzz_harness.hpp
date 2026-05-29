@@ -2,11 +2,13 @@
 
 #include <flowq/quic/frame.hpp>
 #include <flowq/quic/packet_header.hpp>
+#include <flowq/quic/qpack.hpp>
 
 #include <cstddef>
 #include <cstdint>
 #include <span>
 #include <variant>
+#include <vector>
 
 namespace flowq::quic::test_fuzz {
 
@@ -54,6 +56,24 @@ inline void exercise_packet_header_input(std::span<const std::byte> input) {
     if (encoded.ok()) {
         auto short_roundtrip = decode_short_header(encoded.payload, destination_connection_id_length);
         (void)short_roundtrip;
+    }
+}
+
+inline void exercise_qpack_input(std::span<const std::byte> input) {
+    // Decode fuzzed QPACK data
+    qpack::decoder dec;
+    auto decode_result = dec.decode(input.data(), input.size());
+    if (!decode_result.ok()) {
+        return;
+    }
+
+    // If decode succeeded, try round-tripping through the encoder
+    qpack::encoder enc;
+    auto encode_result = enc.encode(decode_result.headers);
+    if (encode_result.ok()) {
+        // Verify the encoded data can be decoded again
+        auto roundtrip = dec.decode(encode_result.data.data(), encode_result.data.size());
+        (void)roundtrip;
     }
 }
 
