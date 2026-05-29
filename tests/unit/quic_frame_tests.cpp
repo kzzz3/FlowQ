@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cstddef>
 #include <initializer_list>
 #include <string>
@@ -184,6 +185,45 @@ TEST_CASE("QUIC frame codec round trips flow-control frame values") {
     }
 }
 
+TEST_CASE("QUIC frame codec round trips PATH_CHALLENGE and PATH_RESPONSE frames") {
+    const std::array<std::byte, 8> challenge_data{
+        std::byte{0x10}, std::byte{0x11}, std::byte{0x12}, std::byte{0x13},
+        std::byte{0x14}, std::byte{0x15}, std::byte{0x16}, std::byte{0x17}
+    };
+    const std::array<std::byte, 8> response_data{
+        std::byte{0x20}, std::byte{0x21}, std::byte{0x22}, std::byte{0x23},
+        std::byte{0x24}, std::byte{0x25}, std::byte{0x26}, std::byte{0x27}
+    };
+
+    {
+        flowq::quic::path_challenge_frame frame{challenge_data};
+        auto encoded = flowq::quic::encode_frame(frame);
+        REQUIRE(encoded.ok());
+        REQUIRE(encoded.payload.size() == 9);
+        CHECK(encoded.payload.data()[0] == std::byte{0x1a});
+
+        auto decoded = flowq::quic::decode_frames(encoded.payload);
+        REQUIRE(decoded.ok());
+        REQUIRE(decoded.frames.size() == 1);
+        REQUIRE(std::holds_alternative<flowq::quic::path_challenge_frame>(decoded.frames[0]));
+        CHECK(std::get<flowq::quic::path_challenge_frame>(decoded.frames[0]).data == challenge_data);
+    }
+
+    {
+        flowq::quic::path_response_frame frame{response_data};
+        auto encoded = flowq::quic::encode_frame(frame);
+        REQUIRE(encoded.ok());
+        REQUIRE(encoded.payload.size() == 9);
+        CHECK(encoded.payload.data()[0] == std::byte{0x1b});
+
+        auto decoded = flowq::quic::decode_frames(encoded.payload);
+        REQUIRE(decoded.ok());
+        REQUIRE(decoded.frames.size() == 1);
+        REQUIRE(std::holds_alternative<flowq::quic::path_response_frame>(decoded.frames[0]));
+        CHECK(std::get<flowq::quic::path_response_frame>(decoded.frames[0]).data == response_data);
+    }
+}
+
 TEST_CASE("QUIC frame codec round trips RESET_STREAM and STOP_SENDING structurally") {
     {
         flowq::quic::reset_stream_frame frame{4, 0x42, 12};
@@ -326,6 +366,13 @@ TEST_CASE("QUIC frame codec rejects malformed flow-control frames") {
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x15})).ok());
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x15, 0x08})).ok());
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x15, 0x08, 0x40})).ok());
+}
+
+TEST_CASE("QUIC frame codec rejects malformed PATH validation frames") {
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x1a})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x1a, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x1b})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x1b, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06})).ok());
 }
 
 TEST_CASE("QUIC frame codec rejects malformed RESET_STREAM and STOP_SENDING frames") {

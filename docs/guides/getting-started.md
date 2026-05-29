@@ -1,6 +1,6 @@
 # Getting Started with FlowQ
 
-FlowQ is a modern C++20 QUIC-like protocol library. This guide will help you get up and running quickly.
+FlowQ is a C++20 QUIC transport library under production hardening. This guide covers the local build and test workflow.
 
 ## Prerequisites
 
@@ -38,12 +38,13 @@ ctest --preset windows-msvc-vcpkg --timeout 10
 
 ## What's Included
 
-- **Core Protocol**: QUIC varint, frame, header codecs
+- **Core Protocol**: QUIC varint, packet-number, frame, header, packet pipeline, and transport-parameter codecs
 - **Connection Management**: Connection loop, stream state, flow control
-- **Security Boundaries**: Crypto provider, TLS handshake adapter, key lifecycle
+- **Packet Protection**: Crypto provider boundaries, TLS handshake adapter, key lifecycle, and OpenSSL-gated AES-128-GCM packet protection
 - **Recovery**: ACK/loss detection, congestion control, recovery timers
 - **Diagnostics**: Event sink, qlog-style observability
-- **HTTP/3**: Basic frame encoding (DATA, HEADERS, SETTINGS, GOAWAY)
+- **Path Validation Primitives**: PATH_CHALLENGE/PATH_RESPONSE codec and Application-space response scheduling
+- **Structural Extensions**: HTTP/3/QPACK, WebTransport, and 0-RTT modules outside the production-candidate scope
 
 ## Project Structure
 

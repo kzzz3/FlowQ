@@ -2,7 +2,7 @@
 
 ## Design Overview
 
-FlowQ is a modern C++20 QUIC-like protocol library that builds deterministic protocol primitives first, then layers connection behavior and loopback tests without claiming production QUIC security.
+FlowQ is a C++20 QUIC transport library under production hardening. The current architecture combines deterministic protocol primitives, connection-loop behavior, packet-protection seams, OpenSSL-gated AES-128-GCM packet protection, local endpoint surfaces, diagnostics, and release-gate tooling. Production-candidate status is gated on recorded external peer interop and human review.
 
 ## Architecture Layers
 
@@ -36,8 +36,10 @@ FlowQ is a modern C++20 QUIC-like protocol library that builds deterministic pro
 ### Protocol Codecs
 
 - **varint.hpp**: QUIC variable-length integer encoding
-- **frame.hpp**: QUIC frame codec (STREAM, ACK, CRYPTO, etc.)
+- **frame.hpp**: QUIC frame codec (STREAM, ACK, CRYPTO, PATH_CHALLENGE, PATH_RESPONSE, etc.)
 - **packet_header.hpp**: Long/short header codecs
+- **transport_parameters.hpp**: QUIC transport parameter codec and config mapping
+- **openssl_aead_protector.hpp**: OpenSSL-gated AES-128-GCM packet protection and header protection
 
 ### Connection Management
 
@@ -51,7 +53,7 @@ FlowQ is a modern C++20 QUIC-like protocol library that builds deterministic pro
 ### Recovery and Congestion
 
 - **ack_loss.hpp**: ACK/loss detection, RTT estimation, PTO
-- **congestion.hpp**: NewReno-style congestion controller
+- **congestion.hpp**: NewReno-style congestion controller plus structural BBR/CUBIC controllers
 
 ### Security Boundaries
 
@@ -90,7 +92,7 @@ All code is in headers for easy integration. No separate compilation units.
 
 ### Deterministic Testing
 
-Unit tests use plaintext protection and deterministic timers. No real crypto, no network, no randomness.
+Unit tests use deterministic timers and local packet-protection seams. OpenSSL-enabled tests cover AES-128-GCM packet protection; default tests keep plaintext/test protection isolated from production-required policy.
 
 ### Virtual Seams
 
@@ -101,7 +103,7 @@ External dependencies (TLS, crypto, diagnostics) use virtual interfaces:
 
 ### Fail-Closed Security
 
-Production protection policy rejects test-only protectors. Crypto provider boundaries fail when backend is absent.
+Production protection policy rejects test-only protectors. Crypto provider boundaries fail when backend is absent, and OpenSSL AEAD creation fails when the crypto backend is not compiled in.
 
 ## Build System
 
@@ -126,7 +128,8 @@ Dependencies managed via `vcpkg.json` manifest:
 | FLOWQ_BUILD_EXAMPLES | ON | Build examples |
 | FLOWQ_BUILD_FUZZ | OFF | Build fuzz targets |
 | FLOWQ_BUILD_INTEROP | OFF | Build interop harness |
-| FLOWQ_ENABLE_OPENSSL_QUIC_TLS | OFF | Enable OpenSSL QUIC TLS |
+| FLOWQ_ENABLE_OPENSSL_QUIC_TLS | OFF | Enable OpenSSL QUIC TLS provider surface |
+| FLOWQ_ENABLE_OPENSSL_CRYPTO | OFF | Enable OpenSSL-backed packet-protection primitives |
 
 ## Testing Strategy
 
@@ -140,16 +143,16 @@ Test module interactions with in-memory loopback.
 
 ### Interop Tests
 
-Opt-in tests against mature QUIC implementations.
+Opt-in tests target external QUIC implementations. Production-candidate wording requires recorded peer names, versions, scenarios, and results.
 
 ### Fuzz Tests
 
 Robustness testing with random inputs.
 
-## Future Directions
+## Production-Candidate Boundary
 
-- **0-RTT**: Early data support (partially implemented)
-- **HTTP/3**: Full request/response semantics
-- **WebTransport**: HTTP/3-based transport protocol
-- **Production TLS**: Real TLS 1.3 integration
-- **Congestion Control**: BBR, CUBIC alternatives
+- External peer interop results are not recorded.
+- Human security review is not recorded.
+- ChaCha20-Poly1305 and AES-256-GCM packet protection are rejected by `openssl_aead_protector`.
+- Live AEAD key update installation is outside current evidence.
+- Full path migration, stateless reset, HTTP/3 deployment, WebTransport deployment, and 0-RTT deployment policy are outside the production-candidate scope.

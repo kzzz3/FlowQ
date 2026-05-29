@@ -27,6 +27,12 @@ public:
         openssl_aead_packet_protector& output,
         protection_level level,
         traffic_key_material material) {
+#if !defined(FLOWQ_ENABLE_OPENSSL_CRYPTO)
+        (void)output;
+        (void)level;
+        (void)material;
+        return {not_ready_error()};
+#else
         if (!material.ok()) {
             return {material.error};
         }
@@ -44,6 +50,7 @@ public:
         }
         output = openssl_aead_packet_protector{level, std::move(material)};
         return {};
+#endif
     }
 
     /// Default constructor creates an invalid protector.
@@ -96,12 +103,9 @@ public:
         if (!ready_) {
             return {{}, not_ready_error()};
         }
-        if (material_.suite == cipher_suite::aes_128_gcm_sha256 || material_.suite == cipher_suite::aes_256_gcm_sha384) {
-            return initial_header_protection_mask(
-                std::span<const std::byte>{material_.header_protection_key.data(), material_.header_protection_key.size()},
-                sample);
-        }
-        return {{}, flowq::error{flowq::error_code::tls_error, "header protection not implemented for this cipher suite"}};
+        return initial_header_protection_mask(
+            std::span<const std::byte>{material_.header_protection_key.data(), material_.header_protection_key.size()},
+            sample);
 #else
         (void)sample;
         return {{}, not_ready_error()};

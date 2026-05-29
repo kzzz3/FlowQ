@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <initializer_list>
@@ -1302,6 +1303,71 @@ TEST_CASE("connection loop parses and acknowledges structural Application packet
     REQUIRE(parsed_ack.frames.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::ack_frame>(parsed_ack.frames[0]));
     CHECK(std::get<flowq::quic::ack_frame>(parsed_ack.frames[0]).largest_acknowledged == 0);
+}
+
+TEST_CASE("connection loop answers Application PATH_CHALLENGE with matching PATH_RESPONSE") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    const std::array<std::byte, 8> challenge_data{
+        std::byte{0xa0}, std::byte{0xa1}, std::byte{0xa2}, std::byte{0xa3},
+        std::byte{0xa4}, std::byte{0xa5}, std::byte{0xa6}, std::byte{0xa7}
+    };
+
+    client.queue_application({flowq::quic::frame{flowq::quic::path_challenge_frame{challenge_data}}});
+    client.flush(at(0ms));
+    auto challenge_datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(challenge_datagram.payload), challenge_datagram.peer});
+    auto received_actions = server.drain_actions();
+    REQUIRE(received_actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(received_actions[0]));
+    const auto& received = std::get<flowq::quic::received_packet_event>(received_actions[0]);
+    REQUIRE(received.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::path_challenge_frame>(received.frames[0]));
+    CHECK(std::get<flowq::quic::path_challenge_frame>(received.frames[0]).data == challenge_data);
+
+    server.flush(at(1ms));
+    auto response_datagram = require_single_outbound(server.drain_actions());
+    auto parsed_response = flowq::quic::parse_application_packet(response_datagram.payload, protector);
+    REQUIRE(parsed_response.ok());
+    REQUIRE(parsed_response.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::path_response_frame>(parsed_response.frames[0]));
+    CHECK(std::get<flowq::quic::path_response_frame>(parsed_response.frames[0]).data == challenge_data);
+}
+
+TEST_CASE("connection loop closes on PATH validation frames outside Application packets") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    const std::array<std::byte, 8> challenge_data{
+        std::byte{0xb0}, std::byte{0xb1}, std::byte{0xb2}, std::byte{0xb3},
+        std::byte{0xb4}, std::byte{0xb5}, std::byte{0xb6}, std::byte{0xb7}
+    };
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::path_challenge_frame{challenge_data}}});
+    client.flush(at(0ms));
+    auto challenge_datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(challenge_datagram.payload), challenge_datagram.peer});
+    auto actions = server.drain_actions();
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(actions[0]));
+    CHECK(std::get<flowq::quic::close_action>(actions[0]).error.code() == flowq::error_code::protocol_error);
+    CHECK(server.state() == flowq::quic::connection_loop_state::closing);
+
+    auto response_client = make_loop(cid({0x03}), cid({0x04}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto response_server = make_loop(cid({0x04}), cid({0x03}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    response_client.queue_handshake({flowq::quic::frame{flowq::quic::path_response_frame{challenge_data}}});
+    response_client.flush(at(0ms));
+    auto response_datagram = require_single_outbound(response_client.drain_actions());
+
+    response_server.on_datagram(flowq::quic::inbound_datagram{std::move(response_datagram.payload), response_datagram.peer});
+    auto response_actions = response_server.drain_actions();
+    REQUIRE(response_actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(response_actions[0]));
+    CHECK(std::get<flowq::quic::close_action>(response_actions[0]).error.code() == flowq::error_code::protocol_error);
+    CHECK(response_server.state() == flowq::quic::connection_loop_state::closing);
 }
 
 TEST_CASE("connection loop scopes Application ACKs to Application sent packets") {
