@@ -58,6 +58,7 @@ struct transport_parameters_decode_result {
     }
 };
 
+#ifndef FLOWQ_HIDE_DETAIL
 namespace detail {
 
 [[nodiscard]] inline flowq::error append_transport_varint(std::vector<std::byte>& output, std::uint64_t value) {
@@ -195,6 +196,7 @@ namespace detail {
 }
 
 } // namespace detail
+#endif // FLOWQ_HIDE_DETAIL
 
 [[nodiscard]] inline transport_parameters_encode_result encode_transport_parameters(const transport_parameters& parameters) {
     std::vector<std::byte> output;

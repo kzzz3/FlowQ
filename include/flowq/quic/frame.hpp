@@ -116,6 +116,7 @@ struct frame_encode_result {
     }
 };
 
+#ifndef FLOWQ_HIDE_DETAIL
 namespace detail {
 
 [[nodiscard]] inline bool append_varint(std::vector<std::byte>& output, std::uint64_t value) {
@@ -244,6 +245,7 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
 }
 
 } // namespace detail
+#endif // FLOWQ_HIDE_DETAIL
 
 [[nodiscard]] inline frame_encode_result encode_frame(const padding_frame& frame) {
     std::vector<std::byte> output(frame.count, std::byte{0x00});

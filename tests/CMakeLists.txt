@@ -59,5 +59,7 @@ target_link_libraries(
         Catch2::Catch2WithMain
 )
 
+target_compile_definitions(flowq_unit_tests PRIVATE FLOWQ_ENABLE_INSPECTION)
+
 include(Catch)
 catch_discover_tests(flowq_unit_tests)

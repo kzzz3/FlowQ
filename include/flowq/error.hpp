@@ -7,12 +7,14 @@ namespace flowq {
 
 enum class error_code {
     none,
+    /// @reserved For Asio operation cancellation.
     cancelled,
     timeout,
     udp_error,
     tls_error,
     protocol_error,
     connection_closed,
+    /// @reserved For future stream reset error handling.
     stream_reset,
     flow_control_error,
     internal_error

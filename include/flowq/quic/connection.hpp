@@ -1,5 +1,8 @@
 #pragma once
 
+/// @note Inspection methods (sent_packets, sent_stream_ranges, congestion, receive_stream, send_stream)
+/// require FLOWQ_ENABLE_INSPECTION to be defined at build time.
+
 #include <flowq/quic/connection_packet_spaces.hpp>
 #include <flowq/quic/connection_types.hpp>
 #include <flowq/quic/congestion.hpp>
@@ -334,17 +337,13 @@ public:
         return drained;
     }
 
+#ifdef FLOWQ_ENABLE_INSPECTION
     [[nodiscard]] const sent_packet_tracker& sent_packets(packet_number_space space) const {
         return packet_spaces_.get(space).sent;
     }
 
     [[nodiscard]] std::vector<sent_stream_range> sent_stream_ranges(packet_number_space space, std::uint64_t packet_number) const {
-        for (const auto& packet : sent_stream_ranges_) {
-            if (packet.space == space && packet.packet_number == packet_number) {
-                return packet.ranges;
-            }
-        }
-        return {};
+        return find_sent_stream_ranges(space, packet_number);
     }
 
     [[nodiscard]] const congestion_controller& congestion() const noexcept {
@@ -358,6 +357,7 @@ public:
     [[nodiscard]] const stream_send_state* send_stream(std::uint64_t stream_id) const noexcept {
         return send_streams_.find(stream_id);
     }
+#endif // FLOWQ_ENABLE_INSPECTION
 
     [[nodiscard]] connection_loop_state state() const noexcept {
         return state_;
@@ -705,9 +705,18 @@ private:
         }
     }
 
+    [[nodiscard]] std::vector<sent_stream_range> find_sent_stream_ranges(packet_number_space space, std::uint64_t packet_number) const {
+        for (const auto& packet : sent_stream_ranges_) {
+            if (packet.space == space && packet.packet_number == packet_number) {
+                return packet.ranges;
+            }
+        }
+        return {};
+    }
+
     void apply_stream_ack_mapping(packet_number_space space, const std::vector<std::uint64_t>& packet_numbers) {
         for (const auto packet_number : packet_numbers) {
-            for (const auto& range : sent_stream_ranges(space, packet_number)) {
+            for (const auto& range : find_sent_stream_ranges(space, packet_number)) {
                 send_streams_.on_acked(range.stream_id, range.range);
             }
         }
@@ -715,7 +724,7 @@ private:
 
     void apply_stream_loss_mapping(packet_number_space space, const std::vector<std::uint64_t>& packet_numbers) {
         for (const auto packet_number : packet_numbers) {
-            for (const auto& range : sent_stream_ranges(space, packet_number)) {
+            for (const auto& range : find_sent_stream_ranges(space, packet_number)) {
                 send_streams_.on_lost(range.stream_id, range.range);
             }
         }

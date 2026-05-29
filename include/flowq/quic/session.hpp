@@ -14,6 +14,8 @@
 
 namespace flowq::quic {
 
+/// @note Contains a connection_loop_config member for consolidated access.
+/// Direct field access is preserved for backward compatibility.
 struct session_config {
     connection_role role{};
     std::uint32_t version{1};
@@ -45,39 +47,52 @@ struct session_config {
     key_lifecycle_state key_lifecycle{};
     std::chrono::milliseconds closing_draining_timeout{std::chrono::seconds{3}};
     bool peer_address_validated{};
+    /// @brief Consolidated connection_loop_config, populated by to_connection_config().
+    connection_loop_config loop_config{};
 };
 
+/// @brief Apply transport parameters to session_config.
+/// Delegates to the connection_loop_config overload via the contained loop_config member.
 inline void apply_transport_parameters(session_config& config, const transport_parameters& parameters) {
-    if (parameters.max_idle_timeout.has_value()) {
-        config.max_idle_timeout = std::chrono::milliseconds{*parameters.max_idle_timeout};
-    }
-    if (parameters.max_udp_payload_size.has_value()) {
-        config.max_udp_payload_size = *parameters.max_udp_payload_size;
-        if (*parameters.max_udp_payload_size <= std::numeric_limits<std::size_t>::max()) {
-            config.max_packet_payload_size = static_cast<std::size_t>(*parameters.max_udp_payload_size);
-        }
-    }
-    if (parameters.initial_max_data.has_value()) {
-        config.initial_connection_send_max_data = *parameters.initial_max_data;
-    }
-    if (parameters.initial_max_stream_data_bidi_local.has_value()) {
-        config.initial_max_stream_data_bidi_local = *parameters.initial_max_stream_data_bidi_local;
-    }
-    if (parameters.initial_max_stream_data_bidi_remote.has_value()) {
-        config.initial_max_stream_data_bidi_remote = *parameters.initial_max_stream_data_bidi_remote;
-    }
-    if (parameters.initial_max_stream_data_uni.has_value()) {
-        config.initial_max_stream_data_uni = *parameters.initial_max_stream_data_uni;
-        config.initial_stream_send_max_data = *parameters.initial_max_stream_data_uni;
-    }
-    if (parameters.active_connection_id_limit.has_value()) {
-        config.active_connection_id_limit = *parameters.active_connection_id_limit;
-    }
-    config.disable_active_migration = parameters.disable_active_migration;
+    // Populate loop_config from direct fields before applying
+    config.loop_config = connection_loop_config{
+        config.role,
+        config.version,
+        config.local_connection_id,
+        config.remote_connection_id,
+        config.peer,
+        config.initial_protector,
+        config.handshake_protector,
+        config.application_protector,
+        config.pipeline,
+        config.initial_stream_send_max_data,
+        config.initial_connection_send_max_data,
+        config.max_packet_payload_size,
+        config.protection_policy,
+        config.initial_max_stream_data_bidi_local,
+        config.initial_max_stream_data_bidi_remote,
+        config.initial_max_stream_data_uni,
+        config.max_idle_timeout,
+        config.max_udp_payload_size,
+        config.active_connection_id_limit,
+        config.disable_active_migration,
+        config.tls_adapter,
+        config.key_lifecycle,
+        config.closing_draining_timeout,
+        config.peer_address_validated
+    };
+    apply_transport_parameters(config.loop_config, parameters);
+    config.max_idle_timeout = config.loop_config.max_idle_timeout;
+    config.max_udp_payload_size = config.loop_config.max_udp_payload_size;
+    config.max_packet_payload_size = config.loop_config.max_packet_payload_size;
+    config.initial_connection_send_max_data = config.loop_config.initial_connection_send_max_data;
+    config.initial_max_stream_data_bidi_local = config.loop_config.initial_max_stream_data_bidi_local;
+    config.initial_max_stream_data_bidi_remote = config.loop_config.initial_max_stream_data_bidi_remote;
+    config.initial_max_stream_data_uni = config.loop_config.initial_max_stream_data_uni;
+    config.initial_stream_send_max_data = config.loop_config.initial_stream_send_max_data;
+    config.active_connection_id_limit = config.loop_config.active_connection_id_limit;
+    config.disable_active_migration = config.loop_config.disable_active_migration;
 }
-
-// Note: apply_transport_parameters for session_config is defined above.
-// The connection_loop_config variant is in connection.hpp.
 
 /// @note This class is NOT thread-safe. All methods must be called from the same thread.
 class session {
@@ -158,8 +173,8 @@ private:
     session_config config_;
     connection_loop loop_;
 
-    [[nodiscard]] static connection_loop_config to_connection_config(const session_config& config) {
-        return connection_loop_config{
+    [[nodiscard]] static connection_loop_config& to_connection_config(session_config& config) {
+        config.loop_config = connection_loop_config{
             config.role,
             config.version,
             config.local_connection_id,
@@ -185,6 +200,7 @@ private:
             config.closing_draining_timeout,
             config.peer_address_validated
         };
+        return config.loop_config;
     }
 
     [[nodiscard]] session_send_result drain_send_actions() {

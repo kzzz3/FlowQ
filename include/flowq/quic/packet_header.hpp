@@ -206,6 +206,7 @@ template <std::ranges::contiguous_range Range>
     return {candidate_packet_number, {}};
 }
 
+#ifndef FLOWQ_HIDE_DETAIL
 namespace detail {
 
 [[nodiscard]] inline flowq::error packet_error(const char* message) {
@@ -513,6 +514,7 @@ inline void append_u32(std::vector<std::byte>& output, std::uint32_t value) {
 }
 
 } // namespace detail
+#endif // FLOWQ_HIDE_DETAIL
 
 [[nodiscard]] inline packet_header_decode_result decode_packet_header(std::span<const std::byte> input) {
     if (input.empty()) {
