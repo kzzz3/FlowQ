@@ -3,7 +3,10 @@
 #include <flowq/error.hpp>
 
 #include <cstdint>
+#include <exception>
+#include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace flowq::quic::interop {
@@ -43,16 +46,29 @@ struct peer_config {
     bool available{};
 };
 
+/// Result returned by an interop scenario executor.
+struct execution_result {
+    int exit_code{};
+    std::string output;
+    std::uint64_t duration_ms{};
+    bool timed_out{};
+};
+
+using scenario_executor = std::function<execution_result(
+    const peer_config& peer,
+    const std::string& test_name,
+    std::uint64_t timeout_ms)>;
+
 /// Interop test configuration.
 struct interop_config {
     peer_config peer;
     std::vector<std::string> test_names;
     std::uint64_t timeout_ms{30000};
+    scenario_executor executor;
 };
 
-/// @warning This is a structural stub for testing only. NOT production-ready.
 /// Interop test runner.
-/// Provides a framework for testing FlowQ against other QUIC implementations.
+/// Coordinates FlowQ scenario execution against other QUIC implementations.
 class interop_runner {
 public:
     explicit interop_runner(interop_config config)
@@ -74,11 +90,11 @@ public:
         result.suite_name = config_.peer.name + " interop tests";
 
         for (const auto& test_name : config_.test_names) {
-            auto test_result = run_test(test_name);
-            result.results.push_back(test_result);
+            auto current = run_test(test_name);
+            result.results.push_back(current);
             result.total_tests++;
 
-            switch (test_result.status) {
+            switch (current.status) {
             case test_status::pass:
                 result.passed++;
                 break;
@@ -108,21 +124,66 @@ public:
             return result;
         }
 
-        // In a real implementation, this would:
-        // 1. Launch peer process
-        // 2. Run test scenario
-        // 3. Collect results
-        // 4. Return pass/fail
+        if (!config_.executor) {
+            result.status = test_status::error;
+            result.message = "Interop executor missing for available peer: " + config_.peer.name;
+            return result;
+        }
 
-        // For now, return skip
-        result.status = test_status::skip;
-        result.message = "Interop test not implemented: " + test_name;
+        try {
+            const auto execution = config_.executor(config_.peer, test_name, config_.timeout_ms);
+            result.duration_ms = execution.duration_ms;
+            result.message = execution.output;
+
+            if (execution.timed_out) {
+                result.status = test_status::error;
+                if (result.message.empty()) {
+                    result.message = "Interop scenario timed out after " +
+                                     std::to_string(config_.timeout_ms) + " ms";
+                }
+                return result;
+            }
+
+            if (execution.exit_code == 0) {
+                result.status = test_status::pass;
+                return result;
+            }
+
+            result.status = test_status::fail;
+            if (result.message.empty()) {
+                result.message = "Interop scenario exited with code " +
+                                 std::to_string(execution.exit_code);
+            }
+        } catch (const std::exception& exception) {
+            result.status = test_status::error;
+            result.message = "Interop executor error: ";
+            result.message += exception.what();
+        } catch (...) {
+            result.status = test_status::error;
+            result.message = "Interop executor error";
+        }
+
         return result;
     }
 
 private:
     interop_config config_;
 };
+
+[[nodiscard]] inline std::string status_label(test_status status) {
+    switch (status) {
+    case test_status::pass:
+        return "PASS";
+    case test_status::fail:
+        return "FAIL";
+    case test_status::skip:
+        return "SKIP";
+    case test_status::error:
+        return "ERROR";
+    }
+
+    return "UNKNOWN";
+}
 
 /// Format suite result as string.
 [[nodiscard]] inline std::string format_suite_result(const suite_result& result) {
@@ -135,7 +196,7 @@ private:
     output += "Errors: " + std::to_string(result.errors) + "\n\n";
 
     for (const auto& test : result.results) {
-        output += "  [" + std::to_string(static_cast<int>(test.status)) + "] " + test.test_name;
+        output += "  [" + status_label(test.status) + "] " + test.test_name;
         if (!test.message.empty()) {
             output += " - " + test.message;
         }

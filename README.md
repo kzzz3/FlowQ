@@ -169,4 +169,4 @@ The following hardening measures are in place:
 - **noexcept move semantics**: `stream_receive_state`, `stream_send_state`, `connection_loop`, and `buffer` all have explicit `noexcept` move constructors and assignment operators
 - **constexpr utilities**: `max_varint`, `encoded_size`, `default_initial_window()`, `default_minimum_window()` are compile-time evaluable
 - **API hardening**: `detail::` namespaces gated, inspection methods behind `FLOWQ_ENABLE_INSPECTION`, `[[nodiscard]]` on value-returning methods
-- **Documentation**: ownership/lifetime `@pre` comments on all raw pointer members, thread-safety contracts on session/connection/endpoint types, stub warnings on non-production headers
+- **Documentation**: ownership/lifetime `@pre` comments on raw pointer members, thread-safety contracts on session/connection/endpoint types, and explicit scope boundaries for structural HTTP/3/WebTransport surfaces
