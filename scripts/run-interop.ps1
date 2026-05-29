@@ -11,7 +11,7 @@ param(
 
     [string]$Scenario,
     [string]$Output = "interop-results.json",
-    [string]$BuildDir = "build/windows-msvc-vcpkg"
+    [string]$BuildDir = "build/windows-msvc-vcpkg-interop"
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,6 +31,13 @@ function Resolve-PeerBinary {
     }
 
     return $null
+}
+
+function Test-QuicPeerName {
+    param([string]$Value)
+
+    $leaf = [System.IO.Path]::GetFileNameWithoutExtension($Value).ToLowerInvariant()
+    return $leaf -match "^(ngtcp2|ngtcp2-client|ngtcp2-server|quiche|quiche-client|quiche-server|msquic|picoquic|picoquicdemo|lsquic|http_client|http_server)$"
 }
 
 Write-Host "=== FlowQ Interop Runner ===" -ForegroundColor Cyan
@@ -53,6 +60,11 @@ $ResolvedPeer = Resolve-PeerBinary $Peer
 Write-Host "Detecting peer version..."
 $PeerVersion = "unknown"
 if ($ResolvedPeer) {
+    if (-not (Test-QuicPeerName $ResolvedPeer)) {
+        Write-Host "ERROR: Peer binary is not a recognized QUIC interop peer: $ResolvedPeer" -ForegroundColor Red
+        exit 1
+    }
+
     # Try common version flags
     foreach ($flag in @("--version", "-v", "-V", "version")) {
         try {
@@ -171,7 +183,7 @@ foreach ($scenarioFile in $Scenarios) {
     $env:FLOWQ_INTEROP_SCENARIO = $scenarioName
 
     $Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-    $HarnessOutput = & $HarnessPath "*$scenarioName*" 2>&1
+    $HarnessOutput = & $HarnessPath "interop harness executes selected scenario through runner" 2>&1
     $HarnessExitCode = $LASTEXITCODE
     $Stopwatch.Stop()
 
