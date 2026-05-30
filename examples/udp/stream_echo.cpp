@@ -71,6 +71,7 @@ flowq::quic::session_config make_config(
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     return config;
 }
 
