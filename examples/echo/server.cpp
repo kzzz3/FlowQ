@@ -1,10 +1,7 @@
 /// FlowQ Echo Server Example
 ///
-/// Demonstrates a simple echo server using FlowQ's QUIC-like session.
+/// Demonstrates a simple echo server using FlowQ's QUIC session API.
 /// The server receives messages and echoes them back to the client.
-///
-/// Note: This is a deterministic in-memory example using FlowQ's
-/// non-production QUIC-like protocol primitives.
 
 #include <flowq/quic/session.hpp>
 #include <flowq/quic/connection.hpp>
@@ -53,9 +50,12 @@ int main() {
         .local_connection_id = make_cid({0x02}),
         .remote_connection_id = make_cid({0x01}),
         .peer = flowq::endpoint{"client", 1111, "hq-interop"},
-        .initial_protector = &protector,
-        .handshake_protector = &protector,
-        .application_protector = &protector,
+        .initial_tx_protector = &protector,
+        .initial_rx_protector = &protector,
+        .handshake_tx_protector = &protector,
+        .handshake_rx_protector = &protector,
+        .application_tx_protector = &protector,
+        .application_rx_protector = &protector,
     };
 
     auto client_config = flowq::quic::session_config{
@@ -63,9 +63,12 @@ int main() {
         .local_connection_id = make_cid({0x01}),
         .remote_connection_id = make_cid({0x02}),
         .peer = flowq::endpoint{"server", 4433, "hq-interop"},
-        .initial_protector = &protector,
-        .handshake_protector = &protector,
-        .application_protector = &protector,
+        .initial_tx_protector = &protector,
+        .initial_rx_protector = &protector,
+        .handshake_tx_protector = &protector,
+        .handshake_rx_protector = &protector,
+        .application_tx_protector = &protector,
+        .application_rx_protector = &protector,
     };
 
     flowq::quic::session server{std::move(server_config)};

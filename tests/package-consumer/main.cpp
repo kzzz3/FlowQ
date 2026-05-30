@@ -26,9 +26,12 @@ flowq::quic::session_config make_config(const flowq::quic::packet_protector& pro
     config.local_connection_id = cid({0x01});
     config.remote_connection_id = cid({0x02});
     config.peer = flowq::endpoint{"package-consumer.invalid", 4433, "hq-interop"};
-    config.initial_protector = &protector;
-    config.handshake_protector = &protector;
-    config.application_protector = &protector;
+    config.initial_tx_protector = &protector;
+    config.initial_rx_protector = &protector;
+    config.handshake_tx_protector = &protector;
+    config.handshake_rx_protector = &protector;
+    config.application_tx_protector = &protector;
+    config.application_rx_protector = &protector;
     return config;
 }
 

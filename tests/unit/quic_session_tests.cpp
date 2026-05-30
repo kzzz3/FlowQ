@@ -119,9 +119,12 @@ flowq::quic::session_config make_config(
     config.local_connection_id = std::move(local);
     config.remote_connection_id = std::move(remote);
     config.peer = std::move(peer);
-    config.initial_protector = &protector;
-    config.handshake_protector = &protector;
-    config.application_protector = &protector;
+    config.initial_tx_protector = &protector;
+    config.initial_rx_protector = &protector;
+    config.handshake_tx_protector = &protector;
+    config.handshake_rx_protector = &protector;
+    config.application_tx_protector = &protector;
+    config.application_rx_protector = &protector;
     config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     return config;
 }
@@ -131,17 +134,18 @@ flowq::quic::connection_loop make_loop(
     flowq::quic::connection_id remote,
     flowq::endpoint peer,
     const flowq::quic::packet_protector& protector) {
-    flowq::quic::connection_loop_config config{
-        flowq::quic::connection_role::client,
-        1,
-        std::move(local),
-        std::move(remote),
-        std::move(peer),
-        &protector,
-        &protector,
-        &protector,
-        flowq::quic::packet_pipeline_config{1200}
-    };
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = std::move(local);
+    config.remote_connection_id = std::move(remote);
+    config.peer = std::move(peer);
+    config.pipeline = flowq::quic::packet_pipeline_config{1200};
+    config.initial_tx_protector = &protector;
+    config.initial_rx_protector = &protector;
+    config.handshake_tx_protector = &protector;
+    config.handshake_rx_protector = &protector;
+    config.application_tx_protector = &protector;
+    config.application_rx_protector = &protector;
     config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     return flowq::quic::connection_loop{std::move(config)};
 }
@@ -177,8 +181,10 @@ TEST_CASE("QUIC session blocks production Application data before TLS handshake 
         cid({0x02}),
         flowq::endpoint{"server", 4433, "hq-interop"},
         application_protector);
-    config.initial_protector = &initial_protector;
-    config.handshake_protector = &handshake_protector;
+    config.initial_tx_protector = &initial_protector;
+    config.initial_rx_protector = &initial_protector;
+    config.handshake_tx_protector = &handshake_protector;
+    config.handshake_rx_protector = &handshake_protector;
     config.protection_policy = flowq::quic::packet_protection_policy::production_required;
     config.tls_adapter = &adapter;
     auto session = flowq::quic::session{std::move(config)};

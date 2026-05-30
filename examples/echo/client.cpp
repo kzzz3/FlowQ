@@ -1,10 +1,7 @@
 /// FlowQ Echo Client Example
 ///
-/// Demonstrates a simple echo client using FlowQ's QUIC-like session.
+/// Demonstrates a simple echo client using FlowQ's QUIC session API.
 /// The client sends a message to the server and receives the echoed response.
-///
-/// Note: This is a deterministic in-memory example using FlowQ's
-/// non-production QUIC-like protocol primitives.
 
 #include <flowq/quic/session.hpp>
 #include <flowq/quic/connection.hpp>
@@ -53,9 +50,12 @@ int main() {
         .local_connection_id = make_cid({0x01}),
         .remote_connection_id = make_cid({0x02}),
         .peer = flowq::endpoint{"server", 4433, "hq-interop"},
-        .initial_protector = &protector,
-        .handshake_protector = &protector,
-        .application_protector = &protector,
+        .initial_tx_protector = &protector,
+        .initial_rx_protector = &protector,
+        .handshake_tx_protector = &protector,
+        .handshake_rx_protector = &protector,
+        .application_tx_protector = &protector,
+        .application_rx_protector = &protector,
     };
 
     flowq::quic::session client{std::move(client_config)};
@@ -64,7 +64,7 @@ int main() {
     std::vector<std::string> messages = {
         "Hello, FlowQ!",
         "This is an echo test.",
-        "FlowQ is a QUIC-like protocol library.",
+        "FlowQ is a QUIC protocol library.",
         "Testing echo functionality.",
         "Goodbye!"
     };

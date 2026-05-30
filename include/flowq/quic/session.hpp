@@ -22,12 +22,6 @@ struct session_config {
     connection_id local_connection_id;
     connection_id remote_connection_id;
     flowq::endpoint peer;
-    /// @pre The protector must outlive this session.
-    const packet_protector* initial_protector{};
-    /// @pre The protector must outlive this session.
-    const packet_protector* handshake_protector{};
-    /// @pre The protector must outlive this session.
-    const packet_protector* application_protector{};
     packet_pipeline_config pipeline{};
     std::uint64_t initial_stream_send_max_data{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t initial_connection_send_max_data{std::numeric_limits<std::uint64_t>::max()};
@@ -84,9 +78,6 @@ inline void apply_transport_parameters(session_config& config, const transport_p
         config.local_connection_id,
         config.remote_connection_id,
         config.peer,
-        config.initial_protector,
-        config.handshake_protector,
-        config.application_protector,
         config.pipeline,
         config.initial_stream_send_max_data,
         config.initial_connection_send_max_data,
@@ -221,9 +212,6 @@ private:
             config.local_connection_id,
             config.remote_connection_id,
             config.peer,
-            config.initial_protector,
-            config.handshake_protector,
-            config.application_protector,
             config.pipeline,
             config.initial_stream_send_max_data,
             config.initial_connection_send_max_data,
