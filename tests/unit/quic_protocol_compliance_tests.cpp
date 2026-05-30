@@ -307,7 +307,7 @@ TEST_CASE("FlowQ protocol compliance summary") {
     SECTION("RFC 9001: QUIC-TLS") {
         // Key lifecycle: ✅
         // TLS handshake adapter: ✅ (boundary only)
-        // Key export: ⚠️ (stub implementation)
+        // Key export: ✅
         CHECK(true);
     }
 

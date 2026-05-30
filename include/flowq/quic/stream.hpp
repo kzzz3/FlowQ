@@ -352,6 +352,11 @@ struct stream_operation_result {
     }
 };
 
+struct stream_limits {
+    std::uint64_t bidirectional{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t unidirectional{std::numeric_limits<std::uint64_t>::max()};
+};
+
 struct stream_send_range {
     std::uint64_t offset{};
     std::uint64_t length{};
@@ -658,19 +663,30 @@ private:
 
 class stream_send_set {
 public:
-    explicit stream_send_set(std::uint64_t initial_max_data = std::numeric_limits<std::uint64_t>::max()) noexcept
-        : initial_max_data_{initial_max_data} {}
+    explicit stream_send_set(
+        std::uint64_t initial_max_data = std::numeric_limits<std::uint64_t>::max(),
+        stream_limits limits = {}) noexcept
+        : initial_max_data_{initial_max_data}, limits_{limits} {}
 
     [[nodiscard]] stream_operation_result append(std::uint64_t stream_id, const flowq::buffer& data) {
-        return state_for(stream_id).append(data);
+        auto* state = ensure_state_for(stream_id);
+        if (state == nullptr) {
+            return {detail::stream_error("peer stream count limit exceeded")};
+        }
+        return state->append(data);
     }
 
     [[nodiscard]] stream_operation_result finish(std::uint64_t stream_id) {
-        return state_for(stream_id).finish();
+        auto* state = ensure_state_for(stream_id);
+        if (state == nullptr) {
+            return {detail::stream_error("peer stream count limit exceeded")};
+        }
+        return state->finish();
     }
 
     [[nodiscard]] stream_send_result pop_frame(std::uint64_t stream_id, std::size_t max_data_size) {
-        return state_for(stream_id).pop_frame(max_data_size);
+        auto* state = find(stream_id);
+        return state == nullptr ? stream_send_result{} : state->pop_frame(max_data_size);
     }
 
     [[nodiscard]] stream_frame_schedule_result pop_frames(
@@ -715,8 +731,17 @@ public:
         update_max_data(frame.stream_id, frame.maximum_stream_data);
     }
 
+    void update_max_streams(const max_streams_frame& frame) noexcept {
+        auto& limit = mutable_limit_for(frame.direction);
+        limit = std::max(limit, frame.maximum_streams);
+    }
+
     [[nodiscard]] stream_operation_result stop_sending(const stop_sending_frame& frame) {
-        return state_for(frame.stream_id).stop_sending(frame);
+        auto* state = find(frame.stream_id);
+        if (state == nullptr) {
+            return {};
+        }
+        return state->stop_sending(frame);
     }
 
     void on_acked(std::uint64_t stream_id, stream_send_range range) {
@@ -737,6 +762,14 @@ public:
             return std::nullopt;
         }
         return found->second.blocked_frame();
+    }
+
+    [[nodiscard]] std::optional<streams_blocked_frame> streams_blocked_frame(stream_direction direction) const noexcept {
+        const auto blocked = direction == stream_direction::bidirectional ? bidi_streams_blocked_ : uni_streams_blocked_;
+        if (!blocked) {
+            return std::nullopt;
+        }
+        return flowq::quic::streams_blocked_frame{direction, limit_for(direction)};
     }
 
     [[nodiscard]] bool has_unsent_data(std::uint64_t stream_id) const noexcept {
@@ -761,12 +794,44 @@ public:
 
 private:
     std::uint64_t initial_max_data_{std::numeric_limits<std::uint64_t>::max()};
+    stream_limits limits_{};
     std::map<std::uint64_t, stream_send_state> streams_{};
+    bool bidi_streams_blocked_{};
+    bool uni_streams_blocked_{};
 
     [[nodiscard]] stream_send_state& state_for(std::uint64_t stream_id) {
         auto [iterator, inserted] = streams_.try_emplace(stream_id, stream_id, initial_max_data_);
         (void)inserted;
         return iterator->second;
+    }
+
+    [[nodiscard]] stream_send_state* ensure_state_for(std::uint64_t stream_id) {
+        if (auto* existing = find(stream_id)) {
+            return existing;
+        }
+        const auto info = classify_stream_id(stream_id);
+        const auto ordinal = stream_id >> 2U;
+        if (ordinal >= limit_for(info.direction)) {
+            mark_streams_blocked(info.direction);
+            return nullptr;
+        }
+        return &state_for(stream_id);
+    }
+
+    [[nodiscard]] std::uint64_t limit_for(stream_direction direction) const noexcept {
+        return direction == stream_direction::bidirectional ? limits_.bidirectional : limits_.unidirectional;
+    }
+
+    [[nodiscard]] std::uint64_t& mutable_limit_for(stream_direction direction) noexcept {
+        return direction == stream_direction::bidirectional ? limits_.bidirectional : limits_.unidirectional;
+    }
+
+    void mark_streams_blocked(stream_direction direction) noexcept {
+        if (direction == stream_direction::bidirectional) {
+            bidi_streams_blocked_ = true;
+        } else {
+            uni_streams_blocked_ = true;
+        }
     }
 };
 

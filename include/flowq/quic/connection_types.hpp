@@ -65,6 +65,8 @@ struct connection_loop_config {
     std::uint64_t initial_max_stream_data_bidi_local{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t initial_max_stream_data_bidi_remote{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t initial_max_stream_data_uni{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t initial_max_streams_bidi{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t initial_max_streams_uni{std::numeric_limits<std::uint64_t>::max()};
     std::chrono::milliseconds max_idle_timeout{};
     std::uint64_t max_udp_payload_size{1200};
     std::uint64_t active_connection_id_limit{2};
@@ -112,6 +114,12 @@ inline void apply_transport_parameters(connection_loop_config& config, const tra
     if (parameters.initial_max_stream_data_uni.has_value()) {
         config.initial_max_stream_data_uni = *parameters.initial_max_stream_data_uni;
         config.initial_stream_send_max_data = *parameters.initial_max_stream_data_uni;
+    }
+    if (parameters.initial_max_streams_bidi.has_value()) {
+        config.initial_max_streams_bidi = *parameters.initial_max_streams_bidi;
+    }
+    if (parameters.initial_max_streams_uni.has_value()) {
+        config.initial_max_streams_uni = *parameters.initial_max_streams_uni;
     }
     if (parameters.active_connection_id_limit.has_value()) {
         config.active_connection_id_limit = *parameters.active_connection_id_limit;

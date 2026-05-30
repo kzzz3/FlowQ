@@ -18,7 +18,9 @@ class connection_loop {
 public:
     explicit connection_loop(connection_loop_config config)
         : config_{std::move(config)},
-          send_streams_{config_.initial_stream_send_max_data},
+          send_streams_{
+              config_.initial_stream_send_max_data,
+              stream_limits{config_.initial_max_streams_bidi, config_.initial_max_streams_uni}},
           connection_send_max_data_{config_.initial_connection_send_max_data},
           peer_address_validated_{config_.peer_address_validated} {}
 
@@ -121,6 +123,16 @@ public:
 
             auto blocked = send_streams_.blocked_frame(stream_id);
             if (blocked.has_value()) {
+                result.frames.push_back(frame{*blocked});
+            }
+        }
+        if (result.frames.size() < max_frames) {
+            if (auto blocked = send_streams_.streams_blocked_frame(stream_direction::bidirectional); blocked.has_value()) {
+                result.frames.push_back(frame{*blocked});
+            }
+        }
+        if (result.frames.size() < max_frames) {
+            if (auto blocked = send_streams_.streams_blocked_frame(stream_direction::unidirectional); blocked.has_value()) {
                 result.frames.push_back(frame{*blocked});
             }
         }
@@ -936,6 +948,8 @@ private:
                 send_streams_.update_max_data(*credit);
             } else if (const auto* credit = std::get_if<max_data_frame>(&item)) {
                 update_max_data(*credit);
+            } else if (const auto* stream_credit = std::get_if<max_streams_frame>(&item)) {
+                send_streams_.update_max_streams(*stream_credit);
             }
         }
     }

@@ -920,6 +920,24 @@ TEST_CASE("stream send set reports STREAM_DATA_BLOCKED frame for selected blocke
     CHECK_FALSE(absent.has_value());
 }
 
+TEST_CASE("stream send set enforces peer bidirectional stream count limit") {
+    flowq::quic::stream_send_set streams{
+        std::numeric_limits<std::uint64_t>::max(),
+        flowq::quic::stream_limits{1, std::numeric_limits<std::uint64_t>::max()}
+    };
+
+    REQUIRE(streams.append(0, text("alpha")).ok());
+    auto rejected = streams.append(4, text("beta"));
+    auto blocked = streams.streams_blocked_frame(flowq::quic::stream_direction::bidirectional);
+
+    CHECK_FALSE(rejected.ok());
+    CHECK(rejected.error.code() == flowq::error_code::protocol_error);
+    REQUIRE(blocked.has_value());
+    CHECK(blocked->direction == flowq::quic::stream_direction::bidirectional);
+    CHECK(blocked->maximum_streams == 1);
+    CHECK(streams.find(4) == nullptr);
+}
+
 TEST_CASE("stream send set batches STREAM frames in selected order") {
     flowq::quic::stream_send_set streams{};
     REQUIRE(streams.append(0, text("alpha")).ok());
