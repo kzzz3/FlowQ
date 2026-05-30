@@ -270,9 +270,25 @@ public:
         }
 
         if (auto timer = recovery_timer_for(space, now)) {
+            if (timer->mode == loss_timer_mode::pto && now >= timer->deadline && result.newly_lost.empty()) {
+                result.newly_lost = mark_oldest_ack_eliciting_packet_lost(space);
+                if (!result.newly_lost.empty()) {
+                    congestion_.on_packet_lost(1200);
+                    congestion_.on_congestion_event();
+                    apply_stream_loss_mapping(space, result.newly_lost);
+                }
+            }
             result.next_deadline = timer->deadline;
         }
         return result;
+    }
+
+    void discard_packet_space(packet_number_space space) {
+        if (!detail::is_connection_loop_space(space)) {
+            return;
+        }
+        config_.key_lifecycle.discard(space);
+        clear_packet_space(space);
     }
 
     void on_datagram(inbound_datagram datagram) {
@@ -691,7 +707,9 @@ private:
     void refresh_key_lifecycle() {
         if (lifecycle_dirty_) {
             if (config_.tls_adapter != nullptr) {
-                config_.key_lifecycle.observe_tls(config_.tls_adapter->state(), config_.tls_adapter->key_availability());
+                const auto tls_state = config_.tls_adapter->state();
+                config_.key_lifecycle.observe_tls(tls_state, config_.tls_adapter->key_availability());
+                recovery_pto_config_.handshake_confirmed = tls_state == handshake_state::handshake_confirmed;
             }
             clear_discarded_packet_spaces();
             lifecycle_dirty_ = false;
@@ -844,6 +862,17 @@ private:
                 send_streams_.on_lost(range.stream_id, range.range);
             }
         }
+    }
+
+    [[nodiscard]] std::vector<std::uint64_t> mark_oldest_ack_eliciting_packet_lost(packet_number_space space) {
+        for (auto& packet : recovery_packets_) {
+            if (packet.space == space && packet.state == sent_packet_state::outstanding && packet.ack_eliciting) {
+                packet.state = sent_packet_state::lost;
+                sent_tracker(space).mark_lost(packet.packet_number);
+                return {packet.packet_number};
+            }
+        }
+        return {};
     }
 
     [[nodiscard]] std::optional<connection_recovery_timer> recovery_timer_for(packet_number_space space, std::chrono::steady_clock::time_point now) const {

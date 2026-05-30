@@ -2,6 +2,7 @@ import asyncio
 import os
 import ssl
 import sys
+from enum import Enum
 from pathlib import Path
 
 from aioquic.asyncio.protocol import QuicConnectionProtocol
@@ -23,11 +24,31 @@ EXPECTED_STREAM_DATA = b"hello from FlowQ"
 EXPECTED_ECHO_DATA = b"echo from aioquic"
 
 
+class Scenario(Enum):
+    BIDIRECTIONAL_STREAM = "bidirectional_stream"
+    LOSS_RECOVERY = "loss_recovery"
+
+
 class RecordingProtocol(QuicConnectionProtocol):
     handshake_completed = None
     stream_data_received = None
     stream_payloads = None
     terminated = None
+    scenario = Scenario.BIDIRECTIONAL_STREAM
+    dropped_short_header_datagrams = 0
+
+    def datagram_received(self, data, addr):
+        if (
+            self.scenario == Scenario.LOSS_RECOVERY
+            and self.handshake_completed.is_set()
+            and data
+            and (data[0] & 0x80) == 0
+            and type(self).dropped_short_header_datagrams == 0
+        ):
+            type(self).dropped_short_header_datagrams += 1
+            print("[aioquic] intentionally dropped first short-header datagram")
+            return
+        super().datagram_received(data, addr)
 
     def quic_event_received(self, event):
         if isinstance(event, HandshakeCompleted):
@@ -86,14 +107,17 @@ async def run_flowq_client():
 
 
 async def main():
+    scenario = Scenario(os.environ.get("FLOWQ_INTEROP_SCENARIO", Scenario.BIDIRECTIONAL_STREAM.value))
     print("=" * 50)
-    print("FlowQ Interop Test: FlowQ Client -> aioquic Server")
+    print(f"FlowQ Interop Test: FlowQ Client -> aioquic Server ({scenario.value})")
     print("=" * 50)
 
     RecordingProtocol.handshake_completed = asyncio.Event()
     RecordingProtocol.stream_data_received = asyncio.Event()
     RecordingProtocol.stream_payloads = []
     RecordingProtocol.terminated = asyncio.Event()
+    RecordingProtocol.scenario = scenario
+    RecordingProtocol.dropped_short_header_datagrams = 0
 
     server = await run_aioquic_server()
 
@@ -114,6 +138,9 @@ async def main():
         except asyncio.TimeoutError:
             print(f"\n[Test] aioquic did not observe expected stream data: {EXPECTED_STREAM_DATA!r}")
             print(f"[Test] Observed stream payloads: {RecordingProtocol.stream_payloads!r}")
+            return False
+        if scenario == Scenario.LOSS_RECOVERY and RecordingProtocol.dropped_short_header_datagrams != 1:
+            print("\n[Test] loss_recovery did not drop exactly one short-header datagram")
             return False
 
         print("\nInterop test PASSED: aioquic observed QUIC handshake, FlowQ STREAM data, and sent echo data")

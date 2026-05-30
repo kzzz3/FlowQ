@@ -62,6 +62,28 @@ bool send_stream_payload(
     return true;
 }
 
+bool retransmit_stream_payload(
+    flowq::quic::session& session,
+    asio::ip::udp::socket& socket,
+    std::uint64_t stream_id) {
+    auto queue_result = session.queue_stream_data({stream_id});
+    if (!queue_result.ok()) {
+        std::cerr << "Queue retransmit data failed: " << queue_result.error.message() << std::endl;
+        return false;
+    }
+
+    auto flush_result = session.flush();
+    if (!flush_result.ok()) {
+        std::cerr << "Flush retransmit data failed: " << flush_result.error.message() << std::endl;
+        return false;
+    }
+    if (!flush_result.datagrams.empty()) {
+        std::cout << "Retransmitting stream " << stream_id << std::endl;
+    }
+    send_datagrams(socket, flush_result.datagrams);
+    return true;
+}
+
 std::string buffer_to_string(const flowq::buffer& buffer) {
     std::string output;
     output.reserve(buffer.size());
@@ -165,20 +187,29 @@ int main() {
         auto deadline = std::chrono::steady_clock::now() + 5s;
         bool application_stream_sent = false;
         bool echo_received = false;
-        auto stream_send_deadline = deadline;
         while (std::chrono::steady_clock::now() < deadline) {
             if (tls_adapter->state() == flowq::quic::handshake_state::handshake_confirmed && !application_stream_sent) {
                 std::cout << "Handshake confirmed" << std::endl;
                 std::cout << "Negotiated cipher: " << flowq::quic::cipher_suite_name(tls_adapter->negotiated_cipher()) << std::endl;
+                session.discard_packet_space(flowq::quic::packet_number_space::handshake);
                 if (!send_stream_payload(session, socket, "hello from FlowQ")) {
                     return 1;
                 }
                 application_stream_sent = true;
-                stream_send_deadline = std::chrono::steady_clock::now() + 500ms;
             }
-            if (application_stream_sent && std::chrono::steady_clock::now() >= stream_send_deadline) {
-                std::cerr << "Timed out waiting for aioquic stream echo" << std::endl;
-                return 1;
+            const auto now = std::chrono::steady_clock::now();
+            if (auto recovery_timer = session.next_recovery_timer(now);
+                recovery_timer.has_value() && now >= recovery_timer->deadline) {
+                const auto recovery_result = session.on_recovery_timer(recovery_timer->space, now);
+                if (!recovery_result.newly_lost.empty()) {
+                    std::cout << "Recovery timer fired for packet number space "
+                              << static_cast<int>(recovery_timer->space)
+                              << "; newly lost packets: " << recovery_result.newly_lost.size()
+                              << std::endl;
+                    if (!retransmit_stream_payload(session, socket, 0)) {
+                        return 1;
+                    }
+                }
             }
 
             asio::ip::udp::endpoint sender;

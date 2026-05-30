@@ -198,6 +198,12 @@ public:
         return loop_.on_recovery_timer(space, now);
     }
 
+    void discard_packet_space(packet_number_space space) {
+        config_.key_lifecycle.discard(space);
+        config_.loop_config.key_lifecycle.discard(space);
+        loop_.discard_packet_space(space);
+    }
+
     [[nodiscard]] std::optional<connection_lifecycle_timer> next_lifecycle_timer(std::chrono::steady_clock::time_point now) {
         return loop_.next_lifecycle_timer(now);
     }
