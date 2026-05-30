@@ -10,7 +10,7 @@ Complete all items before claiming production-candidate status. Checked items mu
 - [x] No compiler warnings with `-Wall -Wextra` (or MSVC equivalent)
 - [ ] No sanitizer errors (ASAN, UBSAN)
 
-Current Windows evidence: `scripts/validate-build.ps1 -Preset windows-msvc-vcpkg -BuildType Debug` passes configure, build, 484 CTest tests, install, and package-consumer configure/build/run on the Windows MSVC/vcpkg preset; `build/package-consumer/Debug/flowq_package_consumer.exe` exits successfully. Strict warning evidence must be refreshed against the current 484-test suite before final production-candidate sign-off.
+Current Windows evidence: `scripts/validate-build.ps1 -Preset windows-msvc-vcpkg -BuildType Debug` passes configure, build, 484 CTest tests, install, and package-consumer configure/build/run on the Windows MSVC/vcpkg preset; `build/package-consumer/Debug/flowq_package_consumer.exe` exits successfully. Strict warning evidence: `FLOWQ_ENABLE_STRICT_WARNINGS=ON` Debug build passes with MSVC `/W4 /WX /permissive- /EHsc`, and `ctest --test-dir build/windows-msvc-vcpkg-warnings -C Debug --timeout 10 --output-on-failure` passes 484 CTest tests.
 
 Linux GCC and sanitizer gates are defined but not checked off until they are executed on a Linux host: `linux-gcc-vcpkg`, `linux-gcc-vcpkg-strict`, and `linux-asan-ubsan` presets are available, `scripts/validate-build.sh --preset linux-gcc-vcpkg` validates the Linux package pipeline, and `scripts/validate-sanitizers.sh` validates ASan/UBSan. The current local Windows host cannot produce this evidence because no WSL distribution, Docker daemon, GCC, or Clang is available.
 
