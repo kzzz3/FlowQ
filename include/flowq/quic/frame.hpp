@@ -2,6 +2,7 @@
 
 #include <flowq/buffer.hpp>
 #include <flowq/error.hpp>
+#include <flowq/quic/packet_header.hpp>
 #include <flowq/quic/varint.hpp>
 
 #include <array>
@@ -84,6 +85,34 @@ struct stream_data_blocked_frame {
     std::uint64_t maximum_stream_data{};
 };
 
+enum class stream_direction {
+    bidirectional,
+    unidirectional
+};
+
+struct max_streams_frame {
+    stream_direction direction{};
+    std::uint64_t maximum_streams{};
+};
+
+struct streams_blocked_frame {
+    stream_direction direction{};
+    std::uint64_t maximum_streams{};
+};
+
+struct new_connection_id_frame {
+    std::uint64_t sequence_number{};
+    std::uint64_t retire_prior_to{};
+    connection_id connection_id;
+    flowq::buffer stateless_reset_token;
+};
+
+struct retire_connection_id_frame {
+    std::uint64_t sequence_number{};
+};
+
+struct handshake_done_frame {};
+
 struct path_challenge_frame {
     std::array<std::byte, 8> data{};
 };
@@ -105,6 +134,11 @@ using frame = std::variant<
     max_stream_data_frame,
     data_blocked_frame,
     stream_data_blocked_frame,
+    max_streams_frame,
+    streams_blocked_frame,
+    new_connection_id_frame,
+    retire_connection_id_frame,
+    handshake_done_frame,
     path_challenge_frame,
     path_response_frame>;
 
@@ -242,6 +276,40 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
     return {flowq::buffer{output}, {}};
 }
 
+[[nodiscard]] inline frame_encode_result encode_stream_count_frame(
+    std::uint64_t bidirectional_type,
+    std::uint64_t unidirectional_type,
+    stream_direction direction,
+    std::uint64_t maximum_streams,
+    const char* message) {
+    std::vector<std::byte> output;
+    const auto type = direction == stream_direction::bidirectional ? bidirectional_type : unidirectional_type;
+    if (!append_varint(output, type) || !append_varint(output, maximum_streams)) {
+        return {{}, codec_error(message)};
+    }
+    return {flowq::buffer{output}, {}};
+}
+
+[[nodiscard]] inline frame_encode_result encode_new_connection_id(const new_connection_id_frame& frame) {
+    if (frame.connection_id.bytes.empty() || frame.connection_id.bytes.size() > 20) {
+        return {{}, codec_error("NEW_CONNECTION_ID connection ID length must be 1 to 20 bytes")};
+    }
+    if (frame.stateless_reset_token.size() != 16) {
+        return {{}, codec_error("NEW_CONNECTION_ID stateless reset token must be 16 bytes")};
+    }
+
+    std::vector<std::byte> output;
+    if (!append_varint(output, 0x18) ||
+        !append_varint(output, frame.sequence_number) ||
+        !append_varint(output, frame.retire_prior_to) ||
+        !append_varint(output, frame.connection_id.bytes.size())) {
+        return {{}, codec_error("failed to encode NEW_CONNECTION_ID frame")};
+    }
+    append_buffer(output, frame.connection_id.bytes);
+    append_buffer(output, frame.stateless_reset_token);
+    return {flowq::buffer{output}, {}};
+}
+
 [[nodiscard]] inline frame_encode_result encode_path_validation_frame(
     std::uint64_t type,
     const std::array<std::byte, 8>& data,
@@ -329,6 +397,27 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
 
 [[nodiscard]] inline frame_encode_result encode_frame(const stream_data_blocked_frame& frame) {
     return detail::encode_stream_limit_frame(0x15, frame.stream_id, frame.maximum_stream_data, "failed to encode STREAM_DATA_BLOCKED frame");
+}
+
+[[nodiscard]] inline frame_encode_result encode_frame(const max_streams_frame& frame) {
+    return detail::encode_stream_count_frame(0x12, 0x13, frame.direction, frame.maximum_streams, "failed to encode MAX_STREAMS frame");
+}
+
+[[nodiscard]] inline frame_encode_result encode_frame(const streams_blocked_frame& frame) {
+    return detail::encode_stream_count_frame(0x16, 0x17, frame.direction, frame.maximum_streams, "failed to encode STREAMS_BLOCKED frame");
+}
+
+[[nodiscard]] inline frame_encode_result encode_frame(const new_connection_id_frame& frame) {
+    return detail::encode_new_connection_id(frame);
+}
+
+[[nodiscard]] inline frame_encode_result encode_frame(const retire_connection_id_frame& frame) {
+    return detail::encode_single_limit_frame(0x19, frame.sequence_number, "failed to encode RETIRE_CONNECTION_ID frame");
+}
+
+[[nodiscard]] inline frame_encode_result encode_frame(const handshake_done_frame&) {
+    std::vector<std::byte> output{std::byte{0x1e}};
+    return {flowq::buffer{output}, {}};
 }
 
 [[nodiscard]] inline frame_encode_result encode_frame(const path_challenge_frame& frame) {
@@ -509,6 +598,57 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
             continue;
         }
 
+        if (type == 0x12 || type == 0x13) {
+            std::uint64_t maximum_streams = 0;
+            if (!detail::read_varint_at(input, offset, maximum_streams)) {
+                return {{}, codec_error("truncated MAX_STREAMS frame")};
+            }
+            frames.emplace_back(max_streams_frame{type == 0x12 ? stream_direction::bidirectional : stream_direction::unidirectional, maximum_streams});
+            continue;
+        }
+
+        if (type == 0x16 || type == 0x17) {
+            std::uint64_t maximum_streams = 0;
+            if (!detail::read_varint_at(input, offset, maximum_streams)) {
+                return {{}, codec_error("truncated STREAMS_BLOCKED frame")};
+            }
+            frames.emplace_back(streams_blocked_frame{type == 0x16 ? stream_direction::bidirectional : stream_direction::unidirectional, maximum_streams});
+            continue;
+        }
+
+        if (type == 0x18) {
+            std::uint64_t sequence_number = 0;
+            std::uint64_t retire_prior_to = 0;
+            std::uint64_t connection_id_length = 0;
+            if (!detail::read_varint_at(input, offset, sequence_number) ||
+                !detail::read_varint_at(input, offset, retire_prior_to) ||
+                !detail::read_varint_at(input, offset, connection_id_length)) {
+                return {{}, codec_error("truncated NEW_CONNECTION_ID frame")};
+            }
+            if (connection_id_length == 0 || connection_id_length > 20) {
+                return {{}, codec_error("NEW_CONNECTION_ID connection ID length must be 1 to 20 bytes")};
+            }
+            if (connection_id_length + 16U > input.size() - offset) {
+                return {{}, codec_error("truncated NEW_CONNECTION_ID frame")};
+            }
+
+            auto id = connection_id{flowq::buffer{input.subspan(offset, static_cast<std::size_t>(connection_id_length))}};
+            offset += static_cast<std::size_t>(connection_id_length);
+            auto token = flowq::buffer{input.subspan(offset, 16)};
+            offset += 16;
+            frames.emplace_back(new_connection_id_frame{sequence_number, retire_prior_to, std::move(id), std::move(token)});
+            continue;
+        }
+
+        if (type == 0x19) {
+            std::uint64_t sequence_number = 0;
+            if (!detail::read_varint_at(input, offset, sequence_number)) {
+                return {{}, codec_error("truncated RETIRE_CONNECTION_ID frame")};
+            }
+            frames.emplace_back(retire_connection_id_frame{sequence_number});
+            continue;
+        }
+
         if (type == 0x1a) {
             std::array<std::byte, 8> data{};
             if (!detail::read_path_validation_data(input, offset, data)) {
@@ -547,6 +687,11 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
             }
             offset += static_cast<std::size_t>(reason_size);
             frames.emplace_back(connection_close_frame{error_code, frame_type, std::move(reason)});
+            continue;
+        }
+
+        if (type == 0x1e) {
+            frames.emplace_back(handshake_done_frame{});
             continue;
         }
 

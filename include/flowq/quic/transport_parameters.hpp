@@ -21,6 +21,8 @@ inline constexpr std::uint64_t transport_parameter_initial_max_data = 0x04;
 inline constexpr std::uint64_t transport_parameter_initial_max_stream_data_bidi_local = 0x05;
 inline constexpr std::uint64_t transport_parameter_initial_max_stream_data_bidi_remote = 0x06;
 inline constexpr std::uint64_t transport_parameter_initial_max_stream_data_uni = 0x07;
+inline constexpr std::uint64_t transport_parameter_initial_max_streams_bidi = 0x08;
+inline constexpr std::uint64_t transport_parameter_initial_max_streams_uni = 0x09;
 inline constexpr std::uint64_t transport_parameter_disable_active_migration = 0x0c;
 inline constexpr std::uint64_t transport_parameter_active_connection_id_limit = 0x0e;
 inline constexpr std::uint64_t transport_parameter_initial_source_connection_id = 0x0f;
@@ -39,6 +41,8 @@ struct transport_parameters {
     std::optional<std::uint64_t> initial_max_stream_data_bidi_local;
     std::optional<std::uint64_t> initial_max_stream_data_bidi_remote;
     std::optional<std::uint64_t> initial_max_stream_data_uni;
+    std::optional<std::uint64_t> initial_max_streams_bidi;
+    std::optional<std::uint64_t> initial_max_streams_uni;
     bool disable_active_migration{};
     std::optional<std::uint64_t> active_connection_id_limit;
     std::optional<flowq::buffer> initial_source_connection_id;
@@ -126,6 +130,8 @@ namespace detail {
     case transport_parameter_initial_max_stream_data_bidi_local:
     case transport_parameter_initial_max_stream_data_bidi_remote:
     case transport_parameter_initial_max_stream_data_uni:
+    case transport_parameter_initial_max_streams_bidi:
+    case transport_parameter_initial_max_streams_uni:
     case transport_parameter_disable_active_migration:
     case transport_parameter_active_connection_id_limit:
     case transport_parameter_initial_source_connection_id:
@@ -271,6 +277,14 @@ namespace detail {
     if (!error.ok()) {
         return {{}, error};
     }
+    error = detail::append_checked_numeric_transport_parameter(output, emitted, transport_parameter_initial_max_streams_bidi, parameters.initial_max_streams_bidi);
+    if (!error.ok()) {
+        return {{}, error};
+    }
+    error = detail::append_checked_numeric_transport_parameter(output, emitted, transport_parameter_initial_max_streams_uni, parameters.initial_max_streams_uni);
+    if (!error.ok()) {
+        return {{}, error};
+    }
     if (parameters.disable_active_migration) {
         error = detail::remember_transport_parameter(emitted, transport_parameter_disable_active_migration);
         if (!error.ok()) {
@@ -376,6 +390,12 @@ namespace detail {
             break;
         case transport_parameter_initial_max_stream_data_uni:
             error = detail::assign_numeric_parameter(result.initial_max_stream_data_uni, value, "malformed initial_max_stream_data_uni transport parameter");
+            break;
+        case transport_parameter_initial_max_streams_bidi:
+            error = detail::assign_numeric_parameter(result.initial_max_streams_bidi, value, "malformed initial_max_streams_bidi transport parameter");
+            break;
+        case transport_parameter_initial_max_streams_uni:
+            error = detail::assign_numeric_parameter(result.initial_max_streams_uni, value, "malformed initial_max_streams_uni transport parameter");
             break;
         case transport_parameter_disable_active_migration:
             if (!value.empty()) {

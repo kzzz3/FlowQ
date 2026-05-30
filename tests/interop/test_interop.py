@@ -19,11 +19,13 @@ FLOWQ_CLIENT = Path(
 )
 CERT_FILE = REPO_ROOT / "build" / "certs" / "cert.pem"
 KEY_FILE = REPO_ROOT / "build" / "certs" / "key.pem"
+EXPECTED_STREAM_DATA = b"hello from FlowQ"
 
 
 class RecordingProtocol(QuicConnectionProtocol):
     handshake_completed = None
     stream_data_received = None
+    stream_payloads = None
     terminated = None
 
     def quic_event_received(self, event):
@@ -32,7 +34,9 @@ class RecordingProtocol(QuicConnectionProtocol):
             self.handshake_completed.set()
         elif isinstance(event, StreamDataReceived):
             print(f"[aioquic] stream data received: stream={event.stream_id} bytes={len(event.data)}")
-            self.stream_data_received.set()
+            self.stream_payloads.append((event.stream_id, bytes(event.data)))
+            if event.stream_id == 0 and bytes(event.data) == EXPECTED_STREAM_DATA:
+                self.stream_data_received.set()
         elif isinstance(event, ConnectionTerminated):
             print(f"[aioquic] connection terminated: error={event.error_code} reason={event.reason_phrase}")
             self.terminated.set()
@@ -85,6 +89,7 @@ async def main():
 
     RecordingProtocol.handshake_completed = asyncio.Event()
     RecordingProtocol.stream_data_received = asyncio.Event()
+    RecordingProtocol.stream_payloads = []
     RecordingProtocol.terminated = asyncio.Event()
 
     server = await run_aioquic_server()
@@ -101,7 +106,14 @@ async def main():
             print("\n[Test] aioquic did not observe QUIC HandshakeCompleted")
             return False
 
-        print("\nInterop test PASSED: aioquic observed QUIC handshake completion")
+        try:
+            await asyncio.wait_for(RecordingProtocol.stream_data_received.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            print(f"\n[Test] aioquic did not observe expected stream data: {EXPECTED_STREAM_DATA!r}")
+            print(f"[Test] Observed stream payloads: {RecordingProtocol.stream_payloads!r}")
+            return False
+
+        print("\nInterop test PASSED: aioquic observed QUIC handshake and FlowQ STREAM data")
         return True
     finally:
         server.close()

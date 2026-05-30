@@ -183,6 +183,79 @@ TEST_CASE("QUIC frame codec round trips flow-control frame values") {
         CHECK(blocked.stream_id == 8);
         CHECK(blocked.maximum_stream_data == 8192);
     }
+
+    {
+        flowq::quic::max_streams_frame frame{flowq::quic::stream_direction::bidirectional, 16};
+        auto encoded = flowq::quic::encode_frame(frame);
+        REQUIRE(encoded.ok());
+
+        auto decoded = flowq::quic::decode_frames(encoded.payload);
+        REQUIRE(decoded.ok());
+        REQUIRE(decoded.frames.size() == 1);
+        REQUIRE(std::holds_alternative<flowq::quic::max_streams_frame>(decoded.frames[0]));
+        const auto& streams = std::get<flowq::quic::max_streams_frame>(decoded.frames[0]);
+        CHECK(streams.direction == flowq::quic::stream_direction::bidirectional);
+        CHECK(streams.maximum_streams == 16);
+    }
+
+    {
+        flowq::quic::streams_blocked_frame frame{flowq::quic::stream_direction::unidirectional, 8};
+        auto encoded = flowq::quic::encode_frame(frame);
+        REQUIRE(encoded.ok());
+
+        auto decoded = flowq::quic::decode_frames(encoded.payload);
+        REQUIRE(decoded.ok());
+        REQUIRE(decoded.frames.size() == 1);
+        REQUIRE(std::holds_alternative<flowq::quic::streams_blocked_frame>(decoded.frames[0]));
+        const auto& blocked = std::get<flowq::quic::streams_blocked_frame>(decoded.frames[0]);
+        CHECK(blocked.direction == flowq::quic::stream_direction::unidirectional);
+        CHECK(blocked.maximum_streams == 8);
+    }
+}
+
+TEST_CASE("QUIC frame codec round trips connection-id and handshake-done frames") {
+    {
+        flowq::quic::new_connection_id_frame frame{
+            3,
+            1,
+            flowq::quic::connection_id{flowq::buffer{bytes({0xaa, 0xbb, 0xcc, 0xdd})}},
+            flowq::buffer{bytes({0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f})}
+        };
+        auto encoded = flowq::quic::encode_frame(frame);
+        REQUIRE(encoded.ok());
+
+        auto decoded = flowq::quic::decode_frames(encoded.payload);
+        REQUIRE(decoded.ok());
+        REQUIRE(decoded.frames.size() == 1);
+        REQUIRE(std::holds_alternative<flowq::quic::new_connection_id_frame>(decoded.frames[0]));
+        const auto& cid = std::get<flowq::quic::new_connection_id_frame>(decoded.frames[0]);
+        CHECK(cid.sequence_number == 3);
+        CHECK(cid.retire_prior_to == 1);
+        CHECK(cid.connection_id.bytes.size() == 4);
+        CHECK(cid.stateless_reset_token.size() == 16);
+    }
+
+    {
+        flowq::quic::retire_connection_id_frame frame{2};
+        auto encoded = flowq::quic::encode_frame(frame);
+        REQUIRE(encoded.ok());
+
+        auto decoded = flowq::quic::decode_frames(encoded.payload);
+        REQUIRE(decoded.ok());
+        REQUIRE(decoded.frames.size() == 1);
+        REQUIRE(std::holds_alternative<flowq::quic::retire_connection_id_frame>(decoded.frames[0]));
+        CHECK(std::get<flowq::quic::retire_connection_id_frame>(decoded.frames[0]).sequence_number == 2);
+    }
+
+    {
+        auto encoded = flowq::quic::encode_frame(flowq::quic::handshake_done_frame{});
+        REQUIRE(encoded.ok());
+
+        auto decoded = flowq::quic::decode_frames(encoded.payload);
+        REQUIRE(decoded.ok());
+        REQUIRE(decoded.frames.size() == 1);
+        REQUIRE(std::holds_alternative<flowq::quic::handshake_done_frame>(decoded.frames[0]));
+    }
 }
 
 TEST_CASE("QUIC frame codec round trips PATH_CHALLENGE and PATH_RESPONSE frames") {
@@ -385,9 +458,16 @@ TEST_CASE("QUIC frame codec rejects malformed RESET_STREAM and STOP_SENDING fram
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x05, 0x40})).ok());
 }
 
-TEST_CASE("QUIC frame codec leaves stream-count flow-control frames unsupported") {
-    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x12, 0x00})).ok());
-    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x13, 0x00})).ok());
-    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x16, 0x00})).ok());
-    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x17, 0x00})).ok());
+TEST_CASE("QUIC frame codec rejects malformed stream-count and connection-id frames") {
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x12})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x13})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x16})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x17})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x18, 0x00, 0x00})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x18, 0x00, 0x00, 0x01, 0xaa})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({
+        0x18, 0x00, 0x00, 0x01, 0xaa,
+        0x00, 0x01, 0x02, 0x03
+    })).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x19})).ok());
 }

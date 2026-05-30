@@ -96,6 +96,8 @@ TEST_CASE("openssl_tls_config default values") {
     CHECK(config.local_transport_parameters.initial_max_stream_data_bidi_local == 262144);
     CHECK(config.local_transport_parameters.initial_max_stream_data_bidi_remote == 262144);
     CHECK(config.local_transport_parameters.initial_max_stream_data_uni == 262144);
+    CHECK(config.local_transport_parameters.initial_max_streams_bidi == 128);
+    CHECK(config.local_transport_parameters.initial_max_streams_uni == 128);
     CHECK(config.local_transport_parameters.active_connection_id_limit == 2);
 }
 

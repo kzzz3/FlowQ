@@ -9,6 +9,7 @@
 #include <iostream>
 #include <memory>
 #include <span>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -23,6 +24,40 @@ bool send_datagrams(
         auto endpoint = asio::ip::udp::endpoint{asio::ip::make_address(datagram.peer.host), datagram.peer.port};
         socket.send_to(asio::buffer(datagram.payload.data(), datagram.payload.size()), endpoint);
     }
+    return true;
+}
+
+flowq::buffer text_buffer(std::string_view text) {
+    std::vector<std::byte> bytes;
+    bytes.reserve(text.size());
+    for (const char ch : text) {
+        bytes.push_back(static_cast<std::byte>(static_cast<unsigned char>(ch)));
+    }
+    return flowq::buffer{std::move(bytes)};
+}
+
+bool send_stream_payload(
+    flowq::quic::session& session,
+    asio::ip::udp::socket& socket,
+    std::string_view payload) {
+    auto append_result = session.append_stream_data(0, text_buffer(payload));
+    if (!append_result.ok()) {
+        std::cerr << "Append stream data failed: " << append_result.error.message() << std::endl;
+        return false;
+    }
+
+    auto queue_result = session.queue_stream_data({0});
+    if (!queue_result.ok()) {
+        std::cerr << "Queue stream data failed: " << queue_result.error.message() << std::endl;
+        return false;
+    }
+
+    auto flush_result = session.flush();
+    if (!flush_result.ok()) {
+        std::cerr << "Flush stream data failed: " << flush_result.error.message() << std::endl;
+        return false;
+    }
+    send_datagrams(socket, flush_result.datagrams);
     return true;
 }
 
@@ -108,9 +143,18 @@ int main() {
 
         std::array<std::byte, 65535> receive_buffer{};
         auto deadline = std::chrono::steady_clock::now() + 5s;
+        bool application_stream_sent = false;
+        auto stream_send_deadline = deadline;
         while (std::chrono::steady_clock::now() < deadline) {
-            if (tls_adapter->state() == flowq::quic::handshake_state::handshake_confirmed) {
+            if (tls_adapter->state() == flowq::quic::handshake_state::handshake_confirmed && !application_stream_sent) {
                 std::cout << "Handshake confirmed" << std::endl;
+                if (!send_stream_payload(session, socket, "hello from FlowQ")) {
+                    return 1;
+                }
+                application_stream_sent = true;
+                stream_send_deadline = std::chrono::steady_clock::now() + 500ms;
+            }
+            if (application_stream_sent && std::chrono::steady_clock::now() >= stream_send_deadline) {
                 return 0;
             }
 

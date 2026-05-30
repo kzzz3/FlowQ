@@ -375,6 +375,13 @@ TEST_CASE("packet pipeline applies short header protection in production mode") 
     CHECK(assembled.datagram.data()[3] == std::byte{0x22});
     CHECK(assembled.datagram.data()[4] == std::byte{0x33});
     CHECK(assembled.datagram.data()[5] == std::byte{0x44});
+    REQUIRE(protector.last_associated_data.size() == 6);
+    CHECK(protector.last_associated_data[0] == std::byte{0x43});
+    CHECK(protector.last_associated_data[1] == std::byte{0xaa});
+    CHECK(protector.last_associated_data[2] == std::byte{0x00});
+    CHECK(protector.last_associated_data[3] == std::byte{0x00});
+    CHECK(protector.last_associated_data[4] == std::byte{0x00});
+    CHECK(protector.last_associated_data[5] == std::byte{0x00});
 
     auto parsed = flowq::quic::parse_short_packet(
         assembled.datagram,

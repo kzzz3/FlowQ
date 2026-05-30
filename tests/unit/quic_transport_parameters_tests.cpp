@@ -39,6 +39,8 @@ TEST_CASE("transport parameters round trip selected QUIC values") {
     parameters.initial_max_stream_data_bidi_local = 2000;
     parameters.initial_max_stream_data_bidi_remote = 3000;
     parameters.initial_max_stream_data_uni = 4000;
+    parameters.initial_max_streams_bidi = 16;
+    parameters.initial_max_streams_uni = 8;
     parameters.disable_active_migration = true;
     parameters.active_connection_id_limit = 4;
     parameters.original_destination_connection_id = flowq::buffer{bytes({0x05, 0x06, 0x07, 0x08})};
@@ -56,6 +58,8 @@ TEST_CASE("transport parameters round trip selected QUIC values") {
     CHECK(decoded.parameters.initial_max_stream_data_bidi_local == 2000);
     CHECK(decoded.parameters.initial_max_stream_data_bidi_remote == 3000);
     CHECK(decoded.parameters.initial_max_stream_data_uni == 4000);
+    CHECK(decoded.parameters.initial_max_streams_bidi == 16);
+    CHECK(decoded.parameters.initial_max_streams_uni == 8);
     CHECK(decoded.parameters.disable_active_migration);
     CHECK(decoded.parameters.active_connection_id_limit == 4);
     REQUIRE(decoded.parameters.original_destination_connection_id.has_value());

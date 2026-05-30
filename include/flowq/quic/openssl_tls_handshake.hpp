@@ -35,6 +35,8 @@ struct openssl_tls_config {
         .initial_max_stream_data_bidi_local = 262144,
         .initial_max_stream_data_bidi_remote = 262144,
         .initial_max_stream_data_uni = 262144,
+        .initial_max_streams_bidi = 128,
+        .initial_max_streams_uni = 128,
         .active_connection_id_limit = 2
     };
 };

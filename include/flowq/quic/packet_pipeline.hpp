@@ -674,7 +674,6 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     std::vector<std::byte> associated_data{
         aad_prefix.payload.data(),
         aad_prefix.payload.data() + static_cast<std::ptrdiff_t>(header_prefix_size)};
-    associated_data.insert(associated_data.end(), packet_number_bytes.begin(), packet_number_bytes.end());
 
     const auto protected_frames = detail::protect_payload(
         *request.protector,
