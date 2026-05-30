@@ -18,6 +18,43 @@ cmake --build --preset windows-msvc-vcpkg
 ctest --preset windows-msvc-vcpkg --timeout 10
 ```
 
+### Linux GCC/vcpkg
+
+```bash
+export VCPKG_ROOT="$HOME/vcpkg"
+
+cmake --preset linux-gcc-vcpkg
+cmake --build --preset linux-gcc-vcpkg
+ctest --preset linux-gcc-vcpkg --timeout 10 --output-on-failure
+```
+
+The complete Linux package gate is:
+
+```bash
+./scripts/validate-build.sh --preset linux-gcc-vcpkg
+```
+
+### Strict Warnings
+
+```bash
+cmake --preset linux-gcc-vcpkg-strict
+cmake --build --preset linux-gcc-vcpkg-strict
+ctest --preset linux-gcc-vcpkg-strict --timeout 10 --output-on-failure
+```
+
+On Windows, configure `windows-msvc-vcpkg` with `FLOWQ_ENABLE_STRICT_WARNINGS=ON` to enable `/W4 /WX /permissive- /EHsc` for project targets.
+
+### Sanitizers
+
+ASan/UBSan validation is a Linux gate:
+
+```bash
+export VCPKG_ROOT="$HOME/vcpkg"
+./scripts/validate-sanitizers.sh
+```
+
+This uses the `linux-asan-ubsan` preset with `-fsanitize=address,undefined -fno-omit-frame-pointer`.
+
 ### OpenSSL QUIC TLS (Optional)
 
 ```powershell
@@ -42,6 +79,7 @@ ctest --test-dir build/openssl -C Debug --timeout 10
 | `FLOWQ_BUILD_EXAMPLES` | ON | Build example applications |
 | `FLOWQ_BUILD_FUZZ` | OFF | Build fuzz targets (requires libFuzzer) |
 | `FLOWQ_BUILD_INTEROP` | OFF | Build interop harness |
+| `FLOWQ_ENABLE_STRICT_WARNINGS` | OFF | Treat project compiler warnings as errors |
 | `FLOWQ_ENABLE_OPENSSL_QUIC_TLS` | OFF | Enable OpenSSL QUIC TLS backend |
 
 ## Install and Package
