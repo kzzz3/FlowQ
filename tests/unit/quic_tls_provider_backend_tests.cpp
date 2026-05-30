@@ -21,10 +21,8 @@ TEST_CASE("OpenSSL QUIC TLS backend reports status from build configuration") {
     CHECK(status.metadata.family == flowq::quic::tls_provider_family::openssl_quic_tls);
     CHECK(status.metadata.name == std::string_view{"OpenSSL QUIC TLS"});
     CHECK_FALSE(status.metadata.version.empty());
-    REQUIRE(status.metadata.cipher_suites.size() == 3);
+    REQUIRE(status.metadata.cipher_suites.size() == 1);
     CHECK(status.metadata.cipher_suites[0] == flowq::quic::cipher_suite::aes_128_gcm_sha256);
-    CHECK(status.metadata.cipher_suites[1] == flowq::quic::cipher_suite::aes_256_gcm_sha384);
-    CHECK(status.metadata.cipher_suites[2] == flowq::quic::cipher_suite::chacha20_poly1305_sha256);
 #endif
 }
 

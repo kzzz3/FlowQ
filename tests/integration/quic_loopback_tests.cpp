@@ -59,7 +59,7 @@ flowq::quic::connection_loop make_loop(
     const flowq::quic::packet_protector& protector,
     std::uint64_t initial_stream_send_max_data = UINT64_MAX,
     std::uint64_t initial_connection_send_max_data = UINT64_MAX) {
-    return flowq::quic::connection_loop{flowq::quic::connection_loop_config{
+    flowq::quic::connection_loop_config config{
         flowq::quic::connection_role::client,
         1,
         std::move(local),
@@ -72,7 +72,9 @@ flowq::quic::connection_loop make_loop(
         initial_stream_send_max_data,
         initial_connection_send_max_data,
         SIZE_MAX
-    }};
+    };
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
+    return flowq::quic::connection_loop{std::move(config)};
 }
 
 class loopback_session {

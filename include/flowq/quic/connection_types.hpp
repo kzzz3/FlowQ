@@ -54,7 +54,7 @@ struct connection_loop_config {
     std::uint64_t initial_stream_send_max_data{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t initial_connection_send_max_data{std::numeric_limits<std::uint64_t>::max()};
     std::size_t max_packet_payload_size{std::numeric_limits<std::size_t>::max()};
-    packet_protection_policy protection_policy{packet_protection_policy::test_allowed};
+    packet_protection_policy protection_policy{packet_protection_policy::production_required};
     std::uint64_t initial_max_stream_data_bidi_local{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t initial_max_stream_data_bidi_remote{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t initial_max_stream_data_uni{std::numeric_limits<std::uint64_t>::max()};
@@ -67,6 +67,18 @@ struct connection_loop_config {
     key_lifecycle_state key_lifecycle{};
     std::chrono::milliseconds closing_draining_timeout{std::chrono::seconds{3}};
     bool peer_address_validated{};
+    /// @pre The protector must outlive this connection loop.
+    const packet_protector* initial_tx_protector{};
+    /// @pre The protector must outlive this connection loop.
+    const packet_protector* initial_rx_protector{};
+    /// @pre The protector must outlive this connection loop.
+    const packet_protector* handshake_tx_protector{};
+    /// @pre The protector must outlive this connection loop.
+    const packet_protector* handshake_rx_protector{};
+    /// @pre The protector must outlive this connection loop.
+    const packet_protector* application_tx_protector{};
+    /// @pre The protector must outlive this connection loop.
+    const packet_protector* application_rx_protector{};
 };
 
 // Apply transport parameters to connection config
@@ -162,11 +174,24 @@ namespace detail {
     return space == packet_number_space::handshake ? long_packet_type::handshake : long_packet_type::initial;
 }
 
-[[nodiscard]] inline const packet_protector* protector_for(packet_number_space space, const connection_loop_config& config) noexcept {
+[[nodiscard]] inline const packet_protector* tx_protector_for(packet_number_space space, const connection_loop_config& config) noexcept {
     if (space == packet_number_space::application) {
-        return config.application_protector;
+        return config.application_tx_protector != nullptr ? config.application_tx_protector : config.application_protector;
     }
-    return space == packet_number_space::handshake ? config.handshake_protector : config.initial_protector;
+    if (space == packet_number_space::handshake) {
+        return config.handshake_tx_protector != nullptr ? config.handshake_tx_protector : config.handshake_protector;
+    }
+    return config.initial_tx_protector != nullptr ? config.initial_tx_protector : config.initial_protector;
+}
+
+[[nodiscard]] inline const packet_protector* rx_protector_for(packet_number_space space, const connection_loop_config& config) noexcept {
+    if (space == packet_number_space::application) {
+        return config.application_rx_protector != nullptr ? config.application_rx_protector : config.application_protector;
+    }
+    if (space == packet_number_space::handshake) {
+        return config.handshake_rx_protector != nullptr ? config.handshake_rx_protector : config.handshake_protector;
+    }
+    return config.initial_rx_protector != nullptr ? config.initial_rx_protector : config.initial_protector;
 }
 
 [[nodiscard]] inline tls_encryption_level tls_level_for(packet_number_space space) noexcept {

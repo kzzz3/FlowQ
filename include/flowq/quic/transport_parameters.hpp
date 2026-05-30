@@ -15,6 +15,7 @@
 namespace flowq::quic {
 
 inline constexpr std::uint64_t transport_parameter_max_idle_timeout = 0x01;
+inline constexpr std::uint64_t transport_parameter_original_destination_connection_id = 0x00;
 inline constexpr std::uint64_t transport_parameter_max_udp_payload_size = 0x03;
 inline constexpr std::uint64_t transport_parameter_initial_max_data = 0x04;
 inline constexpr std::uint64_t transport_parameter_initial_max_stream_data_bidi_local = 0x05;
@@ -22,6 +23,8 @@ inline constexpr std::uint64_t transport_parameter_initial_max_stream_data_bidi_
 inline constexpr std::uint64_t transport_parameter_initial_max_stream_data_uni = 0x07;
 inline constexpr std::uint64_t transport_parameter_disable_active_migration = 0x0c;
 inline constexpr std::uint64_t transport_parameter_active_connection_id_limit = 0x0e;
+inline constexpr std::uint64_t transport_parameter_initial_source_connection_id = 0x0f;
+inline constexpr std::uint64_t transport_parameter_retry_source_connection_id = 0x10;
 
 struct unknown_transport_parameter {
     std::uint64_t id{};
@@ -29,6 +32,7 @@ struct unknown_transport_parameter {
 };
 
 struct transport_parameters {
+    std::optional<flowq::buffer> original_destination_connection_id;
     std::optional<std::uint64_t> max_idle_timeout;
     std::optional<std::uint64_t> max_udp_payload_size;
     std::optional<std::uint64_t> initial_max_data;
@@ -37,6 +41,8 @@ struct transport_parameters {
     std::optional<std::uint64_t> initial_max_stream_data_uni;
     bool disable_active_migration{};
     std::optional<std::uint64_t> active_connection_id_limit;
+    std::optional<flowq::buffer> initial_source_connection_id;
+    std::optional<flowq::buffer> retry_source_connection_id;
     std::vector<unknown_transport_parameter> unknown;
 };
 
@@ -113,6 +119,7 @@ namespace detail {
 
 [[nodiscard]] inline bool known_transport_parameter_id(std::uint64_t id) noexcept {
     switch (id) {
+    case transport_parameter_original_destination_connection_id:
     case transport_parameter_max_idle_timeout:
     case transport_parameter_max_udp_payload_size:
     case transport_parameter_initial_max_data:
@@ -121,6 +128,8 @@ namespace detail {
     case transport_parameter_initial_max_stream_data_uni:
     case transport_parameter_disable_active_migration:
     case transport_parameter_active_connection_id_limit:
+    case transport_parameter_initial_source_connection_id:
+    case transport_parameter_retry_source_connection_id:
         return true;
     default:
         return false;
@@ -153,6 +162,35 @@ namespace detail {
         return codec_error("active_connection_id_limit transport parameter must be at least 2");
     }
     return {};
+}
+
+[[nodiscard]] inline flowq::error validate_connection_id_transport_parameter(std::span<const std::byte> value, const char* message) {
+    if (value.size() > 20) {
+        return codec_error(message);
+    }
+    return {};
+}
+
+[[nodiscard]] inline flowq::error append_connection_id_transport_parameter(
+    std::vector<std::byte>& output,
+    std::vector<std::uint64_t>& emitted,
+    std::uint64_t id,
+    const std::optional<flowq::buffer>& value,
+    const char* message) {
+    if (!value.has_value()) {
+        return {};
+    }
+    auto error = remember_transport_parameter(emitted, id);
+    if (!error.ok()) {
+        return error;
+    }
+    error = validate_connection_id_transport_parameter(
+        std::span<const std::byte>{value->data(), value->size()},
+        message);
+    if (!error.ok()) {
+        return error;
+    }
+    return append_transport_parameter(output, id, *value);
 }
 
 [[nodiscard]] inline flowq::error append_checked_numeric_transport_parameter(
@@ -200,7 +238,16 @@ namespace detail {
     std::vector<std::byte> output;
     std::vector<std::uint64_t> emitted;
 
-    auto error = detail::append_checked_numeric_transport_parameter(output, emitted, transport_parameter_max_idle_timeout, parameters.max_idle_timeout);
+    auto error = detail::append_connection_id_transport_parameter(
+        output,
+        emitted,
+        transport_parameter_original_destination_connection_id,
+        parameters.original_destination_connection_id,
+        "original_destination_connection_id transport parameter must be at most 20 bytes");
+    if (!error.ok()) {
+        return {{}, error};
+    }
+    error = detail::append_checked_numeric_transport_parameter(output, emitted, transport_parameter_max_idle_timeout, parameters.max_idle_timeout);
     if (!error.ok()) {
         return {{}, error};
     }
@@ -235,6 +282,24 @@ namespace detail {
         }
     }
     error = detail::append_checked_numeric_transport_parameter(output, emitted, transport_parameter_active_connection_id_limit, parameters.active_connection_id_limit);
+    if (!error.ok()) {
+        return {{}, error};
+    }
+    error = detail::append_connection_id_transport_parameter(
+        output,
+        emitted,
+        transport_parameter_initial_source_connection_id,
+        parameters.initial_source_connection_id,
+        "initial_source_connection_id transport parameter must be at most 20 bytes");
+    if (!error.ok()) {
+        return {{}, error};
+    }
+    error = detail::append_connection_id_transport_parameter(
+        output,
+        emitted,
+        transport_parameter_retry_source_connection_id,
+        parameters.retry_source_connection_id,
+        "retry_source_connection_id transport parameter must be at most 20 bytes");
     if (!error.ok()) {
         return {{}, error};
     }
@@ -285,6 +350,12 @@ namespace detail {
 
         flowq::error error{};
         switch (id) {
+        case transport_parameter_original_destination_connection_id:
+            error = detail::validate_connection_id_transport_parameter(value, "original_destination_connection_id transport parameter must be at most 20 bytes");
+            if (error.ok()) {
+                result.original_destination_connection_id = flowq::buffer{value};
+            }
+            break;
         case transport_parameter_max_idle_timeout:
             error = detail::assign_numeric_parameter(result.max_idle_timeout, value, "malformed max_idle_timeout transport parameter");
             break;
@@ -317,6 +388,18 @@ namespace detail {
             error = detail::assign_numeric_parameter(result.active_connection_id_limit, value, "malformed active_connection_id_limit transport parameter");
             if (error.ok() && *result.active_connection_id_limit < 2) {
                 error = codec_error("active_connection_id_limit transport parameter must be at least 2");
+            }
+            break;
+        case transport_parameter_initial_source_connection_id:
+            error = detail::validate_connection_id_transport_parameter(value, "initial_source_connection_id transport parameter must be at most 20 bytes");
+            if (error.ok()) {
+                result.initial_source_connection_id = flowq::buffer{value};
+            }
+            break;
+        case transport_parameter_retry_source_connection_id:
+            error = detail::validate_connection_id_transport_parameter(value, "retry_source_connection_id transport parameter must be at most 20 bytes");
+            if (error.ok()) {
+                result.retry_source_connection_id = flowq::buffer{value};
             }
             break;
         default:

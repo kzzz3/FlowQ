@@ -31,8 +31,8 @@ enum class packet_security_level {
 };
 
 enum class packet_protection_policy {
-    test_allowed,
-    production_required
+    test_allowed,       // ONLY for unit testing - NEVER use in production
+    production_required // Production policy - requires AEAD
 };
 
 enum class long_packet_type {
@@ -176,6 +176,15 @@ struct frame_payload_budget_selection {
     }
 };
 
+struct packet_size_result {
+    std::size_t value{};
+    flowq::error error{};
+
+    [[nodiscard]] bool ok() const noexcept {
+        return error.ok();
+    }
+};
+
 namespace detail {
 
 [[nodiscard]] inline flowq::error pipeline_error(const char* message) {
@@ -183,6 +192,7 @@ namespace detail {
 }
 
 inline constexpr std::size_t fixed_packet_number_length = 4;
+inline constexpr std::size_t minimum_packet_number_length = 1;
 
 inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t value) {
     output.push_back(static_cast<std::byte>((value >> 24U) & 0xffU));
@@ -206,6 +216,14 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
         return std::byte{0xe3};
     }
     return std::byte{0xc3};
+}
+
+[[nodiscard]] inline std::uint64_t read_packet_number(std::span<const std::byte> input) {
+    std::uint64_t value{};
+    for (auto byte : input) {
+        value = (value << 8U) | static_cast<std::uint64_t>(byte);
+    }
+    return value;
 }
 
 [[nodiscard]] inline packet_number_space space_for(long_packet_type type) {
@@ -256,6 +274,49 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
         return &handshake->protected_payload;
     }
     return nullptr;
+}
+
+[[nodiscard]] inline packet_size_result long_packet_wire_size(std::span<const std::byte> datagram) {
+    if (datagram.empty()) {
+        return {0, pipeline_error("empty long-header datagram")};
+    }
+    const auto first = static_cast<std::uint8_t>(datagram[0]);
+    if ((first & 0x80U) == 0) {
+        return {0, pipeline_error("datagram does not start with a long-header packet")};
+    }
+    if ((first & 0x40U) == 0) {
+        return {0, pipeline_error("long header fixed bit is not set")};
+    }
+
+    std::size_t offset = 1U + 4U;
+    connection_id destination_connection_id;
+    connection_id source_connection_id;
+    if (!read_connection_id(datagram, offset, destination_connection_id) || !read_connection_id(datagram, offset, source_connection_id)) {
+        return {0, pipeline_error("truncated long-header connection ID")};
+    }
+
+    if ((first & 0x30U) == 0x00U) {
+        std::uint64_t token_length = 0;
+        if (!read_packet_varint_at(datagram, offset, token_length)) {
+            return {0, pipeline_error("truncated Initial token length")};
+        }
+        if (token_length > datagram.size() - offset) {
+            return {0, pipeline_error("truncated Initial token")};
+        }
+        offset += static_cast<std::size_t>(token_length);
+    } else if ((first & 0x30U) != 0x20U) {
+        return {0, pipeline_error("unsupported coalesced long-header packet type")};
+    }
+
+    std::uint64_t payload_length = 0;
+    if (!read_packet_varint_at(datagram, offset, payload_length)) {
+        return {0, pipeline_error("truncated long-header packet length")};
+    }
+    if (payload_length > datagram.size() - offset) {
+        return {0, pipeline_error("truncated long-header protected payload")};
+    }
+
+    return {offset + static_cast<std::size_t>(payload_length), {}};
 }
 
 [[nodiscard]] inline packet_protection_result protect_payload(
@@ -319,7 +380,7 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     std::vector<std::byte>& datagram,
     std::size_t protected_payload_size,
     const packet_protector& protector) {
-    if (protected_payload_size < fixed_packet_number_length + 16U || datagram.size() < protected_payload_size) {
+    if (protected_payload_size < minimum_packet_number_length + 16U || datagram.size() < protected_payload_size) {
         return pipeline_error("packet payload too short for header protection sample");
     }
 
@@ -336,8 +397,8 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
 
     datagram[0] ^= static_cast<std::byte>(static_cast<std::uint8_t>(mask.mask[0]) & 0x0fU);
     const auto packet_number_length = static_cast<std::size_t>(static_cast<std::uint8_t>(datagram[0]) & 0x03U) + 1U;
-    if (packet_number_length != fixed_packet_number_length) {
-        return pipeline_error("FlowQ packet pipeline requires fixed 4-byte packet numbers");
+    if (protected_payload_size < packet_number_length + 16U) {
+        return pipeline_error("packet payload too short for header protection sample");
     }
     for (std::size_t index = 0; index < packet_number_length; ++index) {
         datagram[packet_number_offset + index] ^= mask.mask[index + 1U];
@@ -408,7 +469,7 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     }
 
     const auto protected_payload_length = detail::fixed_packet_number_length + frame_bytes.size() + request.protector->protection_overhead();
-    auto placeholder_payload = flowq::buffer{std::vector<std::byte>(protected_payload_length, std::byte{0x00})};
+    auto length_accounting_payload = flowq::buffer{std::vector<std::byte>(protected_payload_length, std::byte{0x00})};
 
     packet_header header;
     if (request.type == long_packet_type::initial) {
@@ -419,7 +480,7 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
             request.source_connection_id,
             request.token,
             protected_payload_length,
-            placeholder_payload
+            length_accounting_payload
         };
     } else {
         header = handshake_header{
@@ -428,7 +489,7 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
             request.destination_connection_id,
             request.source_connection_id,
             protected_payload_length,
-            std::move(placeholder_payload)
+            std::move(length_accounting_payload)
         };
     }
 
@@ -597,23 +658,29 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     }
 
     const auto* protected_payload = detail::protected_payload_for(decoded_header.header);
-    if (protected_payload == nullptr || protected_payload->size() < 4) {
+    if (protected_payload == nullptr || protected_payload->size() < detail::minimum_packet_number_length) {
         return {std::move(decoded_header.header), {}, {}, protector->level(), {}, detail::pipeline_error("packet payload is missing fixed packet number")};
     }
 
     const std::span<const std::byte> payload{protected_payload->data(), protected_payload->size()};
-    const auto number = packet_number{detail::space_for_header(decoded_header.header), detail::read_packet_number(std::span<const std::byte, 4>{payload.data(), 4})};
+    const auto packet_number_length = static_cast<std::size_t>(static_cast<std::uint8_t>(decoded_datagram[0]) & 0x03U) + 1U;
+    if (payload.size() < packet_number_length) {
+        return {std::move(decoded_header.header), {}, {}, protector->level(), {}, detail::pipeline_error("packet payload is missing packet number")};
+    }
+    const auto number = packet_number{
+        detail::space_for_header(decoded_header.header),
+        detail::read_packet_number(payload.first(packet_number_length))};
 
     std::vector<std::byte> associated_data{
         decoded_datagram.begin(),
-        decoded_datagram.begin() + static_cast<std::ptrdiff_t>(decoded_datagram.size() - protected_payload->size() + detail::fixed_packet_number_length)};
+        decoded_datagram.begin() + static_cast<std::ptrdiff_t>(decoded_datagram.size() - protected_payload->size() + packet_number_length)};
     const auto plaintext = detail::unprotect_payload(
         *protector,
         packet_protection_context{
             number,
             std::span<const std::byte>{associated_data.data(), associated_data.size()}
         },
-        payload.subspan(detail::fixed_packet_number_length));
+        payload.subspan(packet_number_length));
     if (!plaintext.ok()) {
         return {std::move(decoded_header.header), number, number.space, protector->level(), {}, plaintext.error};
     }

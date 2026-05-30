@@ -58,9 +58,7 @@ struct tls_provider_backend_status {
             tls_provider_family::openssl_quic_tls,
             true,
             {
-                cipher_suite::aes_128_gcm_sha256,
-                cipher_suite::aes_256_gcm_sha384,
-                cipher_suite::chacha20_poly1305_sha256
+                cipher_suite::aes_128_gcm_sha256
             }
         },
         {}

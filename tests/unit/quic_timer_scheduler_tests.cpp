@@ -58,6 +58,7 @@ flowq::quic::session_config make_config(
     config.initial_protector = &protector;
     config.handshake_protector = &protector;
     config.application_protector = &protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     return config;
 }
 

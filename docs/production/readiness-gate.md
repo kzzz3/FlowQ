@@ -5,8 +5,8 @@ This document records the current evidence required before FlowQ can claim produ
 ## Current Status
 
 - **Level**: Production-readiness gate
-- **Date**: 2026-05-29
-- **Status**: Non-production. The codebase has local build/test evidence, OpenSSL-gated AES-128-GCM packet protection, and deterministic transport behavior. External peer QUIC interop evidence and human security review are not recorded.
+- **Date**: 2026-05-30
+- **Status**: Non-production. The codebase has local build/test evidence, OpenSSL-gated AES-128-GCM packet protection, deterministic transport behavior, and a recorded aioquic handshake pass. Stream interop, multi-peer interop, and human security review are not recorded.
 
 ## Evidence In Place
 
@@ -42,7 +42,9 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ Available peers no longer produce synthetic skip results; executor exit code, timeout, and exceptions map to pass/fail/error.
 - ✅ `scripts/run-interop.ps1` and `scripts/run-interop.sh` call the built harness binary and write per-scenario JSON results.
 - ✅ Harness wiring was verified locally with `FLOWQ_INTEROP_SCENARIO=basic_handshake` and a local executable peer.
-- ⚠️ Named external QUIC peers are not available in the current local environment: ngtcp2, quiche, MsQuic, picoquic, and lsquic were not found on PATH; Docker daemon was not running; WSL has no available distribution.
+- ✅ FlowQ client handshake passes against Python `aioquic` 1.3.0 in conda environment `expr`.
+- ✅ Non-functional interop runner client/server placeholders and Docker interop scaffolding were removed.
+- ⚠️ Named non-aioquic QUIC peers are not available in the current local environment: ngtcp2, quiche, MsQuic, picoquic, and lsquic were not found on PATH.
 
 ### Hardening
 
@@ -83,10 +85,10 @@ FlowQ can only claim production-candidate status for the exact scope backed by l
 ## Open Gate Items
 
 - [x] Real interop runner replaces synthetic skip behavior in `include/flowq/quic/interop_runner.hpp`.
-- [ ] Basic handshake passes against named external QUIC peer versions.
+- [x] Basic handshake passes against aioquic 1.3.0.
 - [ ] Stream echo passes against named external QUIC peer versions.
 - [ ] Loss recovery passes against named external QUIC peer versions.
-- [ ] Interop results are recorded in `docs/interop/results.md`.
+- [x] Interop results are recorded in `docs/interop/results.md`.
 - [ ] TLS backend and cipher-suite versions used during validation are recorded.
 - [ ] Human security review is recorded.
 

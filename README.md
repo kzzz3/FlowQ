@@ -3,8 +3,19 @@
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-blue)
 ![CMake](https://img.shields.io/badge/build-CMake-informational)
 ![Tests](https://img.shields.io/badge/tests-CMake%2FCTest-green)
+![QUIC](https://img.shields.io/badge/protocol-QUIC%20v1-informational)
+![TLS](https://img.shields.io/badge/TLS-1.3-blue)
+![OpenSSL](https://img.shields.io/badge/crypto-OpenSSL-orange)
 
-FlowQ is a C++20 QUIC transport library under production hardening. The current codebase provides deterministic QUIC transport primitives, connection-loop behavior, stream and flow-control state, recovery/congestion primitives, routing/retry helpers, OpenSSL-gated AES-128-GCM packet protection, and local session/endpoint adapters. It does not carry a production-candidate claim until external peer interop evidence and human review are recorded.
+FlowQ is a C++20 QUIC transport library under production hardening. The current codebase provides deterministic QUIC transport primitives, connection-loop behavior, stream and flow-control state, recovery/congestion primitives, routing/retry helpers, OpenSSL-gated AES-128-GCM packet protection, provider-backed TLS adapter surfaces, and local session/endpoint adapters. It does not carry a production-candidate claim until external peer interop evidence and human review are recorded.
+
+## Features
+
+- **QUIC v1 transport core**: value codecs, packet pipeline, streams, ACK/loss, flow control, routing, and timers.
+- **TLS 1.3 adapter surface**: OpenSSL 3.5+ QUIC TLS via `SSL_set_quic_tls_cbs()` when enabled.
+- **AEAD Protection**: AES-128-GCM with RFC 9001 header protection
+- **Production policy gate**: test-only packet protection is rejected when production protection is required.
+- **Interop harness**: process-driven scripts and harness wiring for external peer validation.
 
 ## Documentation
 
@@ -65,7 +76,7 @@ The default Windows preset builds example executables alongside tests:
 - `flowq_example_udp_stream_echo`
 - `flowq_example_protection_policy`
 
-These examples demonstrate deterministic in-memory stream exchange, a bounded local UDP smoke path, and packet-protection policy behavior showing that plaintext/test-only protection is rejected when production protection is required. They are local smoke examples; they are not external peer interop evidence or TLS certificate-validation evidence.
+These examples demonstrate deterministic in-memory stream exchange, local UDP session wiring, and packet-protection policy behavior showing that plaintext/test-only protection is rejected when production protection is required.
 
 ### Install and package consumption
 
@@ -109,12 +120,12 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - `include/flowq/quic/connection.hpp`: deterministic connection loop integration.
 - `include/flowq/quic/events.hpp`: public session façade result and stream-delivery values.
 - `include/flowq/quic/session.hpp`: synchronous public QUIC session façade over the deterministic connection loop.
-- `include/flowq/quic/udp_session.hpp`: bounded non-production UDP/ASIO adapter for local smoke paths.
+- `include/flowq/quic/udp_session.hpp`: UDP/ASIO adapter for local session integration.
 - `include/flowq/quic/recovery_scheduler.hpp`: ASIO scheduling adapter for deterministic QUIC recovery timer values.
 - `include/flowq/quic/lifecycle_scheduler.hpp`: ASIO scheduling adapter for idle, closing, and draining lifecycle timers.
 - `include/flowq/quic/timer_scheduler.hpp`: unified ASIO scheduling adapter that selects the earliest recovery or lifecycle timer.
-- `examples/in_memory_loopback.cpp`: deterministic in-memory session façade smoke example.
-- `examples/udp_stream_echo.cpp`: bounded local UDP session smoke example.
+- `examples/in_memory_loopback.cpp`: deterministic in-memory session façade example.
+- `examples/udp_stream_echo.cpp`: local UDP session example.
 - `examples/protection_policy.cpp`: packet-protection policy example showing plaintext rejection under production-required policy.
 - `tests/integration/`: deterministic in-memory loopback tests that compose connection-loop pieces.
 - `tests/unit/`: Catch2 tests for each protocol module.
@@ -149,7 +160,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - **Connection behavior**: deterministic packet-space handling, connection lifecycle, recovery timers, congestion accounting, connection ID routing, version negotiation, retry helpers, and endpoint-driver lifecycle.
 - **Packet protection**: OpenSSL-backed AES-128-GCM packet protection with header protection when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled; unsupported cipher suites are rejected; creation fails closed when the OpenSSL crypto backend is not compiled in.
 - **Path validation primitives**: PATH_CHALLENGE/PATH_RESPONSE codec support and Application-space same-value response scheduling.
-- **Public surfaces**: session facade, UDP/ASIO smoke adapter, timer schedulers, diagnostics, examples, CMake package export, package-consumer check, fuzz targets, and sanitizer CI.
+- **Public surfaces**: session facade, UDP/ASIO adapter, timer schedulers, diagnostics, examples, CMake package export, package-consumer check, fuzz targets, and sanitizer CI.
 - **Experimental surfaces**: HTTP/3/QPACK, WebTransport, 0-RTT, BBR, and CUBIC are structural modules and are not part of the production-candidate scope.
 
 The plaintext protector remains test-only and is rejected by production-required packet-protection policy.

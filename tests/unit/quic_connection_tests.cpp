@@ -262,6 +262,7 @@ TEST_CASE("connection loop enforces server anti-amplification limit before peer 
     server_config.initial_protector = &protector;
     server_config.handshake_protector = &protector;
     server_config.application_protector = &protector;
+    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.pipeline = flowq::quic::packet_pipeline_config{8192};
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -312,6 +313,7 @@ TEST_CASE("connection loop lets prevalidated server peer send before receiving p
     server_config.initial_protector = &protector;
     server_config.handshake_protector = &protector;
     server_config.application_protector = &protector;
+    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.peer_address_validated = true;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -339,6 +341,7 @@ TEST_CASE("connection loop ignores discarded Initial packet space") {
     server_config.initial_protector = &protector;
     server_config.handshake_protector = &protector;
     server_config.application_protector = &protector;
+    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.key_lifecycle = lifecycle;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -366,6 +369,7 @@ TEST_CASE("connection loop does not flush or recover discarded packet spaces") {
     config.initial_protector = &protector;
     config.handshake_protector = &protector;
     config.application_protector = &protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.key_lifecycle = lifecycle;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -391,6 +395,7 @@ TEST_CASE("connection loop applies TLS key lifecycle discard decisions") {
     config.initial_protector = &protector;
     config.handshake_protector = &protector;
     config.application_protector = &protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.tls_adapter = &adapter;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -416,14 +421,17 @@ TEST_CASE("connection loop applies TLS key lifecycle discard decisions") {
     confirmed_config.initial_protector = &protector;
     confirmed_config.handshake_protector = &protector;
     confirmed_config.application_protector = &protector;
+    confirmed_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     confirmed_config.tls_adapter = &confirmed_adapter;
     auto confirmed_loop = flowq::quic::connection_loop{std::move(confirmed_config)};
 
     confirmed_loop.queue_handshake({flowq::quic::frame{flowq::quic::ping_frame{}}});
     confirmed_loop.flush(at(0ms));
 
-    CHECK(confirmed_loop.drain_actions().empty());
-    CHECK(confirmed_loop.sent_packets(flowq::quic::packet_number_space::handshake).packets().empty());
+    auto confirmed_actions = confirmed_loop.drain_actions();
+    REQUIRE(confirmed_actions.size() == 1);
+    CHECK(std::holds_alternative<flowq::quic::outbound_datagram>(confirmed_actions[0]));
+    CHECK(confirmed_loop.sent_packets(flowq::quic::packet_number_space::handshake).packets().size() == 1);
 }
 
 TEST_CASE("connection loop refreshes key lifecycle after inbound TLS CRYPTO changes") {
@@ -440,6 +448,7 @@ TEST_CASE("connection loop refreshes key lifecycle after inbound TLS CRYPTO chan
     server_config.initial_protector = &protector;
     server_config.handshake_protector = &protector;
     server_config.application_protector = &protector;
+    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.tls_adapter = &adapter;
     server_config.peer_address_validated = true;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
@@ -481,15 +490,18 @@ TEST_CASE("connection loop refreshes key lifecycle after draining TLS CRYPTO") {
     config.initial_protector = &protector;
     config.handshake_protector = &protector;
     config.application_protector = &protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.tls_adapter = &adapter;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
     loop.queue_handshake({flowq::quic::frame{flowq::quic::ping_frame{}}});
     loop.flush(at(0ms));
 
-    CHECK(loop.drain_actions().empty());
-    CHECK(loop.sent_packets(flowq::quic::packet_number_space::handshake).packets().empty());
-    CHECK_FALSE(loop.next_recovery_timer(at(1ms)).has_value());
+    auto actions = loop.drain_actions();
+    REQUIRE(actions.size() == 1);
+    CHECK(std::holds_alternative<flowq::quic::outbound_datagram>(actions[0]));
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::handshake).packets().size() == 1);
+    CHECK(loop.next_recovery_timer(at(1ms)).has_value());
 }
 
 TEST_CASE("connection loop discards Initial space after draining TLS handshake keys") {
@@ -506,6 +518,7 @@ TEST_CASE("connection loop discards Initial space after draining TLS handshake k
     config.initial_protector = &protector;
     config.handshake_protector = &protector;
     config.application_protector = &protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.tls_adapter = &adapter;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -529,6 +542,7 @@ TEST_CASE("connection loop feeds inbound CRYPTO frames to TLS adapter by packet 
     server_config.initial_protector = &protector;
     server_config.handshake_protector = &protector;
     server_config.application_protector = &protector;
+    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.tls_adapter = &adapter;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -556,6 +570,7 @@ TEST_CASE("connection loop pumps TLS adapter CRYPTO bytes into packet-space fram
     config.initial_protector = &protector;
     config.handshake_protector = &protector;
     config.application_protector = &protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.tls_adapter = &adapter;
     config.peer_address_validated = true;
     auto loop = flowq::quic::connection_loop{std::move(config)};
@@ -1582,6 +1597,7 @@ TEST_CASE("connection loop resets server anti-amplification budget after peer ad
     server_config.initial_protector = &protector;
     server_config.handshake_protector = &protector;
     server_config.application_protector = &protector;
+    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.pipeline = flowq::quic::packet_pipeline_config{8192};
     server_config.peer_address_validated = true;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
@@ -1619,6 +1635,7 @@ TEST_CASE("connection loop exposes idle lifecycle timer after outbound activity"
     config.initial_protector = &protector;
     config.handshake_protector = &protector;
     config.application_protector = &protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.max_idle_timeout = 10ms;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -1643,6 +1660,7 @@ TEST_CASE("connection loop closes on expired idle lifecycle timer") {
     config.initial_protector = &protector;
     config.handshake_protector = &protector;
     config.application_protector = &protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.max_idle_timeout = 10ms;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -1674,6 +1692,7 @@ TEST_CASE("connection loop refreshes idle lifecycle timer after inbound activity
     server_config.initial_protector = &protector;
     server_config.handshake_protector = &protector;
     server_config.application_protector = &protector;
+    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.max_idle_timeout = 10ms;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -1701,6 +1720,7 @@ TEST_CASE("connection loop does not refresh idle lifecycle timer for ACK-only pa
     server_config.initial_protector = &protector;
     server_config.handshake_protector = &protector;
     server_config.application_protector = &protector;
+    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.max_idle_timeout = 10ms;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -1730,6 +1750,7 @@ TEST_CASE("connection loop expires draining lifecycle state to closed") {
     server_config.initial_protector = &protector;
     server_config.handshake_protector = &protector;
     server_config.application_protector = &protector;
+    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.closing_draining_timeout = 25ms;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -1764,6 +1785,7 @@ TEST_CASE("connection loop expires closing lifecycle state to closed") {
     config.initial_protector = &protector;
     config.handshake_protector = &protector;
     config.application_protector = &protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.closing_draining_timeout = 25ms;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -1948,6 +1970,7 @@ TEST_CASE("connection loop congestion window gates flush when exhausted") {
     config.initial_protector = &protector;
     config.handshake_protector = &protector;
     config.application_protector = &protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
     // Send first packet to measure actual datagram size
