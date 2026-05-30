@@ -190,8 +190,8 @@ public:
         return drain_receive_actions();
     }
 
-    [[nodiscard]] std::optional<connection_recovery_timer> next_recovery_timer(std::chrono::steady_clock::time_point now) {
-        return loop_.next_recovery_timer(now);
+    [[nodiscard]] std::optional<connection_recovery_timer> next_recovery_timer() {
+        return loop_.next_recovery_timer();
     }
 
     [[nodiscard]] connection_recovery_result on_recovery_timer(packet_number_space space, std::chrono::steady_clock::time_point now) {

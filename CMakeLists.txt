@@ -9,6 +9,20 @@ option(FLOWQ_BUILD_TESTS "Build FlowQ tests" ON)
 option(FLOWQ_BUILD_EXAMPLES "Build FlowQ examples" ON)
 option(FLOWQ_BUILD_FUZZ "Build FlowQ fuzz targets (requires libFuzzer)" OFF)
 option(FLOWQ_BUILD_INTEROP "Build FlowQ interop harness" OFF)
+option(FLOWQ_ENABLE_STRICT_WARNINGS "Build FlowQ project targets with warnings as errors" OFF)
+
+function(flowq_enable_project_warnings target)
+    if(NOT FLOWQ_ENABLE_STRICT_WARNINGS)
+        return()
+    endif()
+
+    target_compile_options(
+        ${target}
+        PRIVATE
+            $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
+            $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
+    )
+endfunction()
 
 add_library(flowq INTERFACE)
 add_library(FlowQ::flowq ALIAS flowq)
@@ -45,24 +59,31 @@ target_link_libraries(
 if(FLOWQ_BUILD_EXAMPLES)
     add_executable(flowq_example_in_memory_loopback examples/in-memory/loopback.cpp)
     target_link_libraries(flowq_example_in_memory_loopback PRIVATE FlowQ::flowq)
+    flowq_enable_project_warnings(flowq_example_in_memory_loopback)
 
     add_executable(flowq_example_udp_stream_echo examples/udp/stream_echo.cpp)
     target_link_libraries(flowq_example_udp_stream_echo PRIVATE FlowQ::flowq)
+    flowq_enable_project_warnings(flowq_example_udp_stream_echo)
 
     add_executable(flowq_example_protection_policy examples/protection-policy/main.cpp)
     target_link_libraries(flowq_example_protection_policy PRIVATE FlowQ::flowq)
+    flowq_enable_project_warnings(flowq_example_protection_policy)
 
     add_executable(flowq_example_qpack examples/qpack/main.cpp)
     target_link_libraries(flowq_example_qpack PRIVATE FlowQ::flowq)
+    flowq_enable_project_warnings(flowq_example_qpack)
 
     add_executable(flowq_example_echo_server examples/echo/server.cpp)
     target_link_libraries(flowq_example_echo_server PRIVATE FlowQ::flowq)
+    flowq_enable_project_warnings(flowq_example_echo_server)
 
     add_executable(flowq_example_echo_client examples/echo/client.cpp)
     target_link_libraries(flowq_example_echo_client PRIVATE FlowQ::flowq)
+    flowq_enable_project_warnings(flowq_example_echo_client)
 
     add_executable(flowq_example_chat_room examples/chat-room/main.cpp)
     target_link_libraries(flowq_example_chat_room PRIVATE FlowQ::flowq)
+    flowq_enable_project_warnings(flowq_example_chat_room)
 endif()
 
 if(FLOWQ_BUILD_TESTS)
@@ -127,16 +148,19 @@ if(FLOWQ_BUILD_FUZZ)
     target_link_libraries(flowq_fuzz_packet_header PRIVATE FlowQ::flowq)
     target_compile_options(flowq_fuzz_packet_header PRIVATE -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
     target_link_options(flowq_fuzz_packet_header PRIVATE -fsanitize=fuzzer,address,undefined)
+    flowq_enable_project_warnings(flowq_fuzz_packet_header)
 
     add_executable(flowq_fuzz_frame_decode tests/fuzz/fuzz_frame_decode.cpp)
     target_link_libraries(flowq_fuzz_frame_decode PRIVATE FlowQ::flowq)
     target_compile_options(flowq_fuzz_frame_decode PRIVATE -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
     target_link_options(flowq_fuzz_frame_decode PRIVATE -fsanitize=fuzzer,address,undefined)
+    flowq_enable_project_warnings(flowq_fuzz_frame_decode)
 
     add_executable(flowq_fuzz_qpack tests/fuzz/fuzz_qpack.cpp)
     target_link_libraries(flowq_fuzz_qpack PRIVATE FlowQ::flowq)
     target_compile_options(flowq_fuzz_qpack PRIVATE -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
     target_link_options(flowq_fuzz_qpack PRIVATE -fsanitize=fuzzer,address,undefined)
+    flowq_enable_project_warnings(flowq_fuzz_qpack)
 endif()
 
 if(FLOWQ_BUILD_INTEROP)
@@ -144,6 +168,7 @@ if(FLOWQ_BUILD_INTEROP)
 
     add_executable(flowq_interop_tests tests/interop/flowq_endpoint_driver.cpp)
     target_link_libraries(flowq_interop_tests PRIVATE FlowQ::flowq Catch2::Catch2WithMain)
+    flowq_enable_project_warnings(flowq_interop_tests)
     target_compile_definitions(flowq_interop_tests PRIVATE
         INTEROP_SCENARIOS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/interop/scenarios"
     )
@@ -153,4 +178,5 @@ if(FLOWQ_BUILD_INTEROP)
 
     add_executable(flowq_quic_client tools/quic_client.cpp)
     target_link_libraries(flowq_quic_client PRIVATE FlowQ::flowq)
+    flowq_enable_project_warnings(flowq_quic_client)
 endif()

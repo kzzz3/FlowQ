@@ -198,7 +198,7 @@ int main() {
                 application_stream_sent = true;
             }
             const auto now = std::chrono::steady_clock::now();
-            if (auto recovery_timer = session.next_recovery_timer(now);
+            if (auto recovery_timer = session.next_recovery_timer();
                 recovery_timer.has_value() && now >= recovery_timer->deadline) {
                 const auto recovery_result = session.on_recovery_timer(recovery_timer->space, now);
                 if (!recovery_result.newly_lost.empty()) {

@@ -96,9 +96,7 @@ TEST_CASE("cubic_congestion_controller grows window in slow start") {
 TEST_CASE("cubic_congestion_controller transitions to congestion avoidance") {
     flowq::quic::cubic_congestion_controller controller;
 
-    // Set ssthresh low to trigger transition
     controller.on_congestion_event();
-    auto ssthresh = controller.congestion_window();
 
     // Now in congestion avoidance
     controller.on_packet_sent(1200, true);

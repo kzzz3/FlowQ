@@ -58,7 +58,7 @@ public:
         : timer_{context.io_context()}, session_{&session}, now_{now}, receiver_{std::move(receiver)} {}
 
     void start() {
-        auto selected = session_->next_recovery_timer(now_);
+        auto selected = session_->next_recovery_timer();
         if (!selected.has_value()) {
             complete_value(recovery_scheduler_result{});
             return;

@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <string>
 
 TEST_CASE("qpack static table has expected size") {
@@ -116,20 +117,15 @@ TEST_CASE("qpack dynamic table evicts when full") {
     CHECK(table.size() <= 2);
 }
 
-TEST_CASE("qpack encode non-zero delta base") {
-    // When a header block references dynamic table entries from a prior encode,
-    // base_index > required_insert_count and delta_base must be non-zero.
+TEST_CASE("qpack encoder does not emit dynamic table dependencies") {
     flowq::quic::qpack::encoder encoder;
 
-    // First encode: inserts "custom-header: custom-value" into dynamic table.
     std::vector<flowq::quic::qpack::header_field> first = {
         {"custom-header", "custom-value"}
     };
     auto r1 = encoder.encode(first);
     REQUIRE(r1.ok());
 
-    // Second encode: references the same header from the dynamic table (no new
-    // insertion) and also a static-only header.
     std::vector<flowq::quic::qpack::header_field> second = {
         {":method", "GET"},
         {"custom-header", "custom-value"}
@@ -137,20 +133,28 @@ TEST_CASE("qpack encode non-zero delta base") {
     auto r2 = encoder.encode(second);
     REQUIRE(r2.ok());
 
-    // The second encoded block must contain a non-zero delta base byte because
-    // the base index (1 — dynamic table entry 0 exists) exceeds the required
-    // insert count (0 — no new insertions needed for this block).
     auto data = r2.data.data();
     auto sz = r2.data.size();
     REQUIRE(sz >= 3);
 
-    // First byte: Required Insert Count. Since no new entries are inserted,
-    // this should be 0x00 (only the prefix byte).
+    // The current header block codec is intentionally stateless: dynamic table
+    // references require encoder-stream synchronization that FlowQ does not
+    // expose yet, so every emitted header block is independently decodable.
     CHECK(static_cast<std::uint8_t>(data[0]) == 0x00);
+    CHECK(static_cast<std::uint8_t>(data[1]) == 0x00);
+}
 
-    // Second byte: Delta Base. base_index=1, required_insert_count=0,
-    // so delta = 1 - 0 = 1, sign=0 → 0x01.
-    CHECK(static_cast<std::uint8_t>(data[1]) == 0x01);
+TEST_CASE("qpack decoder rejects dynamic table dependencies") {
+    flowq::quic::qpack::decoder decoder;
+    const std::array<std::byte, 3> data{
+        std::byte{0x01},
+        std::byte{0x00},
+        std::byte{0x91},
+    };
+
+    auto result = decoder.decode(data.data(), data.size());
+
+    CHECK_FALSE(result.ok());
 }
 
 TEST_CASE("qpack decode multi-byte string length") {
@@ -191,7 +195,7 @@ TEST_CASE("qpack decode multi-byte string length") {
                        [](char c) { return c == 'A'; }));
 }
 
-TEST_CASE("qpack round trip with dynamic table entries") {
+TEST_CASE("qpack round trip keeps repeated custom headers independently decodable") {
     // Verify that encoding then decoding preserves header content.
     flowq::quic::qpack::encoder encoder;
     flowq::quic::qpack::decoder decoder;

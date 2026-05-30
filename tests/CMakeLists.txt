@@ -58,6 +58,7 @@ target_link_libraries(
         FlowQ::flowq
         Catch2::Catch2WithMain
 )
+flowq_enable_project_warnings(flowq_unit_tests)
 
 target_compile_definitions(flowq_unit_tests PRIVATE FLOWQ_ENABLE_INSPECTION)
 

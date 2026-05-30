@@ -116,7 +116,7 @@ TEST_CASE("loss timer scheduler prefers loss time before PTO") {
     };
 
     flowq::quic::pto_config config{25ms, 333ms, 0, true};
-    auto timer = flowq::quic::next_loss_timer(packets, estimator, at(100ms), flowq::quic::packet_number_space::application, config);
+    auto timer = flowq::quic::next_loss_timer(packets, estimator, flowq::quic::packet_number_space::application, config);
 
     CHECK(timer.mode == flowq::quic::loss_timer_mode::loss_time);
     REQUIRE(timer.deadline.has_value());
@@ -132,7 +132,7 @@ TEST_CASE("loss timer scheduler returns no timer without outstanding ack eliciti
     };
 
     flowq::quic::pto_config config{25ms, 333ms, 0, true};
-    auto timer = flowq::quic::next_loss_timer(packets, estimator, at(100ms), flowq::quic::packet_number_space::application, config);
+    auto timer = flowq::quic::next_loss_timer(packets, estimator, flowq::quic::packet_number_space::application, config);
 
     CHECK(timer.mode == flowq::quic::loss_timer_mode::none);
     CHECK_FALSE(timer.deadline.has_value());
@@ -145,8 +145,8 @@ TEST_CASE("loss timer scheduler anchors PTO to last ack eliciting send time") {
     };
 
     flowq::quic::pto_config config{0ms, 333ms, 0, false};
-    auto first = flowq::quic::next_loss_timer(packets, estimator, at(100ms), flowq::quic::packet_number_space::handshake, config);
-    auto later = flowq::quic::next_loss_timer(packets, estimator, at(200ms), flowq::quic::packet_number_space::handshake, config);
+    auto first = flowq::quic::next_loss_timer(packets, estimator, flowq::quic::packet_number_space::handshake, config);
+    auto later = flowq::quic::next_loss_timer(packets, estimator, flowq::quic::packet_number_space::handshake, config);
 
     CHECK(first.mode == flowq::quic::loss_timer_mode::pto);
     REQUIRE(first.deadline.has_value());
@@ -161,7 +161,7 @@ TEST_CASE("loss timer scheduler does not arm application PTO before handshake co
     };
 
     flowq::quic::pto_config config{25ms, 333ms, 0, false};
-    auto timer = flowq::quic::next_loss_timer(packets, estimator, at(100ms), flowq::quic::packet_number_space::application, config);
+    auto timer = flowq::quic::next_loss_timer(packets, estimator, flowq::quic::packet_number_space::application, config);
 
     CHECK(timer.mode == flowq::quic::loss_timer_mode::none);
     CHECK_FALSE(timer.deadline.has_value());
