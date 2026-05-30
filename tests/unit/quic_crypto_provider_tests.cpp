@@ -4,6 +4,14 @@
 
 #include <array>
 #include <cstddef>
+#include <string_view>
+
+TEST_CASE("cipher suite names use TLS registry identifiers") {
+    CHECK(std::string_view{flowq::quic::cipher_suite_name(flowq::quic::cipher_suite::unknown)} == "unknown");
+    CHECK(std::string_view{flowq::quic::cipher_suite_name(flowq::quic::cipher_suite::aes_128_gcm_sha256)} == "TLS_AES_128_GCM_SHA256");
+    CHECK(std::string_view{flowq::quic::cipher_suite_name(flowq::quic::cipher_suite::aes_256_gcm_sha384)} == "TLS_AES_256_GCM_SHA384");
+    CHECK(std::string_view{flowq::quic::cipher_suite_name(flowq::quic::cipher_suite::chacha20_poly1305_sha256)} == "TLS_CHACHA20_POLY1305_SHA256");
+}
 
 TEST_CASE("crypto provider capabilities require every production primitive") {
     flowq::quic::crypto_capabilities capabilities{};

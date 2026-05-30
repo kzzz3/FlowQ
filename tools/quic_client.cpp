@@ -92,6 +92,16 @@ int main() {
         flowq::quic::openssl_tls_config tls_config{.is_client = true};
         tls_config.local_transport_parameters.initial_source_connection_id = flowq::buffer{local_cid.bytes};
         auto tls_adapter = std::make_unique<flowq::quic::openssl_tls_handshake_adapter>(tls_config);
+        const auto tls_backend = flowq::quic::openssl_quic_tls_backend_status();
+        std::cout << "TLS backend: " << tls_backend.metadata.name;
+        if (!tls_backend.metadata.version.empty()) {
+            std::cout << " (" << tls_backend.metadata.version << ")";
+        }
+        std::cout << std::endl;
+        if (!tls_backend.ok()) {
+            std::cerr << "TLS backend unavailable: " << tls_backend.error.message() << std::endl;
+            return 1;
+        }
 
         flowq::quic::crypto_bytes empty_crypto{flowq::quic::tls_encryption_level::initial, 0, flowq::buffer{}};
         auto tls_start = tls_adapter->receive_crypto(empty_crypto);
@@ -159,6 +169,7 @@ int main() {
         while (std::chrono::steady_clock::now() < deadline) {
             if (tls_adapter->state() == flowq::quic::handshake_state::handshake_confirmed && !application_stream_sent) {
                 std::cout << "Handshake confirmed" << std::endl;
+                std::cout << "Negotiated cipher: " << flowq::quic::cipher_suite_name(tls_adapter->negotiated_cipher()) << std::endl;
                 if (!send_stream_payload(session, socket, "hello from FlowQ")) {
                     return 1;
                 }
