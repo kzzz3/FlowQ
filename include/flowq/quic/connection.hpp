@@ -25,6 +25,29 @@ public:
     connection_loop(connection_loop&&) noexcept = default;
     connection_loop& operator=(connection_loop&&) noexcept = default;
 
+    void set_packet_protectors(
+        const packet_protector* handshake_tx,
+        const packet_protector* handshake_rx,
+        const packet_protector* application_tx,
+        const packet_protector* application_rx) noexcept {
+        if (handshake_tx != nullptr) {
+            config_.handshake_tx_protector = handshake_tx;
+        }
+        if (handshake_rx != nullptr) {
+            config_.handshake_rx_protector = handshake_rx;
+        }
+        if (application_tx != nullptr) {
+            config_.application_tx_protector = application_tx;
+        }
+        if (application_rx != nullptr) {
+            config_.application_rx_protector = application_rx;
+        }
+    }
+
+    void set_remote_connection_id(connection_id remote_connection_id) {
+        config_.remote_connection_id = std::move(remote_connection_id);
+    }
+
     void queue_initial(std::vector<frame> frames) {
         if (!active()) {
             return;
@@ -253,7 +276,7 @@ public:
                 clear_packet_space(packet_number_space::application);
                 return;
             }
-            auto parsed = parse_application_packet(datagram.payload, detail::protector_for(packet_number_space::application, config_), config_.protection_policy);
+            auto parsed = parse_application_packet(datagram.payload, detail::rx_protector_for(packet_number_space::application, config_), config_.protection_policy);
             if (!parsed.ok()) {
                 enter_closing(parsed.error, received_at);
                 return;
@@ -262,25 +285,40 @@ public:
             return;
         }
 
-        const auto header = decode_packet_header(datagram.payload);
-        if (!header.ok()) {
-            enter_closing(header.error, received_at);
-            return;
-        }
+        auto remaining = std::span<const std::byte>{datagram.payload.data(), datagram.payload.size()};
+        while (!remaining.empty()) {
+            const auto packet_size = detail::long_packet_wire_size(remaining);
+            if (!packet_size.ok()) {
+                enter_closing(packet_size.error, received_at);
+                return;
+            }
 
-        const auto space = packet_space_for(header.header);
-        if (packet_space_discarded(space)) {
-            clear_packet_space(space);
-            return;
-        }
-        const auto* protector = detail::protector_for(space, config_);
-        auto parsed = parse_long_packet(datagram.payload, protector, config_.protection_policy);
-        if (!parsed.ok()) {
-            enter_closing(parsed.error, received_at);
-            return;
-        }
+            const auto packet_bytes = remaining.first(packet_size.value);
+            const auto header = decode_packet_header(packet_bytes);
+            if (!header.ok()) {
+                enter_closing(header.error, received_at);
+                return;
+            }
 
-        process_parsed_packet(std::move(parsed), std::move(datagram.peer), datagram.payload.size(), received_at);
+            const auto space = packet_space_for(header.header);
+            if (packet_space_discarded(space)) {
+                clear_packet_space(space);
+                remaining = remaining.subspan(packet_size.value);
+                continue;
+            }
+            const auto* protector = detail::rx_protector_for(space, config_);
+            auto parsed = parse_long_packet(packet_bytes, protector, config_.protection_policy);
+            if (!parsed.ok()) {
+                enter_closing(parsed.error, received_at);
+                return;
+            }
+
+            process_parsed_packet(std::move(parsed), datagram.peer, packet_size.value, received_at);
+            if (!active()) {
+                return;
+            }
+            remaining = remaining.subspan(packet_size.value);
+        }
     }
 
     void acknowledge(packet_number_space space) {
@@ -501,7 +539,7 @@ private:
                 config_.remote_connection_id,
                 packet_number{space, packet_number_value},
                 frames,
-                detail::protector_for(space, config_),
+                detail::tx_protector_for(space, config_),
                 config_.pipeline,
                 config_.protection_policy
             });
@@ -514,7 +552,7 @@ private:
             {},
             packet_number{space, packet_number_value},
             frames,
-            detail::protector_for(space, config_),
+            detail::tx_protector_for(space, config_),
             config_.pipeline,
             config_.protection_policy
         });
@@ -601,6 +639,11 @@ private:
 
     void pump_tls_crypto() {
         if (config_.tls_adapter == nullptr) {
+            return;
+        }
+        auto error = config_.tls_adapter->advance();
+        if (!error.ok()) {
+            enter_closing(error, std::chrono::steady_clock::now());
             return;
         }
         auto outbound = config_.tls_adapter->drain_crypto();

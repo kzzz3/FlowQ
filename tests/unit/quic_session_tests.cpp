@@ -122,6 +122,7 @@ flowq::quic::session_config make_config(
     config.initial_protector = &protector;
     config.handshake_protector = &protector;
     config.application_protector = &protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     return config;
 }
 
@@ -130,7 +131,7 @@ flowq::quic::connection_loop make_loop(
     flowq::quic::connection_id remote,
     flowq::endpoint peer,
     const flowq::quic::packet_protector& protector) {
-    return flowq::quic::connection_loop{flowq::quic::connection_loop_config{
+    flowq::quic::connection_loop_config config{
         flowq::quic::connection_role::client,
         1,
         std::move(local),
@@ -140,7 +141,9 @@ flowq::quic::connection_loop make_loop(
         &protector,
         &protector,
         flowq::quic::packet_pipeline_config{1200}
-    }};
+    };
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
+    return flowq::quic::connection_loop{std::move(config)};
 }
 
 flowq::quic::outbound_datagram require_single_outbound(std::vector<flowq::quic::connection_loop_action> actions) {
@@ -156,7 +159,7 @@ TEST_CASE("QUIC session public header exposes basic client configuration") {
     config.role = flowq::quic::connection_role::client;
 
     CHECK(config.version == 1);
-    CHECK(config.protection_policy == flowq::quic::packet_protection_policy::test_allowed);
+    CHECK(config.protection_policy == flowq::quic::packet_protection_policy::production_required);
     CHECK_FALSE(config.disable_active_migration);
     CHECK(config.active_connection_id_limit == 2);
     CHECK(config.tls_adapter == nullptr);

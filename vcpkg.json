@@ -5,6 +5,7 @@
   "dependencies": [
     "asio",
     "catch2",
+    "openssl",
     "stdexec"
   ],
   "features": {

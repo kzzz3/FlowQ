@@ -32,7 +32,7 @@ struct session_config {
     std::uint64_t initial_stream_send_max_data{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t initial_connection_send_max_data{std::numeric_limits<std::uint64_t>::max()};
     std::size_t max_packet_payload_size{std::numeric_limits<std::size_t>::max()};
-    packet_protection_policy protection_policy{packet_protection_policy::test_allowed};
+    packet_protection_policy protection_policy{packet_protection_policy::production_required};
     std::size_t max_stream_frames{8};
     std::size_t max_stream_data_size{1200};
     std::uint64_t initial_max_stream_data_bidi_local{std::numeric_limits<std::uint64_t>::max()};
@@ -49,7 +49,28 @@ struct session_config {
     bool peer_address_validated{};
     /// @brief Consolidated connection_loop_config, populated by to_connection_config().
     connection_loop_config loop_config{};
+    /// @pre The protector must outlive this session.
+    const packet_protector* initial_tx_protector{};
+    /// @pre The protector must outlive this session.
+    const packet_protector* initial_rx_protector{};
+    /// @pre The protector must outlive this session.
+    const packet_protector* handshake_tx_protector{};
+    /// @pre The protector must outlive this session.
+    const packet_protector* handshake_rx_protector{};
+    /// @pre The protector must outlive this session.
+    const packet_protector* application_tx_protector{};
+    /// @pre The protector must outlive this session.
+    const packet_protector* application_rx_protector{};
 };
+
+inline void apply_directional_protectors(session_config& config) noexcept {
+    config.loop_config.initial_tx_protector = config.initial_tx_protector;
+    config.loop_config.initial_rx_protector = config.initial_rx_protector;
+    config.loop_config.handshake_tx_protector = config.handshake_tx_protector;
+    config.loop_config.handshake_rx_protector = config.handshake_rx_protector;
+    config.loop_config.application_tx_protector = config.application_tx_protector;
+    config.loop_config.application_rx_protector = config.application_rx_protector;
+}
 
 /// @brief Apply transport parameters to session_config.
 /// Delegates to the connection_loop_config overload via the contained loop_config member.
@@ -81,6 +102,7 @@ inline void apply_transport_parameters(session_config& config, const transport_p
         config.closing_draining_timeout,
         config.peer_address_validated
     };
+    apply_directional_protectors(config);
     apply_transport_parameters(config.loop_config, parameters);
     config.max_idle_timeout = config.loop_config.max_idle_timeout;
     config.max_udp_payload_size = config.loop_config.max_udp_payload_size;
@@ -135,6 +157,23 @@ public:
     [[nodiscard]] session_send_result flush(std::chrono::steady_clock::time_point sent_at = std::chrono::steady_clock::now()) {
         loop_.flush(sent_at);
         return drain_send_actions();
+    }
+
+    void set_packet_protectors(
+        const packet_protector* handshake_tx,
+        const packet_protector* handshake_rx,
+        const packet_protector* application_tx,
+        const packet_protector* application_rx) noexcept {
+        config_.handshake_tx_protector = handshake_tx != nullptr ? handshake_tx : config_.handshake_tx_protector;
+        config_.handshake_rx_protector = handshake_rx != nullptr ? handshake_rx : config_.handshake_rx_protector;
+        config_.application_tx_protector = application_tx != nullptr ? application_tx : config_.application_tx_protector;
+        config_.application_rx_protector = application_rx != nullptr ? application_rx : config_.application_rx_protector;
+        loop_.set_packet_protectors(handshake_tx, handshake_rx, application_tx, application_rx);
+    }
+
+    void set_remote_connection_id(connection_id remote_connection_id) {
+        config_.remote_connection_id = remote_connection_id;
+        loop_.set_remote_connection_id(std::move(remote_connection_id));
     }
 
     [[nodiscard]] session_send_result acknowledge(packet_number_space space) {
@@ -200,6 +239,7 @@ private:
             config.closing_draining_timeout,
             config.peer_address_validated
         };
+        apply_directional_protectors(config);
         return config.loop_config;
     }
 

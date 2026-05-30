@@ -61,9 +61,7 @@ public:
         if (keys.application) {
             install_both(encryption_level::one_rtt);
         }
-        if (state == handshake_state::handshake_confirmed) {
-            discard(packet_number_space::handshake);
-        }
+        (void)state;
     }
 
     void discard(packet_number_space space) noexcept {

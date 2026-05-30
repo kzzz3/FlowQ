@@ -169,8 +169,11 @@ TEST_CASE("RFC 9001 key lifecycle compliance") {
     lifecycle.observe_tls(flowq::quic::handshake_state::handshaking, {false, true, false});
     CHECK(lifecycle.discarded(flowq::quic::packet_number_space::initial));
 
-    // Handshake confirmed -> discard handshake
+    // TLS confirmation alone must not discard Handshake packet space; QUIC discards it
+    // after the QUIC-level handshake confirmation criteria are met.
     lifecycle.observe_tls(flowq::quic::handshake_state::handshake_confirmed, {false, true, true});
+    CHECK_FALSE(lifecycle.discarded(flowq::quic::packet_number_space::handshake));
+    lifecycle.discard(flowq::quic::packet_number_space::handshake);
     CHECK(lifecycle.discarded(flowq::quic::packet_number_space::handshake));
 }
 

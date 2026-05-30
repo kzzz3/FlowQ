@@ -156,4 +156,7 @@ if(FLOWQ_BUILD_INTEROP)
 
     include(Catch)
     catch_discover_tests(flowq_interop_tests)
+
+    add_executable(flowq_quic_client tools/quic_client.cpp)
+    target_link_libraries(flowq_quic_client PRIVATE FlowQ::flowq)
 endif()

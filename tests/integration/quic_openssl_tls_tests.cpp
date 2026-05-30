@@ -89,6 +89,14 @@ TEST_CASE("openssl_tls_config default values") {
     CHECK(config.cert_file == nullptr);
     CHECK(config.key_file == nullptr);
     CHECK(config.ca_file == nullptr);
+    REQUIRE(config.alpn != nullptr);
+    CHECK(std::string_view{config.alpn} == std::string_view{"hq-interop"});
+    CHECK(config.local_transport_parameters.max_udp_payload_size == 1200);
+    CHECK(config.local_transport_parameters.initial_max_data == 1048576);
+    CHECK(config.local_transport_parameters.initial_max_stream_data_bidi_local == 262144);
+    CHECK(config.local_transport_parameters.initial_max_stream_data_bidi_remote == 262144);
+    CHECK(config.local_transport_parameters.initial_max_stream_data_uni == 262144);
+    CHECK(config.local_transport_parameters.active_connection_id_limit == 2);
 }
 
 TEST_CASE("openssl_tls_config can be set to server mode") {
@@ -101,3 +109,23 @@ TEST_CASE("openssl_tls_config can be set to server mode") {
     CHECK(config.cert_file != nullptr);
     CHECK(config.key_file != nullptr);
 }
+
+TEST_CASE("openssl_tls_config defaults to FlowQ-supported TLS 1.3 cipher suite") {
+    flowq::quic::openssl_tls_config config{};
+
+    REQUIRE(config.tls13_ciphersuite != nullptr);
+    CHECK(std::string_view{config.tls13_ciphersuite} == std::string_view{"TLS_AES_128_GCM_SHA256"});
+}
+
+#if defined(FLOWQ_ENABLE_OPENSSL_QUIC_TLS)
+TEST_CASE("openssl_tls_handshake_adapter maps OpenSSL QUIC protection levels") {
+    CHECK(flowq::quic::openssl_tls_handshake_adapter::tls_level_for_openssl_protection_level(
+        OSSL_RECORD_PROTECTION_LEVEL_NONE) == flowq::quic::tls_encryption_level::initial);
+    CHECK(flowq::quic::openssl_tls_handshake_adapter::tls_level_for_openssl_protection_level(
+        OSSL_RECORD_PROTECTION_LEVEL_HANDSHAKE) == flowq::quic::tls_encryption_level::handshake);
+    CHECK(flowq::quic::openssl_tls_handshake_adapter::tls_level_for_openssl_protection_level(
+        OSSL_RECORD_PROTECTION_LEVEL_APPLICATION) == flowq::quic::tls_encryption_level::application);
+    CHECK_FALSE(flowq::quic::openssl_tls_handshake_adapter::tls_level_for_openssl_protection_level(
+        OSSL_RECORD_PROTECTION_LEVEL_EARLY).has_value());
+}
+#endif

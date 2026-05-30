@@ -61,6 +61,11 @@ public:
 
     /// Drain outbound CRYPTO bytes from the TLS implementation.
     [[nodiscard]] virtual std::vector<crypto_bytes> drain_crypto() = 0;
+
+    /// Advance TLS with no additional CRYPTO bytes and surface newly generated handshake data.
+    [[nodiscard]] virtual flowq::error advance() {
+        return {};
+    }
 };
 
 /// Check if application data can be sent: handshake confirmed AND application keys available.

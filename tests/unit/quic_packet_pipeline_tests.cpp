@@ -102,6 +102,78 @@ private:
     flowq::quic::protection_level level_{};
 };
 
+class deterministic_header_protector final : public flowq::quic::packet_protector {
+public:
+    flowq::quic::protection_level level() const noexcept override {
+        return flowq::quic::protection_level::initial;
+    }
+
+    flowq::quic::packet_security_level security_level() const noexcept override {
+        return flowq::quic::packet_security_level::authenticated_encrypted;
+    }
+
+    flowq::quic::crypto_provider_status provider_status() const noexcept override {
+        return flowq::quic::crypto_provider_status::available(
+            flowq::quic::cipher_suite::aes_128_gcm_sha256,
+            flowq::quic::crypto_capabilities{
+                true,
+                true,
+                true,
+                true,
+                true
+            });
+    }
+
+    std::size_t protection_overhead() const noexcept override {
+        return 16;
+    }
+
+    bool header_protection_enabled() const noexcept override {
+        return true;
+    }
+
+    flowq::quic::header_protection_mask_result header_protection_mask(std::span<const std::byte> sample) const override {
+        last_sample.assign(sample.begin(), sample.end());
+        return {{
+            std::byte{0x0b},
+            std::byte{0x11},
+            std::byte{0x22},
+            std::byte{0x33},
+            std::byte{0x44}
+        }, {}};
+    }
+
+    flowq::quic::packet_protection_result protect(
+        const flowq::quic::packet_protection_context& context,
+        std::span<const std::byte> plaintext) const override {
+        last_associated_data.assign(context.associated_data.begin(), context.associated_data.end());
+        std::vector<std::byte> output{plaintext.begin(), plaintext.end()};
+        output.resize(output.size() + protection_overhead(), std::byte{0x5a});
+        return {flowq::buffer{std::move(output)}, {}};
+    }
+
+    flowq::quic::packet_protection_result unprotect(
+        const flowq::quic::packet_protection_context& context,
+        std::span<const std::byte> protected_payload) const override {
+        last_associated_data.assign(context.associated_data.begin(), context.associated_data.end());
+        if (protected_payload.size() < protection_overhead()) {
+            return {{}, flowq::error{flowq::error_code::protocol_error, "protected payload is too short"}};
+        }
+        return {flowq::buffer{protected_payload.first(protected_payload.size() - protection_overhead())}, {}};
+    }
+
+    flowq::quic::packet_protection_result protect(std::span<const std::byte> plaintext) const override {
+        return {flowq::buffer{plaintext}, {}};
+    }
+
+    flowq::quic::packet_protection_result unprotect(std::span<const std::byte> protected_payload) const override {
+        return {flowq::buffer{protected_payload}, {}};
+    }
+
+    mutable std::vector<std::byte> last_sample;
+    mutable std::vector<std::byte> last_associated_data;
+};
+
 flowq::quic::connection_id cid(std::initializer_list<unsigned int> values) {
     return flowq::quic::connection_id{flowq::buffer{bytes(values)}};
 }
@@ -182,6 +254,42 @@ TEST_CASE("packet pipeline round trips Initial frames through plaintext protecto
     CHECK(std::holds_alternative<flowq::quic::crypto_frame>(parsed.frames[1]));
     CHECK(std::holds_alternative<flowq::quic::stream_frame>(parsed.frames[2]));
     CHECK(std::holds_alternative<flowq::quic::padding_frame>(parsed.frames[3]));
+}
+
+TEST_CASE("packet pipeline applies long header protection to packet number bytes") {
+    deterministic_header_protector protector{};
+    flowq::quic::packet_build_request request{
+        flowq::quic::long_packet_type::initial,
+        1,
+        cid({0x05, 0x06, 0x07, 0x08}),
+        cid({0x01, 0x02, 0x03, 0x04}),
+        {},
+        flowq::quic::packet_number{flowq::quic::packet_number_space::initial, 0},
+        {flowq::quic::frame{flowq::quic::crypto_frame{0, flowq::buffer{bytes({0x06, 0x00})}}}},
+        &protector,
+        flowq::quic::packet_pipeline_config{1200},
+        flowq::quic::packet_protection_policy::production_required
+    };
+
+    auto assembled = flowq::quic::assemble_long_packet(request);
+    REQUIRE(assembled.ok());
+    constexpr std::size_t encrypted_frame_length = 5;
+    const auto packet_number_offset = assembled.datagram.size() - 4 - encrypted_frame_length - protector.protection_overhead();
+    REQUIRE(assembled.datagram.size() >= packet_number_offset + 4);
+
+    const auto* data = assembled.datagram.data();
+    CHECK(data[0] == std::byte{0xc8});
+    CHECK(data[packet_number_offset] == std::byte{0x11});
+    CHECK(data[packet_number_offset + 1] == std::byte{0x22});
+    CHECK(data[packet_number_offset + 2] == std::byte{0x33});
+    CHECK(data[packet_number_offset + 3] == std::byte{0x44});
+    REQUIRE(protector.last_sample.size() == 16);
+    CHECK(protector.last_sample[0] == std::byte{0x06});
+    CHECK(protector.last_associated_data.size() == packet_number_offset + 4);
+    CHECK(protector.last_associated_data[packet_number_offset] == std::byte{0x00});
+    CHECK(protector.last_associated_data[packet_number_offset + 1] == std::byte{0x00});
+    CHECK(protector.last_associated_data[packet_number_offset + 2] == std::byte{0x00});
+    CHECK(protector.last_associated_data[packet_number_offset + 3] == std::byte{0x00});
 }
 
 TEST_CASE("packet pipeline round trips Handshake frames") {
@@ -372,15 +480,15 @@ TEST_CASE("packet pipeline includes frame that exactly fits payload budget") {
     CHECK(std::holds_alternative<flowq::quic::stream_frame>(result.frames[0]));
 }
 
-TEST_CASE("packet pipeline rejects packets without fixed packet number bytes") {
+TEST_CASE("packet pipeline rejects packets without header protection sample") {
     flowq::quic::initial_header header{
         std::byte{0xc0},
         1,
         cid({0xaa}),
         cid({0xbb}),
         {},
-        3,
-        flowq::buffer{bytes({0x00, 0x00, 0x01})}
+        1,
+        flowq::buffer{bytes({0x00})}
     };
     auto encoded = flowq::quic::encode_packet_header(flowq::quic::packet_header{header});
     REQUIRE(encoded.ok());

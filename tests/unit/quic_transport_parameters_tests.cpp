@@ -41,6 +41,9 @@ TEST_CASE("transport parameters round trip selected QUIC values") {
     parameters.initial_max_stream_data_uni = 4000;
     parameters.disable_active_migration = true;
     parameters.active_connection_id_limit = 4;
+    parameters.original_destination_connection_id = flowq::buffer{bytes({0x05, 0x06, 0x07, 0x08})};
+    parameters.initial_source_connection_id = flowq::buffer{bytes({0x01, 0x02, 0x03, 0x04})};
+    parameters.retry_source_connection_id = flowq::buffer{bytes({0x09, 0x0a, 0x0b, 0x0c})};
 
     auto encoded = flowq::quic::encode_transport_parameters(parameters);
     REQUIRE(encoded.ok());
@@ -55,6 +58,12 @@ TEST_CASE("transport parameters round trip selected QUIC values") {
     CHECK(decoded.parameters.initial_max_stream_data_uni == 4000);
     CHECK(decoded.parameters.disable_active_migration);
     CHECK(decoded.parameters.active_connection_id_limit == 4);
+    REQUIRE(decoded.parameters.original_destination_connection_id.has_value());
+    check_buffer(*decoded.parameters.original_destination_connection_id, {0x05, 0x06, 0x07, 0x08});
+    REQUIRE(decoded.parameters.initial_source_connection_id.has_value());
+    check_buffer(*decoded.parameters.initial_source_connection_id, {0x01, 0x02, 0x03, 0x04});
+    REQUIRE(decoded.parameters.retry_source_connection_id.has_value());
+    check_buffer(*decoded.parameters.retry_source_connection_id, {0x09, 0x0a, 0x0b, 0x0c});
 }
 
 TEST_CASE("transport parameters preserve unknown parameters") {
@@ -80,6 +89,11 @@ TEST_CASE("transport parameters reject duplicate and malformed inputs") {
     CHECK_FALSE(flowq::quic::decode_transport_parameters(flowq::buffer{bytes({0x0c, 0x01, 0x00})}).ok());
     CHECK_FALSE(flowq::quic::decode_transport_parameters(flowq::buffer{bytes({0x0e, 0x01, 0x01})}).ok());
     CHECK_FALSE(flowq::quic::decode_transport_parameters(flowq::buffer{bytes({0x03, 0x02, 0x44, 0xaf})}).ok());
+    CHECK_FALSE(flowq::quic::decode_transport_parameters(flowq::buffer{bytes({
+        0x0f, 0x15,
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
+        0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
+        0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14})}).ok());
 }
 
 TEST_CASE("transport parameters reject invalid encoder inputs") {
@@ -102,6 +116,13 @@ TEST_CASE("transport parameters reject invalid encoder inputs") {
     parameters = flowq::quic::transport_parameters{};
     parameters.unknown.push_back(flowq::quic::unknown_transport_parameter{0x39, flowq::buffer{}});
     parameters.unknown.push_back(flowq::quic::unknown_transport_parameter{0x39, flowq::buffer{}});
+    CHECK_FALSE(flowq::quic::encode_transport_parameters(parameters).ok());
+
+    parameters = flowq::quic::transport_parameters{};
+    parameters.initial_source_connection_id = flowq::buffer{bytes({
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
+        0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
+        0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14})};
     CHECK_FALSE(flowq::quic::encode_transport_parameters(parameters).ok());
 }
 

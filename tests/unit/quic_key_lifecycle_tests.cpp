@@ -40,6 +40,9 @@ TEST_CASE("key lifecycle derives discard decisions from TLS state") {
     lifecycle.observe_tls(flowq::quic::handshake_state::handshake_confirmed, flowq::quic::tls_key_availability{false, true, true});
     CHECK(lifecycle.available(flowq::quic::encryption_level::one_rtt, flowq::quic::key_direction::send));
     CHECK(lifecycle.available(flowq::quic::encryption_level::one_rtt, flowq::quic::key_direction::receive));
+    CHECK_FALSE(lifecycle.discarded(flowq::quic::packet_number_space::handshake));
+
+    lifecycle.discard(flowq::quic::packet_number_space::handshake);
     CHECK(lifecycle.discarded(flowq::quic::packet_number_space::handshake));
 }
 

@@ -3,10 +3,13 @@
 #include <flowq/error.hpp>
 #include <flowq/quic/tls_handshake.hpp>
 #include <flowq/quic/tls_provider_backend.hpp>
+#include <flowq/quic/transport_parameters.hpp>
 
 #include <cstdint>
 #include <cstring>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #if defined(FLOWQ_ENABLE_OPENSSL_QUIC_TLS)
@@ -24,6 +27,16 @@ struct openssl_tls_config {
     const char* cert_file{};    // Server: path to certificate file
     const char* key_file{};     // Server: path to private key file
     const char* ca_file{};      // Client: path to CA certificate for verification
+    const char* alpn{"hq-interop"};
+    const char* tls13_ciphersuite{"TLS_AES_128_GCM_SHA256"};
+    transport_parameters local_transport_parameters{
+        .max_udp_payload_size = 1200,
+        .initial_max_data = 1048576,
+        .initial_max_stream_data_bidi_local = 262144,
+        .initial_max_stream_data_bidi_remote = 262144,
+        .initial_max_stream_data_uni = 262144,
+        .active_connection_id_limit = 2
+    };
 };
 
 #if defined(FLOWQ_ENABLE_OPENSSL_QUIC_TLS)
@@ -37,13 +50,17 @@ public:
         // Create SSL context
         ctx_ = SSL_CTX_new(TLS_method());
         if (ctx_ == nullptr) {
-            state_ = handshake_state::failed;
+            set_failure("failed to create OpenSSL SSL_CTX");
             return;
         }
 
         // Force TLS 1.3 only
         SSL_CTX_set_min_proto_version(ctx_, TLS1_3_VERSION);
         SSL_CTX_set_max_proto_version(ctx_, TLS1_3_VERSION);
+        if (SSL_CTX_set_ciphersuites(ctx_, config_.tls13_ciphersuite) != 1) {
+            set_failure("failed to configure TLS 1.3 cipher suite");
+            return;
+        }
 
         // Configure certificates
         if (!config.is_client && config.cert_file != nullptr) {
@@ -62,7 +79,7 @@ public:
         // Create SSL object
         ssl_ = SSL_new(ctx_);
         if (ssl_ == nullptr) {
-            state_ = handshake_state::failed;
+            set_failure("failed to create OpenSSL SSL object");
             return;
         }
 
@@ -73,9 +90,38 @@ public:
             SSL_set_accept_state(ssl_);
         }
 
+        if (config_.alpn != nullptr) {
+            const auto alpn_length = std::strlen(config_.alpn);
+            if (alpn_length == 0 || alpn_length > 255) {
+                set_failure("invalid ALPN length");
+                return;
+            }
+            std::vector<unsigned char> alpn;
+            alpn.push_back(static_cast<unsigned char>(alpn_length));
+            alpn.insert(alpn.end(), config_.alpn, config_.alpn + static_cast<std::ptrdiff_t>(alpn_length));
+            if (SSL_set_alpn_protos(ssl_, alpn.data(), static_cast<unsigned int>(alpn.size())) != 0) {
+                set_failure("failed to configure client ALPN");
+                return;
+            }
+        }
+
         // Register QUIC TLS callbacks
         if (SSL_set_quic_tls_cbs(ssl_, quic_tls_dispatch_table(), this) != 1) {
-            state_ = handshake_state::failed;
+            set_failure("failed to configure OpenSSL QUIC TLS callbacks");
+            return;
+        }
+
+        auto encoded_local_params = encode_transport_parameters(config_.local_transport_parameters);
+        if (!encoded_local_params.ok()) {
+            set_failure(encoded_local_params.error.message());
+            return;
+        }
+        local_transport_params_ = std::move(encoded_local_params.payload);
+        if (SSL_set_quic_tls_transport_params(
+            ssl_,
+            reinterpret_cast<const unsigned char*>(local_transport_params_.data()),
+            local_transport_params_.size()) != 1) {
+            set_failure("failed to configure QUIC transport parameters");
             return;
         }
     }
@@ -103,6 +149,10 @@ public:
         return keys_;
     }
 
+    [[nodiscard]] const flowq::error& last_error() const noexcept {
+        return last_error_;
+    }
+
     [[nodiscard]] crypto_provider_status provider_status() const noexcept override {
         const auto suite = negotiated_cipher_suite();
         if (!level_key_schedule_owned(tls_encryption_level::application) || suite == cipher_suite::unknown) {
@@ -115,6 +165,9 @@ public:
 
     [[nodiscard]] flowq::error receive_crypto(crypto_bytes bytes) override {
         if (state_ == handshake_state::failed) {
+            if (!last_error_.ok()) {
+                return last_error_;
+            }
             return flowq::error{flowq::error_code::tls_error, "TLS handshake already failed"};
         }
 
@@ -140,6 +193,16 @@ public:
         return drive_handshake();
     }
 
+    [[nodiscard]] flowq::error advance() override {
+        if (state_ == handshake_state::failed) {
+            if (!last_error_.ok()) {
+                return last_error_;
+            }
+            return flowq::error{flowq::error_code::tls_error, "TLS handshake already failed"};
+        }
+        return drive_handshake();
+    }
+
     [[nodiscard]] std::vector<crypto_bytes> drain_crypto() override {
         auto result = std::move(outbound_crypto_);
         outbound_crypto_.clear();
@@ -148,6 +211,30 @@ public:
 
     [[nodiscard]] const std::vector<std::byte>& peer_transport_params() const noexcept {
         return peer_transport_params_;
+    }
+
+    /// Get traffic secret for a specific encryption level and direction.
+    /// @param level The encryption level (initial, handshake, application)
+    /// @param is_tx true for transmit secret, false for receive secret
+    /// @return Reference to the secret bytes, empty if not yet available
+    [[nodiscard]] const std::vector<std::byte>& traffic_secret(
+        tls_encryption_level level, bool is_tx) const noexcept {
+        return const_cast<openssl_tls_handshake_adapter*>(this)->secret_for(level, is_tx ? 1 : 0);
+    }
+
+    /// Check if traffic secret is available for a specific level and direction.
+    [[nodiscard]] bool has_traffic_secret(tls_encryption_level level, bool is_tx) const noexcept {
+        return !traffic_secret(level, is_tx).empty();
+    }
+
+    /// Get negotiated cipher suite.
+    [[nodiscard]] cipher_suite negotiated_cipher() const noexcept {
+        return negotiated_cipher_suite();
+    }
+
+    [[nodiscard]] static std::optional<tls_encryption_level> tls_level_for_openssl_protection_level(
+        uint32_t prot_level) noexcept {
+        return map_protection_level(prot_level);
     }
 
 private:
@@ -260,7 +347,7 @@ private:
 
         auto mapped_level = map_protection_level(prot_level);
         if (!mapped_level.has_value() || (direction != 0 && direction != 1) || secret == nullptr || len == 0) {
-            self->state_ = handshake_state::failed;
+            self->set_failure("OpenSSL yielded invalid QUIC traffic secret metadata");
             return 0;
         }
         auto level = *mapped_level;
@@ -309,7 +396,7 @@ private:
         auto* self = static_cast<openssl_tls_handshake_adapter*>(arg);
         self->alert_received_ = true;
         self->alert_code_ = alert_code;
-        self->state_ = handshake_state::failed;
+        self->set_failure("OpenSSL QUIC TLS alert received");
         return 1;
     }
 
@@ -336,9 +423,12 @@ private:
     [[nodiscard]] static std::optional<tls_encryption_level> map_protection_level(uint32_t prot_level) noexcept {
         // OSSL_RECORD_PROTECTION_LEVEL_* constants
         switch (prot_level) {
-        case 0: return tls_encryption_level::initial;      // NONE
-        case 1: return tls_encryption_level::handshake;     // HANDSHAKE
-        case 2: return tls_encryption_level::application;   // APPLICATION
+        case OSSL_RECORD_PROTECTION_LEVEL_NONE:
+            return tls_encryption_level::initial;
+        case OSSL_RECORD_PROTECTION_LEVEL_HANDSHAKE:
+            return tls_encryption_level::handshake;
+        case OSSL_RECORD_PROTECTION_LEVEL_APPLICATION:
+            return tls_encryption_level::application;
         default: return std::nullopt;
         }
     }
@@ -346,6 +436,11 @@ private:
     // Update current TX level
     void update_tx_level(tls_encryption_level level) noexcept {
         current_tx_level_ = level;
+    }
+
+    void set_failure(std::string_view message) {
+        state_ = handshake_state::failed;
+        last_error_ = flowq::error{flowq::error_code::tls_error, std::string{message}};
     }
 
     [[nodiscard]] std::vector<std::byte>& secret_for(tls_encryption_level level, int direction) noexcept {
@@ -407,11 +502,11 @@ private:
                 // Normal - need more data
                 return {};
             }
-            state_ = handshake_state::failed;
             unsigned long openssl_err = ERR_get_error();
             char err_buf[256]{};
             ERR_error_string_n(openssl_err, err_buf, sizeof(err_buf));
-            return flowq::error{flowq::error_code::tls_error, err_buf};
+            set_failure(err_buf);
+            return last_error_;
         }
 
         // Post-handshake read to trigger final key export
@@ -456,12 +551,14 @@ private:
     std::vector<std::byte> application_rx_secret_;
     std::vector<std::byte> application_tx_secret_;
 
-    // Peer transport parameters
+    // Transport parameters passed to OpenSSL must outlive the SSL object.
+    flowq::buffer local_transport_params_;
     std::vector<std::byte> peer_transport_params_;
 
     // Alert state
     bool alert_received_{};
     uint8_t alert_code_{};
+    flowq::error last_error_{};
 
     // Config
     openssl_tls_config config_;
