@@ -4,11 +4,13 @@ Complete all items before claiming production-candidate status. Checked items mu
 
 ## Build and Test Gates
 
-- [ ] Full CTest passes on Windows MSVC/vcpkg preset
+- [x] Full CTest passes on Windows MSVC/vcpkg preset
 - [ ] Full CTest passes on Linux GCC/CMake preset
-- [ ] Install + package-consumer builds and runs
+- [x] Install + package-consumer builds and runs
 - [ ] No compiler warnings with `-Wall -Wextra` (or MSVC equivalent)
 - [ ] No sanitizer errors (ASAN, UBSAN)
+
+Current Windows evidence: `scripts/validate-build.ps1` passes configure, build, 482 CTest tests, install, and package-consumer configure/build on the Windows MSVC/vcpkg preset; `build/package-consumer/Debug/flowq_package_consumer.exe` exits successfully.
 
 ## Code Quality Gates
 

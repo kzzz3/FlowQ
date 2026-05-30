@@ -11,17 +11,20 @@ TEST_CASE("benchmark varint encode") {
     
     suite.add("varint_encode_small", []() {
         std::byte buf[8]{};
-        flowq::quic::encode_varint(42, std::span<std::byte>{buf, 8});
+        auto result = flowq::quic::encode_varint(42, std::span<std::byte>{buf, 8});
+        (void)result;
     });
     
     suite.add("varint_encode_medium", []() {
         std::byte buf[8]{};
-        flowq::quic::encode_varint(16384, std::span<std::byte>{buf, 8});
+        auto result = flowq::quic::encode_varint(16384, std::span<std::byte>{buf, 8});
+        (void)result;
     });
     
     suite.add("varint_encode_large", []() {
         std::byte buf[8]{};
-        flowq::quic::encode_varint(1073741824, std::span<std::byte>{buf, 8});
+        auto result = flowq::quic::encode_varint(1073741824, std::span<std::byte>{buf, 8});
+        (void)result;
     });
     
     auto results = suite.run(10000);
