@@ -1360,7 +1360,7 @@ TEST_CASE("connection loop parses and acknowledges Handshake packets") {
     CHECK(std::get<flowq::quic::ack_frame>(parsed_ack.frames[0]).largest_acknowledged == 0);
 }
 
-TEST_CASE("connection loop flushes queued Application frames as a structural outbound datagram") {
+TEST_CASE("connection loop flushes queued Application frames as a short-header outbound datagram") {
     flowq::quic::plaintext_packet_protector protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
 
@@ -1368,7 +1368,7 @@ TEST_CASE("connection loop flushes queued Application frames as a structural out
     loop.flush(at(0ms));
 
     auto datagram = require_single_outbound(loop.drain_actions());
-    auto parsed = flowq::quic::parse_application_packet(datagram.payload, protector);
+    auto parsed = flowq::quic::parse_short_packet(datagram.payload, 1, protector);
     REQUIRE(parsed.ok());
     CHECK(parsed.space == flowq::quic::packet_number_space::application);
     CHECK(parsed.number.value == 0);
@@ -1377,7 +1377,7 @@ TEST_CASE("connection loop flushes queued Application frames as a structural out
     CHECK(loop.sent_packets(flowq::quic::packet_number_space::application).packets()[0].packet_number == 0);
 }
 
-TEST_CASE("connection loop parses and acknowledges structural Application packets") {
+TEST_CASE("connection loop parses and acknowledges short-header Application packets") {
     flowq::quic::plaintext_packet_protector protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
@@ -1398,7 +1398,7 @@ TEST_CASE("connection loop parses and acknowledges structural Application packet
 
     server.acknowledge(flowq::quic::packet_number_space::application);
     auto ack_datagram = require_single_outbound(server.drain_actions());
-    auto parsed_ack = flowq::quic::parse_application_packet(ack_datagram.payload, protector);
+    auto parsed_ack = flowq::quic::parse_short_packet(ack_datagram.payload, 1, protector);
     REQUIRE(parsed_ack.ok());
     CHECK(parsed_ack.space == flowq::quic::packet_number_space::application);
     REQUIRE(parsed_ack.frames.size() == 1);
@@ -1430,7 +1430,7 @@ TEST_CASE("connection loop answers Application PATH_CHALLENGE with matching PATH
 
     server.flush(at(1ms));
     auto response_datagram = require_single_outbound(server.drain_actions());
-    auto parsed_response = flowq::quic::parse_application_packet(response_datagram.payload, protector);
+    auto parsed_response = flowq::quic::parse_short_packet(response_datagram.payload, 1, protector);
     REQUIRE(parsed_response.ok());
     REQUIRE(parsed_response.frames.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::path_response_frame>(parsed_response.frames[0]));

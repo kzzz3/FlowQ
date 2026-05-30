@@ -190,9 +190,8 @@ TEST_CASE("packet header reports malformed and unsupported inputs") {
     CHECK_FALSE(flowq::quic::decode_packet_header(bytes({0xd0, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00})).ok());
 }
 
-TEST_CASE("packet header keeps short and structural Application packets out of long-header decoding") {
+TEST_CASE("packet header keeps short packets out of long-header decoding") {
     CHECK_FALSE(flowq::quic::decode_packet_header(bytes({0x40, 0x00, 0x00, 0x00, 0x00})).ok());
-    CHECK_FALSE(flowq::quic::decode_packet_header(bytes({0x50, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00})).ok());
 }
 
 TEST_CASE("packet header decodes short header with caller supplied connection ID length") {

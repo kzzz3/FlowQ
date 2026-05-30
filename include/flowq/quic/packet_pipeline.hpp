@@ -407,6 +407,64 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     return {};
 }
 
+[[nodiscard]] inline flowq::error apply_short_header_protection(
+    std::span<std::byte> datagram,
+    std::size_t destination_connection_id_length,
+    const packet_protector& protector) {
+    const auto packet_number_offset = 1U + destination_connection_id_length;
+    if (datagram.size() < packet_number_offset + fixed_packet_number_length + 16U) {
+        return pipeline_error("short packet payload too short for header protection sample");
+    }
+
+    const auto packet_number_length = static_cast<std::size_t>(static_cast<std::uint8_t>(datagram[0]) & 0x03U) + 1U;
+    if (packet_number_length != fixed_packet_number_length) {
+        return pipeline_error("FlowQ packet pipeline requires fixed 4-byte packet numbers");
+    }
+    const auto sample_offset = packet_number_offset + fixed_packet_number_length;
+    auto mask = protector.header_protection_mask(std::span<const std::byte>{datagram.data() + static_cast<std::ptrdiff_t>(sample_offset), 16});
+    if (!mask.ok()) {
+        return mask.error;
+    }
+
+    datagram[0] ^= static_cast<std::byte>(static_cast<std::uint8_t>(mask.mask[0]) & 0x1fU);
+    for (std::size_t index = 0; index < packet_number_length; ++index) {
+        datagram[packet_number_offset + index] ^= mask.mask[index + 1U];
+    }
+
+    return {};
+}
+
+[[nodiscard]] inline flowq::error remove_short_header_protection(
+    std::vector<std::byte>& datagram,
+    std::size_t destination_connection_id_length,
+    const packet_protector& protector) {
+    const auto packet_number_offset = 1U + destination_connection_id_length;
+    if (datagram.size() < packet_number_offset + minimum_packet_number_length + 16U) {
+        return pipeline_error("short packet payload too short for header protection sample");
+    }
+
+    const auto sample_offset = packet_number_offset + fixed_packet_number_length;
+    if (datagram.size() < sample_offset + 16U) {
+        return pipeline_error("short packet payload too short for header protection sample");
+    }
+
+    auto mask = protector.header_protection_mask(std::span<const std::byte>{datagram.data() + static_cast<std::ptrdiff_t>(sample_offset), 16});
+    if (!mask.ok()) {
+        return mask.error;
+    }
+
+    datagram[0] ^= static_cast<std::byte>(static_cast<std::uint8_t>(mask.mask[0]) & 0x1fU);
+    const auto packet_number_length = static_cast<std::size_t>(static_cast<std::uint8_t>(datagram[0]) & 0x03U) + 1U;
+    if (datagram.size() < packet_number_offset + packet_number_length + 16U) {
+        return pipeline_error("short packet payload too short for header protection sample");
+    }
+    for (std::size_t index = 0; index < packet_number_length; ++index) {
+        datagram[packet_number_offset + index] ^= mask.mask[index + 1U];
+    }
+
+    return {};
+}
+
 } // namespace detail
 
 [[nodiscard]] inline frame_payload_budget_selection select_frames_for_payload_budget(std::span<const frame> candidates, std::size_t budget) {
@@ -566,10 +624,10 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
         return {{}, request.number, request.protector->level(), detail::pipeline_error("packet number exceeds supported application-header encoding")};
     }
     if (request.number.space != packet_number_space::application) {
-        return {{}, request.number, request.protector->level(), detail::pipeline_error("packet number space does not match structural Application packet")};
+        return {{}, request.number, request.protector->level(), detail::pipeline_error("packet number space does not match short-header packet")};
     }
     if (!detail::application_protection_level_matches(request.protector->level())) {
-        return {{}, request.number, request.protector->level(), detail::pipeline_error("packet protector level does not match structural Application packet")};
+        return {{}, request.number, request.protector->level(), detail::pipeline_error("packet protector level does not match short-header packet")};
     }
     if (auto error = detail::validate_protection_policy(*request.protector, request.protection_policy); !error.ok()) {
         return {{}, request.number, request.protector->level(), error};
@@ -588,27 +646,63 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
         frame_bytes.insert(frame_bytes.end(), encoded.payload.data(), encoded.payload.data() + static_cast<std::ptrdiff_t>(encoded.payload.size()));
     }
 
-    const auto protected_frames = request.protector->protect(frame_bytes);
+    const auto protected_payload_length = frame_bytes.size() + request.protector->protection_overhead();
+    auto length_accounting_payload = flowq::buffer{std::vector<std::byte>(protected_payload_length, std::byte{0x00})};
+    short_header header{
+        std::byte{0x43},
+        request.destination_connection_id,
+        true,
+        false,
+        false,
+        detail::fixed_packet_number_length,
+        request.number.value,
+        std::move(length_accounting_payload)
+    };
+
+    std::vector<std::byte> packet_number_bytes;
+    packet_number_bytes.reserve(detail::fixed_packet_number_length);
+    detail::append_packet_number(packet_number_bytes, request.number.value);
+
+    const auto aad_prefix = encode_packet_header(packet_header{header});
+    if (!aad_prefix.ok()) {
+        return {{}, request.number, request.protector->level(), aad_prefix.error};
+    }
+    if (aad_prefix.payload.size() < protected_payload_length) {
+        return {{}, request.number, request.protector->level(), detail::pipeline_error("encoded short header is shorter than protected payload")};
+    }
+    const auto header_prefix_size = aad_prefix.payload.size() - protected_payload_length;
+    std::vector<std::byte> associated_data{
+        aad_prefix.payload.data(),
+        aad_prefix.payload.data() + static_cast<std::ptrdiff_t>(header_prefix_size)};
+    associated_data.insert(associated_data.end(), packet_number_bytes.begin(), packet_number_bytes.end());
+
+    const auto protected_frames = detail::protect_payload(
+        *request.protector,
+        packet_protection_context{
+            request.number,
+            std::span<const std::byte>{associated_data.data(), associated_data.size()}
+        },
+        frame_bytes);
     if (!protected_frames.ok()) {
         return {{}, request.number, request.protector->level(), protected_frames.error};
     }
 
-    std::vector<std::byte> protected_payload;
-    protected_payload.reserve(4 + protected_frames.payload.size());
-    detail::append_packet_number(protected_payload, request.number.value);
-    protected_payload.insert(
-        protected_payload.end(),
-        protected_frames.payload.data(),
-        protected_frames.payload.data() + static_cast<std::ptrdiff_t>(protected_frames.payload.size()));
-
-    auto encoded = encode_packet_header(packet_header{structural_application_header{
-        std::byte{0x50},
-        request.destination_connection_id,
-        protected_payload.size(),
-        flowq::buffer{protected_payload}
-    }});
+    header.protected_payload = std::move(protected_frames.payload);
+    auto encoded = encode_packet_header(packet_header{header});
     if (!encoded.ok()) {
         return {{}, request.number, request.protector->level(), encoded.error};
+    }
+    if (request.protector->header_protection_enabled()) {
+        auto datagram = std::vector<std::byte>{
+            encoded.payload.data(),
+            encoded.payload.data() + static_cast<std::ptrdiff_t>(encoded.payload.size())};
+        if (auto error = detail::apply_short_header_protection(
+                std::span<std::byte>{datagram.data(), datagram.size()},
+                request.destination_connection_id.bytes.size(),
+                *request.protector); !error.ok()) {
+            return {{}, request.number, request.protector->level(), error};
+        }
+        encoded.payload = flowq::buffer{std::move(datagram)};
     }
     if (encoded.payload.size() > request.config.max_datagram_size) {
         return {{}, request.number, request.protector->level(), detail::pipeline_error("QUIC datagram exceeds maximum size")};
@@ -693,60 +787,6 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     return {std::move(decoded_header.header), number, number.space, protector->level(), std::move(decoded_frames.frames), {}};
 }
 
-[[nodiscard]] inline parsed_packet parse_application_packet(
-    std::span<const std::byte> datagram,
-    const packet_protector* protector,
-    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
-    if (protector == nullptr) {
-        return {{}, {}, {}, protection_level::none, {}, detail::pipeline_error("packet protector is required")};
-    }
-    if (auto error = detail::validate_protection_policy(*protector, protection_policy); !error.ok()) {
-        return {{}, {}, {}, protector->level(), {}, error};
-    }
-    if (!detail::application_protection_level_matches(protector->level())) {
-        return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("packet protector level does not match structural Application packet")};
-    }
-    if (datagram.empty()) {
-        return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("empty structural Application packet")};
-    }
-    if (datagram[0] != std::byte{0x50}) {
-        return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("unsupported structural Application packet marker")};
-    }
-
-    std::size_t offset = 1;
-    connection_id destination_connection_id;
-    if (!detail::read_connection_id(datagram, offset, destination_connection_id)) {
-        return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("truncated structural Application connection ID")};
-    }
-
-    std::uint64_t length = 0;
-    if (!detail::read_packet_varint_at(datagram, offset, length)) {
-        return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("truncated structural Application length")};
-    }
-    if (length != datagram.size() - offset) {
-        return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("structural Application protected payload length mismatch")};
-    }
-    if (length < 4) {
-        return {{}, {}, {}, protector->level(), {}, detail::pipeline_error("packet payload is missing fixed packet number")};
-    }
-
-    auto protected_payload = flowq::buffer{datagram.subspan(offset, static_cast<std::size_t>(length))};
-    const std::span<const std::byte> payload{protected_payload.data(), protected_payload.size()};
-    const auto number = packet_number{packet_number_space::application, detail::read_packet_number(std::span<const std::byte, 4>{payload.data(), 4})};
-
-    const auto plaintext = protector->unprotect(payload.subspan(4));
-    if (!plaintext.ok()) {
-        return {structural_application_header{std::byte{0x50}, std::move(destination_connection_id), length, std::move(protected_payload)}, number, number.space, protector->level(), {}, plaintext.error};
-    }
-
-    auto decoded_frames = decode_frames(plaintext.payload);
-    if (!decoded_frames.ok()) {
-        return {structural_application_header{std::byte{0x50}, std::move(destination_connection_id), length, std::move(protected_payload)}, number, number.space, protector->level(), {}, decoded_frames.error};
-    }
-
-    return {structural_application_header{std::byte{0x50}, std::move(destination_connection_id), length, std::move(protected_payload)}, number, number.space, protector->level(), std::move(decoded_frames.frames), {}};
-}
-
 [[nodiscard]] inline parsed_packet parse_short_packet(
     std::span<const std::byte> datagram,
     std::size_t destination_connection_id_length,
@@ -761,18 +801,34 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     if (auto error = detail::validate_protection_policy(*protector, protection_policy); !error.ok()) {
         return {{}, {}, {}, protector->level(), {}, error};
     }
-    if (protection_policy == packet_protection_policy::production_required) {
-        return {{}, {}, packet_number_space::application, protector->level(), {}, detail::pipeline_error("production short-header parsing requires header-protection context")};
+    std::span<const std::byte> decoded_datagram = datagram;
+    std::vector<std::byte> unmasked_datagram;
+    if (protector->header_protection_enabled()) {
+        unmasked_datagram.assign(datagram.begin(), datagram.end());
+        if (auto error = detail::remove_short_header_protection(unmasked_datagram, destination_connection_id_length, *protector); !error.ok()) {
+            return {{}, {}, packet_number_space::application, protector->level(), {}, error};
+        }
+        decoded_datagram = std::span<const std::byte>{unmasked_datagram.data(), unmasked_datagram.size()};
     }
 
-    auto decoded_header = decode_short_header(datagram, destination_connection_id_length);
+    auto decoded_header = decode_short_header(decoded_datagram, destination_connection_id_length);
     if (!decoded_header.ok()) {
         return {{}, {}, packet_number_space::application, protector->level(), {}, decoded_header.error};
     }
     const auto& header = std::get<short_header>(decoded_header.header);
     const auto number = packet_number{packet_number_space::application, header.truncated_packet_number};
 
-    const auto plaintext = protector->unprotect(std::span<const std::byte>{header.protected_payload.data(), header.protected_payload.size()});
+    const auto packet_number_offset = 1U + destination_connection_id_length;
+    std::vector<std::byte> associated_data{
+        decoded_datagram.begin(),
+        decoded_datagram.begin() + static_cast<std::ptrdiff_t>(packet_number_offset + header.packet_number_length)};
+    const auto plaintext = detail::unprotect_payload(
+        *protector,
+        packet_protection_context{
+            number,
+            std::span<const std::byte>{associated_data.data(), associated_data.size()}
+        },
+        std::span<const std::byte>{header.protected_payload.data(), header.protected_payload.size()});
     if (!plaintext.ok()) {
         return {std::move(decoded_header.header), number, number.space, protector->level(), {}, plaintext.error};
     }
@@ -797,20 +853,6 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     const packet_protector* protector,
     packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
     return parse_long_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, protector, protection_policy);
-}
-
-[[nodiscard]] inline parsed_packet parse_application_packet(
-    const flowq::buffer& datagram,
-    const packet_protector& protector,
-    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
-    return parse_application_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, &protector, protection_policy);
-}
-
-[[nodiscard]] inline parsed_packet parse_application_packet(
-    const flowq::buffer& datagram,
-    const packet_protector* protector,
-    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
-    return parse_application_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, protector, protection_policy);
 }
 
 [[nodiscard]] inline parsed_packet parse_short_packet(
