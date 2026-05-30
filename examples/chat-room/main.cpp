@@ -1,10 +1,7 @@
 /// FlowQ Chat Room Example
 ///
-/// Demonstrates a simple chat room using FlowQ's QUIC-like session.
+/// Demonstrates a simple chat room using FlowQ's QUIC session API.
 /// Multiple clients can connect and exchange messages through a central server.
-///
-/// Note: This is a deterministic in-memory example using FlowQ's
-/// non-production QUIC-like protocol primitives.
 
 #include <flowq/quic/session.hpp>
 #include <flowq/quic/connection.hpp>
@@ -125,9 +122,12 @@ int main() {
             .local_connection_id = make_cid({id}),
             .remote_connection_id = make_cid({0x00}),
             .peer = flowq::endpoint{"chat-server", 4433, "hq-interop"},
-            .initial_protector = &protector,
-            .handshake_protector = &protector,
-            .application_protector = &protector,
+            .initial_tx_protector = &protector,
+            .initial_rx_protector = &protector,
+            .handshake_tx_protector = &protector,
+            .handshake_rx_protector = &protector,
+            .application_tx_protector = &protector,
+            .application_rx_protector = &protector,
         };
         return flowq::quic::session{std::move(config)};
     };

@@ -40,9 +40,12 @@ TEST_CASE("benchmark session lifecycle") {
             .local_connection_id = make_cid({0x01}),
             .remote_connection_id = make_cid({0x02}),
             .peer = flowq::endpoint{"server", 4433, "hq-interop"},
-            .initial_protector = &protector,
-            .handshake_protector = &protector,
-            .application_protector = &protector,
+            .initial_tx_protector = &protector,
+            .initial_rx_protector = &protector,
+            .handshake_tx_protector = &protector,
+            .handshake_rx_protector = &protector,
+            .application_tx_protector = &protector,
+            .application_rx_protector = &protector,
         };
         flowq::quic::session session{std::move(config)};
     });

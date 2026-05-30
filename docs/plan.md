@@ -15,7 +15,7 @@ FlowQ is a C++20 QUIC transport library moving toward a narrow production-candid
 - [x] Add minimal Initial/Handshake connection loop behavior.
 - [x] Add stream receive, stream send, and flow-control core behavior.
 - [x] Add connection stream integration, aggregate flow control, packet budgeting, recovery timers, and stream ACK/loss mapping.
-- [x] M16: Add a clearly non-production structural Application packet-number space for tests and loopback.
+- [x] Add Application packet-number space coverage for tests and loopback.
 - [x] M17: Add minimal close/reset structural codecs and stream effects.
 - [x] M18: Prove a basic in-memory QUIC transport loopback session.
 - [x] M19: Document and enforce the crypto adapter seam for TLS and packet-protection integration.
@@ -76,7 +76,7 @@ Completed through M10: deterministic protocol primitives, packet pipeline, minim
 
 Completed through M15: connection-owned streams, connection flow control, payload budgeting, recovery timer values, and packet-to-stream ACK/loss mapping.
 
-### Phase 3: Basic Usable Non-Production Loopback
+### Phase 3: Basic Usable Loopback
 
 - [x] M16 Application Data structural packet space.
 - [x] M17 minimal close/reset codec behavior.

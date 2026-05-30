@@ -57,12 +57,6 @@ struct connection_loop_config {
     connection_id local_connection_id;
     connection_id remote_connection_id;
     flowq::endpoint peer;
-    /// @pre The protector must outlive this connection loop.
-    const packet_protector* initial_protector{};
-    /// @pre The protector must outlive this connection loop.
-    const packet_protector* handshake_protector{};
-    /// @pre The protector must outlive this connection loop.
-    const packet_protector* application_protector{};
     packet_pipeline_config pipeline{};
     std::uint64_t initial_stream_send_max_data{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t initial_connection_send_max_data{std::numeric_limits<std::uint64_t>::max()};
@@ -190,22 +184,22 @@ namespace detail {
 
 [[nodiscard]] inline const packet_protector* tx_protector_for(packet_number_space space, const connection_loop_config& config) noexcept {
     if (space == packet_number_space::application) {
-        return config.application_tx_protector != nullptr ? config.application_tx_protector : config.application_protector;
+        return config.application_tx_protector;
     }
     if (space == packet_number_space::handshake) {
-        return config.handshake_tx_protector != nullptr ? config.handshake_tx_protector : config.handshake_protector;
+        return config.handshake_tx_protector;
     }
-    return config.initial_tx_protector != nullptr ? config.initial_tx_protector : config.initial_protector;
+    return config.initial_tx_protector;
 }
 
 [[nodiscard]] inline const packet_protector* rx_protector_for(packet_number_space space, const connection_loop_config& config) noexcept {
     if (space == packet_number_space::application) {
-        return config.application_rx_protector != nullptr ? config.application_rx_protector : config.application_protector;
+        return config.application_rx_protector;
     }
     if (space == packet_number_space::handshake) {
-        return config.handshake_rx_protector != nullptr ? config.handshake_rx_protector : config.handshake_protector;
+        return config.handshake_rx_protector;
     }
-    return config.initial_rx_protector != nullptr ? config.initial_rx_protector : config.initial_protector;
+    return config.initial_rx_protector;
 }
 
 [[nodiscard]] inline tls_encryption_level tls_level_for(packet_number_space space) noexcept {

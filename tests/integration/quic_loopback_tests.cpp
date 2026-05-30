@@ -59,20 +59,21 @@ flowq::quic::connection_loop make_loop(
     const flowq::quic::packet_protector& protector,
     std::uint64_t initial_stream_send_max_data = UINT64_MAX,
     std::uint64_t initial_connection_send_max_data = UINT64_MAX) {
-    flowq::quic::connection_loop_config config{
-        flowq::quic::connection_role::client,
-        1,
-        std::move(local),
-        std::move(remote),
-        std::move(peer),
-        &protector,
-        &protector,
-        &protector,
-        flowq::quic::packet_pipeline_config{1200},
-        initial_stream_send_max_data,
-        initial_connection_send_max_data,
-        SIZE_MAX
-    };
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = std::move(local);
+    config.remote_connection_id = std::move(remote);
+    config.peer = std::move(peer);
+    config.pipeline = flowq::quic::packet_pipeline_config{1200};
+    config.initial_stream_send_max_data = initial_stream_send_max_data;
+    config.initial_connection_send_max_data = initial_connection_send_max_data;
+    config.max_packet_payload_size = SIZE_MAX;
+    config.initial_tx_protector = &protector;
+    config.initial_rx_protector = &protector;
+    config.handshake_tx_protector = &protector;
+    config.handshake_rx_protector = &protector;
+    config.application_tx_protector = &protector;
+    config.application_rx_protector = &protector;
     config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     return flowq::quic::connection_loop{std::move(config)};
 }

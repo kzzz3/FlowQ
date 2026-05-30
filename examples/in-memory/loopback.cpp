@@ -59,16 +59,19 @@ flowq::quic::session_config make_config(
     config.local_connection_id = std::move(local);
     config.remote_connection_id = std::move(remote);
     config.peer = std::move(peer);
-    config.initial_protector = &protector;
-    config.handshake_protector = &protector;
-    config.application_protector = &protector;
+    config.initial_tx_protector = &protector;
+    config.initial_rx_protector = &protector;
+    config.handshake_tx_protector = &protector;
+    config.handshake_rx_protector = &protector;
+    config.application_tx_protector = &protector;
+    config.application_rx_protector = &protector;
     return config;
 }
 
 } // namespace
 
 int main() {
-    // Plaintext packet protection is test-only and non-production.
+    // Plaintext packet protection is accepted only when test policy is enabled.
     flowq::quic::plaintext_packet_protector protector{};
     flowq::quic::session client{make_config(
         flowq::quic::connection_role::client,
@@ -110,6 +113,6 @@ int main() {
         return 1;
     }
 
-    std::cout << "FlowQ in-memory non-production loopback delivered: " << delivered << '\n';
+    std::cout << "FlowQ in-memory loopback delivered: " << delivered << '\n';
     return 0;
 }

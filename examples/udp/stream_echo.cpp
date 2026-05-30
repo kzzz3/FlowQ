@@ -65,9 +65,12 @@ flowq::quic::session_config make_config(
     config.local_connection_id = std::move(local);
     config.remote_connection_id = std::move(remote);
     config.peer = std::move(peer);
-    config.initial_protector = &protector;
-    config.handshake_protector = &protector;
-    config.application_protector = &protector;
+    config.initial_tx_protector = &protector;
+    config.initial_rx_protector = &protector;
+    config.handshake_tx_protector = &protector;
+    config.handshake_rx_protector = &protector;
+    config.application_tx_protector = &protector;
+    config.application_rx_protector = &protector;
     return config;
 }
 
@@ -96,7 +99,7 @@ struct receive_receiver {
 } // namespace
 
 int main() {
-    // This is a bounded local UDP smoke example, not a production QUIC transport.
+    // This is a bounded local UDP smoke example using the session adapter.
     flowq::context context{};
     udp::socket server_socket{context.io_context(), udp::endpoint{udp::v4(), 0}};
     udp::socket client_socket{context.io_context(), udp::endpoint{udp::v4(), 0}};
@@ -143,6 +146,6 @@ int main() {
         return 1;
     }
 
-    std::cout << "FlowQ local UDP non-production smoke delivered: " << delivered << '\n';
+    std::cout << "FlowQ local UDP smoke delivered: " << delivered << '\n';
     return 0;
 }
