@@ -20,6 +20,7 @@ FLOWQ_CLIENT = Path(
 CERT_FILE = REPO_ROOT / "build" / "certs" / "cert.pem"
 KEY_FILE = REPO_ROOT / "build" / "certs" / "key.pem"
 EXPECTED_STREAM_DATA = b"hello from FlowQ"
+EXPECTED_ECHO_DATA = b"echo from aioquic"
 
 
 class RecordingProtocol(QuicConnectionProtocol):
@@ -36,6 +37,8 @@ class RecordingProtocol(QuicConnectionProtocol):
             print(f"[aioquic] stream data received: stream={event.stream_id} bytes={len(event.data)}")
             self.stream_payloads.append((event.stream_id, bytes(event.data)))
             if event.stream_id == 0 and bytes(event.data) == EXPECTED_STREAM_DATA:
+                self._quic.send_stream_data(event.stream_id, EXPECTED_ECHO_DATA, end_stream=False)
+                self.transmit()
                 self.stream_data_received.set()
         elif isinstance(event, ConnectionTerminated):
             print(f"[aioquic] connection terminated: error={event.error_code} reason={event.reason_phrase}")
@@ -113,7 +116,7 @@ async def main():
             print(f"[Test] Observed stream payloads: {RecordingProtocol.stream_payloads!r}")
             return False
 
-        print("\nInterop test PASSED: aioquic observed QUIC handshake and FlowQ STREAM data")
+        print("\nInterop test PASSED: aioquic observed QUIC handshake, FlowQ STREAM data, and sent echo data")
         return True
     finally:
         server.close()
