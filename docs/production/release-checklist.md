@@ -14,13 +14,15 @@ Current Windows evidence: `scripts/validate-build.ps1` passes configure, build, 
 
 Linux GCC and sanitizer gates are defined but not checked off until they are executed on a Linux host: `linux-gcc-vcpkg`, `linux-gcc-vcpkg-strict`, and `linux-asan-ubsan` presets are available, `scripts/validate-build.sh --preset linux-gcc-vcpkg` validates the Linux package pipeline, and `scripts/validate-sanitizers.sh` validates ASan/UBSan. The current local Windows host cannot produce this evidence because no WSL distribution, Docker daemon, GCC, or Clang is available.
 
+Code-quality evidence: `scripts/validate-checklist.ps1` checks production public QUIC headers for TODO/FIXME comments, placeholder wording, type-safety suppressions, empty catch blocks, hardcoded credentials, documentation comments, and public API snake_case naming.
+
 ## Code Quality Gates
 
 - [x] All public APIs have documentation comments
 - [x] No `as any` or type safety suppressions
 - [x] No empty catch blocks
 - [x] No TODO/FIXME comments in production code paths
-- [ ] Consistent naming conventions across all modules
+- [x] Consistent naming conventions across all modules
 
 ## Security Gates
 

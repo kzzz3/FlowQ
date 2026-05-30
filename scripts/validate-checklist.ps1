@@ -64,6 +64,13 @@ $DocumentedPublicApiHeaders = @(
     "include/flowq/quic/timer_scheduler.hpp"
 )
 
+function Test-SnakeCaseIdentifier {
+    param([string]$Name)
+    return $Name -cmatch "^[a-z][a-z0-9_]*$" -and
+           $Name -cnotmatch "__" -and
+           $Name -cnotmatch "_$"
+}
+
 function Test-ExperimentalPublicHeader {
     param([string]$Path)
     $relative = Get-RepoRelativePath $Path
@@ -289,6 +296,65 @@ if ($publicApiDocGapCount -gt 0) {
     Write-Host ""
 }
 
+# 8. Check public QUIC API naming conventions
+Write-Host ""
+Write-Host "Checking public QUIC API naming conventions..." -ForegroundColor Yellow
+
+$namingViolationCount = 0
+Get-ChildItem -Path include/flowq/quic -Filter "*.hpp" -Recurse | ForEach-Object {
+    $file = $_.FullName
+    if (Test-ExperimentalPublicHeader $file) {
+        return
+    }
+
+    $lines = Get-Content $file
+    $inDetailNamespace = $false
+    for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex += 1) {
+        $trimmed = $lines[$lineIndex].Trim()
+        if ($trimmed -eq "namespace detail {") {
+            $inDetailNamespace = $true
+            continue
+        }
+        if ($trimmed -eq "} // namespace detail") {
+            $inDetailNamespace = $false
+            continue
+        }
+        if ($inDetailNamespace) {
+            continue
+        }
+
+        $typeMatch = [regex]::Match($trimmed, "^(enum class|struct|class)\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+        if ($typeMatch.Success) {
+            $name = $typeMatch.Groups[2].Value
+            if (!(Test-SnakeCaseIdentifier $name)) {
+                $namingViolationCount += 1
+                $lineNumber = $lineIndex + 1
+                $relative = Get-RepoRelativePath $file
+                Write-Host "VIOLATION: Public API type is not snake_case in ${relative}:$lineNumber" -ForegroundColor Red
+                Write-Host "  $trimmed"
+            }
+            continue
+        }
+
+        $functionMatch = [regex]::Match($trimmed, '^\[\[nodiscard\]\]\s+(?:inline\s+)?(?:static\s+)?(?:virtual\s+)?(?:auto|[A-Za-z_:][A-Za-z0-9_:<>,&*\s]*?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(')
+        if ($functionMatch.Success) {
+            $name = $functionMatch.Groups[1].Value
+            if (!(Test-SnakeCaseIdentifier $name)) {
+                $namingViolationCount += 1
+                $lineNumber = $lineIndex + 1
+                $relative = Get-RepoRelativePath $file
+                Write-Host "VIOLATION: Public API function is not snake_case in ${relative}:$lineNumber" -ForegroundColor Red
+                Write-Host "  $trimmed"
+            }
+        }
+    }
+}
+
+if ($namingViolationCount -gt 0) {
+    $Violations += $namingViolationCount
+    Write-Host ""
+}
+
 Write-Host ""
 Write-Host "=== Summary ===" -ForegroundColor Cyan
 Write-Host "Type safety suppressions: $asAnyCount"
@@ -298,6 +364,7 @@ Write-Host "TODO/FIXME comments: $todoCount"
 Write-Host "Forbidden production claims: $forbiddenClaimCount"
 Write-Host "Placeholder implementation wording: $placeholderCount"
 Write-Host "Public API documentation gaps: $publicApiDocGapCount"
+Write-Host "Public API naming violations: $namingViolationCount"
 
 if ($Violations -gt 0) {
     Write-Host "FAILED: Found $Violations violations" -ForegroundColor Red
