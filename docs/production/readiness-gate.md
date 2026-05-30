@@ -43,6 +43,7 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ `scripts/run-interop.ps1` and `scripts/run-interop.sh` call the built harness binary and write per-scenario JSON results.
 - ✅ Harness wiring was verified locally with `FLOWQ_INTEROP_SCENARIO=basic_handshake` and a local executable peer.
 - ✅ FlowQ client handshake and bidirectional stream 0 echo pass against Python `aioquic` 1.3.0 in conda environment `expr`.
+- ✅ The aioquic validation run recorded FlowQ TLS backend OpenSSL QUIC TLS (`OpenSSL 3.6.1 27 Jan 2026`) and negotiated cipher suite `TLS_AES_128_GCM_SHA256`.
 - ✅ Coalesced long-header datagrams now stay in core connection processing: peer source CID learning, trailing zero padding, and packet-protector refresh are covered by unit tests and the aioquic handshake regression.
 - ⚠️ Named non-aioquic QUIC peers are not available in the current local environment: ngtcp2, quiche, MsQuic, picoquic, and lsquic were not found on PATH.
 
@@ -90,7 +91,7 @@ FlowQ can only claim production-candidate status for the exact scope backed by l
 - [x] Bidirectional stream echo passes against aioquic 1.3.0.
 - [ ] Loss recovery passes against named external QUIC peer versions.
 - [x] Interop results are recorded in `docs/interop/results.md`.
-- [ ] TLS backend and cipher-suite versions used during validation are recorded.
+- [x] TLS backend and cipher-suite versions used during validation are recorded.
 - [ ] Human security review is recorded.
 
 ## Forbidden Public Claims

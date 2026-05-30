@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstddef>
+#include <string_view>
 
 namespace flowq::quic {
 
@@ -14,6 +15,20 @@ enum class cipher_suite {
     aes_256_gcm_sha384,
     chacha20_poly1305_sha256
 };
+
+[[nodiscard]] inline std::string_view cipher_suite_name(cipher_suite suite) noexcept {
+    switch (suite) {
+    case cipher_suite::aes_128_gcm_sha256:
+        return "TLS_AES_128_GCM_SHA256";
+    case cipher_suite::aes_256_gcm_sha384:
+        return "TLS_AES_256_GCM_SHA384";
+    case cipher_suite::chacha20_poly1305_sha256:
+        return "TLS_CHACHA20_POLY1305_SHA256";
+    case cipher_suite::unknown:
+        return "unknown";
+    }
+    return "unknown";
+}
 
 struct crypto_capabilities {
     bool hkdf{};
