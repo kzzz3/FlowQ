@@ -36,6 +36,11 @@ struct stream_id_info {
     };
 }
 
+struct stream_limits {
+    std::uint64_t bidirectional{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t unidirectional{std::numeric_limits<std::uint64_t>::max()};
+};
+
 struct stream_receive_result {
     flowq::buffer data;
     bool final_size_known{};
@@ -307,12 +312,18 @@ struct stream_delivery {
 
 class stream_receive_set {
 public:
-    explicit stream_receive_set(std::uint64_t initial_max_data = std::numeric_limits<std::uint64_t>::max()) noexcept
-        : initial_max_data_{initial_max_data} {}
+    explicit stream_receive_set(
+        std::uint64_t initial_max_data = std::numeric_limits<std::uint64_t>::max(),
+        stream_initiator local_initiator = stream_initiator::client,
+        stream_limits peer_limits = {}) noexcept
+        : initial_max_data_{initial_max_data}, local_initiator_{local_initiator}, peer_limits_{peer_limits} {}
 
     [[nodiscard]] stream_delivery receive(const stream_frame& frame) {
-        auto& state = state_for(frame.stream_id);
-        return {frame.stream_id, state.receive(frame)};
+        auto* state = ensure_state_for(frame.stream_id);
+        if (state == nullptr) {
+            return {frame.stream_id, stream_receive_result{{}, false, 0, false, detail::stream_error("peer stream count limit exceeded")}};
+        }
+        return {frame.stream_id, state->receive(frame)};
     }
 
     [[nodiscard]] stream_delivery reset(const reset_stream_frame& frame) {
@@ -335,12 +346,34 @@ public:
 
 private:
     std::uint64_t initial_max_data_{std::numeric_limits<std::uint64_t>::max()};
+    stream_initiator local_initiator_{stream_initiator::client};
+    stream_limits peer_limits_{};
     std::map<std::uint64_t, stream_receive_state> streams_{};
 
     [[nodiscard]] stream_receive_state& state_for(std::uint64_t stream_id) {
         auto [iterator, inserted] = streams_.try_emplace(stream_id, initial_max_data_);
         (void)inserted;
         return iterator->second;
+    }
+
+    [[nodiscard]] stream_receive_state* find_mutable(std::uint64_t stream_id) noexcept {
+        const auto found = streams_.find(stream_id);
+        return found == streams_.end() ? nullptr : &found->second;
+    }
+
+    [[nodiscard]] stream_receive_state* ensure_state_for(std::uint64_t stream_id) {
+        if (auto* existing = find_mutable(stream_id)) {
+            return existing;
+        }
+        const auto info = classify_stream_id(stream_id);
+        if (info.initiator != local_initiator_) {
+            const auto ordinal = stream_id >> 2U;
+            const auto limit = info.direction == stream_direction::bidirectional ? peer_limits_.bidirectional : peer_limits_.unidirectional;
+            if (ordinal >= limit) {
+                return nullptr;
+            }
+        }
+        return &state_for(stream_id);
     }
 };
 
@@ -350,11 +383,6 @@ struct stream_operation_result {
     [[nodiscard]] bool ok() const noexcept {
         return error.ok();
     }
-};
-
-struct stream_limits {
-    std::uint64_t bidirectional{std::numeric_limits<std::uint64_t>::max()};
-    std::uint64_t unidirectional{std::numeric_limits<std::uint64_t>::max()};
 };
 
 struct stream_send_range {

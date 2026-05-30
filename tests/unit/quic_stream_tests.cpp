@@ -314,6 +314,25 @@ TEST_CASE("stream receive set routes stream credit updates independently") {
     CHECK(streams.find(4)->max_data() == 2);
 }
 
+TEST_CASE("stream receive set enforces peer bidirectional stream count limit") {
+    flowq::quic::stream_receive_set streams{
+        std::numeric_limits<std::uint64_t>::max(),
+        flowq::quic::stream_initiator::client,
+        flowq::quic::stream_limits{1, std::numeric_limits<std::uint64_t>::max()}
+    };
+
+    auto first = streams.receive(stream(1, 0, "alpha"));
+    auto rejected = streams.receive(stream(5, 0, "beta"));
+    auto own_initiated = streams.receive(stream(0, 0, "reply"));
+
+    REQUIRE(first.result.ok());
+    CHECK_FALSE(rejected.result.ok());
+    CHECK(rejected.result.error.code() == flowq::error_code::protocol_error);
+    CHECK(streams.find(5) == nullptr);
+    REQUIRE(own_initiated.result.ok());
+    REQUIRE(streams.find(0) != nullptr);
+}
+
 TEST_CASE("stream send state emits STREAM frames with stable offsets") {
     flowq::quic::stream_send_state state{4};
     REQUIRE(state.append(text("hello")).ok());
