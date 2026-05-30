@@ -610,6 +610,21 @@ TEST_CASE("connection loop discards Initial space after draining TLS handshake k
     CHECK_FALSE(loop.next_recovery_timer(at(1ms)).has_value());
 }
 
+TEST_CASE("connection loop explicit packet-space discard clears recovery state") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+
+    loop.queue_handshake({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+    (void)loop.drain_actions();
+    REQUIRE(loop.next_recovery_timer(at(1ms)).has_value());
+
+    loop.discard_packet_space(flowq::quic::packet_number_space::handshake);
+
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::handshake).packets().empty());
+    CHECK_FALSE(loop.next_recovery_timer(at(1ms)).has_value());
+}
+
 TEST_CASE("connection loop feeds inbound CRYPTO frames to TLS adapter by packet space") {
     flowq::quic::plaintext_packet_protector protector{};
     recording_tls_adapter adapter{};
@@ -1110,6 +1125,64 @@ TEST_CASE("connection loop maps recovery timer loss to stream retransmission sta
     CHECK(stream.stream_id == 0);
     CHECK(stream.offset == 0);
     CHECK(as_string(stream.data) == "hello");
+}
+
+TEST_CASE("connection loop maps PTO to stream probe retransmission state") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(client.append_stream_data(0, text("hello")).ok());
+    auto scheduled = client.schedule_stream_frames(order, 1, 16);
+    REQUIRE(scheduled.ok());
+    client.queue_initial(std::move(scheduled.frames));
+    client.flush(at(0ms));
+    (void)client.drain_actions();
+
+    auto timer = client.next_recovery_timer(at(1000ms));
+    REQUIRE(timer.has_value());
+    REQUIRE(timer->mode == flowq::quic::loss_timer_mode::pto);
+    auto expired = client.on_recovery_timer(timer->space, timer->deadline);
+    auto retransmit = client.schedule_stream_frames(order, 1, 16);
+
+    CHECK(expired.newly_lost == std::vector<std::uint64_t>{0});
+    REQUIRE(retransmit.ok());
+    REQUIRE(retransmit.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(retransmit.frames[0]));
+    const auto& stream = std::get<flowq::quic::stream_frame>(retransmit.frames[0]);
+    CHECK(stream.stream_id == 0);
+    CHECK(stream.offset == 0);
+    CHECK(as_string(stream.data) == "hello");
+}
+
+TEST_CASE("connection loop arms Application PTO after TLS confirms handshake") {
+    flowq::quic::plaintext_packet_protector protector{};
+    recording_tls_adapter adapter{};
+    adapter.state_value = flowq::quic::handshake_state::handshake_confirmed;
+    adapter.keys = flowq::quic::tls_key_availability{true, true, true};
+
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = cid({0x01});
+    config.remote_connection_id = cid({0x02});
+    config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
+    config.initial_tx_protector = &protector;
+    config.initial_rx_protector = &protector;
+    config.handshake_tx_protector = &protector;
+    config.handshake_rx_protector = &protector;
+    config.application_tx_protector = &protector;
+    config.application_rx_protector = &protector;
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
+    config.tls_adapter = &adapter;
+    auto loop = flowq::quic::connection_loop{std::move(config)};
+
+    loop.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    loop.flush(at(0ms));
+    (void)loop.drain_actions();
+    auto timer = loop.next_recovery_timer(at(1000ms));
+
+    REQUIRE(timer.has_value());
+    CHECK(timer->space == flowq::quic::packet_number_space::application);
+    CHECK(timer->mode == flowq::quic::loss_timer_mode::pto);
 }
 
 TEST_CASE("connection loop maps packet ACK to suppress later stream retransmission") {
