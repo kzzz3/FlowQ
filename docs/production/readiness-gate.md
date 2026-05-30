@@ -16,6 +16,7 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ **Install + package-consumer** build path
 - ✅ **Release-readiness script** (`scripts/check-release-readiness.ps1 -SkipBuild`)
 - ✅ **Checklist validator** (`scripts/validate-checklist.ps1`)
+- ⚠️ **Linux GCC preset** (`linux-gcc-vcpkg`) and **ASan/UBSan preset** (`linux-asan-ubsan`) exist, but Linux execution evidence is not recorded in this local environment.
 
 ### Packet Protection
 
@@ -51,7 +52,7 @@ This document records the current evidence required before FlowQ can claim produ
 ### Hardening
 
 - ✅ Fuzz targets: `fuzz_packet_header`, `fuzz_frame_decode`, `fuzz_qpack`.
-- ✅ ASan + UBSan workflow in `.github/workflows/robustness.yml`.
+- ✅ ASan + UBSan workflow in `.github/workflows/robustness.yml` uses the same vcpkg manifest dependency path as the standard Linux build.
 - ✅ `detail::` namespace access is gated by `FLOWQ_DETAIL`.
 - ✅ Inspection methods are gated by `FLOWQ_ENABLE_INSPECTION`.
 - ✅ Public value-returning methods use `[[nodiscard]]` where applicable.

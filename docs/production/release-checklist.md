@@ -12,6 +12,8 @@ Complete all items before claiming production-candidate status. Checked items mu
 
 Current Windows evidence: `scripts/validate-build.ps1` passes configure, build, 482 CTest tests, install, and package-consumer configure/build on the Windows MSVC/vcpkg preset; `build/package-consumer/Debug/flowq_package_consumer.exe` exits successfully. Strict warning evidence: `FLOWQ_ENABLE_STRICT_WARNINGS=ON` Debug build passes with MSVC `/W4 /WX /permissive- /EHsc`, and the strict-warning build runs 483 CTest tests successfully.
 
+Linux GCC and sanitizer gates are defined but not checked off until they are executed on a Linux host: `linux-gcc-vcpkg`, `linux-gcc-vcpkg-strict`, and `linux-asan-ubsan` presets are available, `scripts/validate-build.sh --preset linux-gcc-vcpkg` validates the Linux package pipeline, and `scripts/validate-sanitizers.sh` validates ASan/UBSan. The current local Windows host cannot produce this evidence because no WSL distribution, Docker daemon, GCC, or Clang is available.
+
 ## Code Quality Gates
 
 - [ ] All public APIs have documentation comments
