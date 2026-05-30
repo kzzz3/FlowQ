@@ -57,18 +57,6 @@ target_link_libraries(
 )
 
 if(FLOWQ_BUILD_EXAMPLES)
-    add_executable(flowq_example_in_memory_loopback examples/in-memory/loopback.cpp)
-    target_link_libraries(flowq_example_in_memory_loopback PRIVATE FlowQ::flowq)
-    flowq_enable_project_warnings(flowq_example_in_memory_loopback)
-
-    add_executable(flowq_example_udp_stream_echo examples/udp/stream_echo.cpp)
-    target_link_libraries(flowq_example_udp_stream_echo PRIVATE FlowQ::flowq)
-    flowq_enable_project_warnings(flowq_example_udp_stream_echo)
-
-    add_executable(flowq_example_protection_policy examples/protection-policy/main.cpp)
-    target_link_libraries(flowq_example_protection_policy PRIVATE FlowQ::flowq)
-    flowq_enable_project_warnings(flowq_example_protection_policy)
-
     add_executable(flowq_example_qpack examples/qpack/main.cpp)
     target_link_libraries(flowq_example_qpack PRIVATE FlowQ::flowq)
     flowq_enable_project_warnings(flowq_example_qpack)
@@ -77,11 +65,6 @@ endif()
 
 if(FLOWQ_BUILD_TESTS)
     include(CTest)
-    if(FLOWQ_BUILD_EXAMPLES)
-        add_test(NAME flowq.example.in_memory_loopback COMMAND flowq_example_in_memory_loopback)
-        add_test(NAME flowq.example.udp_stream_echo COMMAND flowq_example_udp_stream_echo)
-        add_test(NAME flowq.example.protection_policy COMMAND flowq_example_protection_policy)
-    endif()
     add_test(
         NAME flowq.release_readiness
         COMMAND powershell

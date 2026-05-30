@@ -1,3 +1,4 @@
+#include "plaintext_packet_protector.hpp"
 #include <flowq/quic/session.hpp>
 #include <flowq/quic/tls_handshake.hpp>
 
@@ -198,7 +199,7 @@ TEST_CASE("QUIC session blocks production Application data before TLS handshake 
 }
 
 TEST_CASE("QUIC session queues stream data before flush returns outbound Application datagrams") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     auto session = flowq::quic::session{make_config(
         cid({0x01}),
         cid({0x02}),
@@ -221,7 +222,7 @@ TEST_CASE("QUIC session queues stream data before flush returns outbound Applica
 }
 
 TEST_CASE("QUIC session receives Application datagrams as stream deliveries") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     auto client = flowq::quic::session{make_config(
         cid({0x01}),
         cid({0x02}),
@@ -252,7 +253,7 @@ TEST_CASE("QUIC session receives Application datagrams as stream deliveries") {
 }
 
 TEST_CASE("QUIC session acknowledges received Application datagrams") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     auto client = flowq::quic::session{make_config(
         cid({0x01}),
         cid({0x02}),
@@ -279,7 +280,7 @@ TEST_CASE("QUIC session acknowledges received Application datagrams") {
 }
 
 TEST_CASE("QUIC session forwards packet-space discard gates") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     flowq::quic::key_lifecycle_state lifecycle{};
     lifecycle.discard(flowq::quic::packet_number_space::initial);
 
@@ -299,7 +300,7 @@ TEST_CASE("QUIC session forwards packet-space discard gates") {
 }
 
 TEST_CASE("QUIC session rejects stream work after peer connection close") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     auto peer = make_loop(
         cid({0x01}),
         cid({0x02}),
@@ -335,7 +336,7 @@ TEST_CASE("QUIC session rejects stream work after peer connection close") {
 }
 
 TEST_CASE("QUIC session exposes lifecycle timer and returns idle timeout close") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     auto config = make_config(
         cid({0x01}),
         cid({0x02}),
@@ -361,7 +362,7 @@ TEST_CASE("QUIC session exposes lifecycle timer and returns idle timeout close")
 }
 
 TEST_CASE("QUIC session does not arm Application recovery timer before handshake confirmation") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     auto session = flowq::quic::session{make_config(
         cid({0x01}),
         cid({0x02}),

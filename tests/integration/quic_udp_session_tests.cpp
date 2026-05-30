@@ -1,3 +1,4 @@
+#include "plaintext_packet_protector.hpp"
 #include <flowq/context.hpp>
 #include <flowq/quic/lifecycle_scheduler.hpp>
 #include <flowq/quic/udp_session.hpp>
@@ -114,7 +115,7 @@ struct lifecycle_receiver {
 TEST_CASE("UDP session binds an externally owned socket without taking ownership") {
     flowq::context context{};
     udp::socket socket{context.io_context(), udp::endpoint{udp::v4(), 0}};
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     udp::endpoint peer{::asio::ip::address_v4::loopback(), 4433};
 
     flowq::quic::udp_session adapter{socket, flowq::quic::udp_session_config{
@@ -135,7 +136,7 @@ TEST_CASE("UDP session sends flushed QUIC session datagrams over loopback") {
     udp::socket client_socket{context.io_context(), udp::endpoint{udp::v4(), 0}};
     auto server_endpoint = udp::endpoint{::asio::ip::address_v4::loopback(), server_socket.local_endpoint().port()};
     auto client_endpoint = udp::endpoint{::asio::ip::address_v4::loopback(), client_socket.local_endpoint().port()};
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
 
     flowq::quic::udp_session client{client_socket, flowq::quic::udp_session_config{
         make_config(cid({0x01}), cid({0x02}), flowq::endpoint{"127.0.0.1", server_endpoint.port(), "hq-interop"}, protector),
@@ -174,7 +175,7 @@ TEST_CASE("UDP session exposes QUIC lifecycle timer for scheduler integration") 
     flowq::context context{};
     udp::socket socket{context.io_context(), udp::endpoint{udp::v4(), 0}};
     udp::endpoint peer{::asio::ip::address_v4::loopback(), 4433};
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     auto config = make_config(cid({0x01}), cid({0x02}), flowq::endpoint{"127.0.0.1", 4433, "hq-interop"}, protector);
     config.max_idle_timeout = 5ms;
 

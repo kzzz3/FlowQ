@@ -1,3 +1,4 @@
+#include "plaintext_packet_protector.hpp"
 #include <flowq/quic/connection.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -175,7 +176,7 @@ public:
     }
 
 private:
-    flowq::quic::plaintext_packet_protector protector_{};
+    flowq::quic::test::plaintext_packet_protector protector_{};
     flowq::quic::connection_loop client_;
     flowq::quic::connection_loop server_;
     std::map<std::uint64_t, std::string> client_delivered_{};

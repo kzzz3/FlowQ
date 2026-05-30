@@ -51,7 +51,7 @@ FlowQ is a C++20 QUIC transport library moving toward a narrow production-candid
 - **stdexec**: sender/receiver direction isolated behind small seams.
 - **Catch2**: readable, focused unit tests for protocol values and connection behavior.
 
-Architecture follows value codecs first, deterministic tests second, connection integration third, and endpoint/interop evidence last. The current production-candidate boundary is evidence-based: AES-128-GCM packet protection exists behind OpenSSL, plaintext/test protection is rejected by production policy, and aioquic handshake, stream echo, and loss-recovery interop evidence is recorded. Remaining production-candidate gates are tracked in `docs/production/readiness-gate.md`.
+Architecture follows value codecs first, deterministic tests second, connection integration third, and endpoint/interop evidence last. The current production-candidate boundary is evidence-based: AES-128-GCM packet protection exists behind OpenSSL, plaintext packet protection is isolated to test support, production policy rejects test-only protectors, and aioquic handshake, stream echo, and loss-recovery interop evidence is recorded. Remaining production-candidate gates are tracked in `docs/production/readiness-gate.md`.
 
 ## Project Structure
 
@@ -113,7 +113,7 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 - **Application packet modeling risk**: Application packet counters and trackers must remain independent from Initial and Handshake state.
 - **Reset/stop scope risk**: reset/stop behavior is covered structurally; application-level cancellation semantics require explicit API evidence before being claimed.
 - **Loopback scope risk**: deterministic in-memory and local UDP smoke paths are not external peer interop evidence.
-- **Security claim risk**: plaintext/test protection must remain outside production-required packet-protection policy.
+- **Security claim risk**: plaintext packet protection must remain test-support only, and production-required packet-protection policy must keep rejecting test-only protectors.
 - **Scope creep risk**: documented production-candidate scope must match implemented AES-128-GCM, header protection, recovery, routing, endpoint, and path-validation evidence.
 - **Library surface risk**: the public session façade should avoid exposing raw internal frame queues as the primary consumer API.
 - **Packaging risk**: examples and CMake package consumption must build from documented commands, not only from the monorepo test binary.

@@ -92,7 +92,7 @@ All code is in headers for easy integration. No separate compilation units.
 
 ### Deterministic Testing
 
-Unit tests use deterministic timers and local packet-protection seams. OpenSSL-enabled tests cover AES-128-GCM packet protection; default tests keep plaintext/test protection isolated from production-required policy.
+Unit tests use deterministic timers and local packet-protection seams. OpenSSL-enabled tests cover AES-128-GCM packet protection; plaintext packet protection lives only in test support, and production-required policy rejects test-only protectors.
 
 ### Virtual Seams
 

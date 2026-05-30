@@ -25,7 +25,8 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ Header protection uses the RFC 9001 initial header-protection path.
 - ✅ Unsupported suites such as ChaCha20-Poly1305 and AES-256-GCM are rejected explicitly.
 - ✅ AEAD creation fails closed when the OpenSSL crypto backend is not compiled in.
-- ✅ Plaintext/test protection is rejected when production protection is required.
+- ✅ Plaintext packet protection is isolated to test support and is not part of installed public headers.
+- ✅ Test-only protectors are rejected when production protection is required.
 
 ### Transport Behavior
 
@@ -58,6 +59,7 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ Public value-returning methods use `[[nodiscard]]` where applicable.
 - ✅ Movable core types use explicit `noexcept` move operations.
 - ✅ Public pointer ownership and thread-safety contracts are documented.
+- ✅ Plaintext packet-protection helpers are kept out of the installed public API surface.
 
 ## Production-Candidate Scope
 

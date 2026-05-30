@@ -2,6 +2,7 @@
 #include <flowq/quic/session.hpp>
 #include <flowq/quic/connection.hpp>
 #include <flowq/quic/packet_pipeline.hpp>
+#include "plaintext_packet_protector.hpp"
 #include <flowq/quic/qpack.hpp>
 #include <flowq/quic/http3.hpp>
 #include <flowq/quic/congestion.hpp>
@@ -34,7 +35,7 @@ TEST_CASE("benchmark session lifecycle") {
     flowq::benchmark::benchmark_suite suite;
 
     suite.add("session_create_destroy", []() {
-        flowq::quic::plaintext_packet_protector protector{};
+        flowq::quic::test::plaintext_packet_protector protector{};
         flowq::quic::session_config config{
             .role = flowq::quic::connection_role::client,
             .local_connection_id = make_cid({0x01}),

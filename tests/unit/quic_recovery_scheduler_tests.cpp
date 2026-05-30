@@ -1,3 +1,4 @@
+#include "plaintext_packet_protector.hpp"
 #include <flowq/context.hpp>
 #include <flowq/quic/recovery_scheduler.hpp>
 #include <flowq/quic/session.hpp>
@@ -92,7 +93,7 @@ struct scheduler_receiver {
 
 TEST_CASE("recovery scheduler completes immediately when session has no recovery timer") {
     flowq::context context{};
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     flowq::quic::session session{make_config(
         cid({0x01}),
         cid({0x02}),
