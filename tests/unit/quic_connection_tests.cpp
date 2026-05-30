@@ -844,6 +844,38 @@ TEST_CASE("connection loop routes inbound STREAM frames to receive streams") {
     CHECK(as_string(event.stream_deliveries[0].result.data) == "hello");
 }
 
+TEST_CASE("connection loop closes when peer exceeds advertised stream count") {
+    flowq::quic::plaintext_packet_protector protector{};
+    auto peer = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::server;
+    config.local_connection_id = cid({0x02});
+    config.remote_connection_id = cid({0x01});
+    config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
+    config.pipeline = flowq::quic::packet_pipeline_config{1200};
+    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
+    config.initial_tx_protector = &protector;
+    config.initial_rx_protector = &protector;
+    config.handshake_tx_protector = &protector;
+    config.handshake_rx_protector = &protector;
+    config.application_tx_protector = &protector;
+    config.application_rx_protector = &protector;
+    config.initial_max_streams_bidi = 1;
+    auto server = flowq::quic::connection_loop{std::move(config)};
+
+    peer.queue_initial({flowq::quic::frame{flowq::quic::stream_frame{4, 0, false, true, false, text("excess")}}});
+    peer.flush();
+    auto outbound = require_single_outbound(peer.drain_actions());
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(outbound.payload), flowq::endpoint{"client", 1111, "hq-interop"}});
+    auto actions = server.drain_actions();
+
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(actions[0]));
+    const auto& close = std::get<flowq::quic::close_action>(actions[0]);
+    CHECK(close.error.code() == flowq::error_code::protocol_error);
+    CHECK(server.state() == flowq::quic::connection_loop_state::closing);
+}
+
 TEST_CASE("connection loop schedules outbound STREAM frames from connection stream state") {
     flowq::quic::plaintext_packet_protector protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);

@@ -18,6 +18,10 @@ class connection_loop {
 public:
     explicit connection_loop(connection_loop_config config)
         : config_{std::move(config)},
+          receive_streams_{
+              config_.initial_max_stream_data_bidi_local,
+              local_stream_initiator(config_.role),
+              stream_limits{config_.initial_max_streams_bidi, config_.initial_max_streams_uni}},
           send_streams_{
               config_.initial_stream_send_max_data,
               stream_limits{config_.initial_max_streams_bidi, config_.initial_max_streams_uni}},
@@ -467,6 +471,10 @@ private:
             }
         }
         return static_cast<std::uint64_t>(value);
+    }
+
+    [[nodiscard]] static stream_initiator local_stream_initiator(connection_role role) noexcept {
+        return role == connection_role::client ? stream_initiator::client : stream_initiator::server;
     }
 
     static void saturating_add(std::uint64_t& target, std::size_t value) noexcept {
@@ -1041,6 +1049,12 @@ private:
         }
         refresh_key_lifecycle();
         auto stream_deliveries = receive_stream_frames(parsed.frames);
+        for (const auto& delivery : stream_deliveries) {
+            if (!delivery.result.ok()) {
+                enter_closing(delivery.result.error, received_at);
+                return;
+            }
+        }
         actions_.emplace_back(received_packet_event{parsed.number, std::move(parsed.frames), config_.peer, std::move(stream_deliveries)});
     }
 };
