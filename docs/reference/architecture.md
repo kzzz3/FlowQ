@@ -2,7 +2,7 @@
 
 ## Design Overview
 
-FlowQ is a C++20 QUIC transport library under production hardening. The current architecture combines deterministic protocol primitives, connection-loop behavior, packet-protection seams, OpenSSL-gated AES-128-GCM packet protection, local endpoint surfaces, diagnostics, and release-gate tooling. Production-candidate status is gated on recorded external peer interop and human review.
+FlowQ is a C++20 QUIC transport library under production hardening. The current architecture combines deterministic protocol primitives, connection-loop behavior, packet-protection seams, OpenSSL-gated AES-128-GCM packet protection, local endpoint surfaces, diagnostics, release-gate tooling, and recorded aioquic handshake, stream, and loss-recovery interop evidence. Production-candidate status is gated on the remaining release evidence and human review.
 
 ## Architecture Layers
 
@@ -151,7 +151,7 @@ Robustness testing with random inputs.
 
 ## Production-Candidate Boundary
 
-- External peer interop results are not recorded.
+- aioquic 1.3.0 interop results are recorded for handshake, bidirectional stream echo, and application loss recovery.
 - Human security review is not recorded.
 - ChaCha20-Poly1305 and AES-256-GCM packet protection are rejected by `openssl_aead_protector`.
 - Live AEAD key update installation is outside current evidence.

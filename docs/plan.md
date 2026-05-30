@@ -51,7 +51,7 @@ FlowQ is a C++20 QUIC transport library moving toward a narrow production-candid
 - **stdexec**: sender/receiver direction isolated behind small seams.
 - **Catch2**: readable, focused unit tests for protocol values and connection behavior.
 
-Architecture follows value codecs first, deterministic tests second, connection integration third, and endpoint/interop evidence last. The current production-candidate boundary is evidence-based: AES-128-GCM packet protection exists behind OpenSSL, plaintext/test protection is rejected by production policy, and external peer interop evidence remains the main open gate.
+Architecture follows value codecs first, deterministic tests second, connection integration third, and endpoint/interop evidence last. The current production-candidate boundary is evidence-based: AES-128-GCM packet protection exists behind OpenSSL, plaintext/test protection is rejected by production policy, and aioquic handshake, stream echo, and loss-recovery interop evidence is recorded. Remaining production-candidate gates are tracked in `docs/production/readiness-gate.md`.
 
 ## Project Structure
 
@@ -128,4 +128,4 @@ Completed through M15: connection-owned streams, connection flow control, payloa
 - **Short-header risk**: short-header modeling and packet-protection seams must stay aligned with 1-RTT AEAD and packet-number reconstruction tests.
 - **Key lifecycle risk**: deterministic availability and packet-space discard gates exist; live AEAD key update installation is still outside current evidence.
 - **Congestion baseline risk**: deterministic bytes-in-flight accounting and NewReno-style congestion behavior exist; pacing, ECN, and production performance tuning remain separate.
-- **Connection routing risk**: routing table, version negotiation, retry helpers, and endpoint lifecycle exist; full address validation and peer interop remain open gates.
+- **Connection routing risk**: routing table, version negotiation, retry helpers, and endpoint lifecycle exist; full address validation and non-aioquic peer coverage remain open gates.
