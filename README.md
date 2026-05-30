@@ -14,7 +14,7 @@ FlowQ is a C++20 QUIC transport library under production hardening. The current 
 - **QUIC v1 transport core**: value codecs, packet pipeline, streams, ACK/loss, flow control, routing, and timers.
 - **TLS 1.3 adapter surface**: OpenSSL 3.5+ QUIC TLS via `SSL_set_quic_tls_cbs()` when enabled.
 - **AEAD Protection**: AES-128-GCM with RFC 9001 header protection
-- **Production policy gate**: test-only packet protection is rejected when production protection is required.
+- **Production policy gate**: installed packet APIs require production-capable protection by default.
 - **Interop harness**: process-driven scripts and harness wiring for external peer validation.
 
 ## Documentation
@@ -35,7 +35,7 @@ FlowQ is organized around explicit protocol boundaries:
 
 1. Value codecs for varints, frames, packet headers, transport parameters, and packet numbers.
 2. Deterministic connection-loop state for packet spaces, streams, ACK/loss, recovery, congestion, routing, retry, and lifecycle timers.
-3. Packet protection seams that reject test-only protectors when production protection is required.
+3. Packet protection seams that require production-capable protectors by default.
 4. OpenSSL-gated AES-128-GCM packet protection and RFC 9001 header protection when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled.
 5. Public session, UDP/ASIO, endpoint-driver, diagnostics, fuzz, package-consumer, and CI surfaces.
 6. Structural HTTP/3, QPACK, WebTransport, 0-RTT, BBR, and CUBIC modules that are documented outside the production-candidate scope.
@@ -67,16 +67,6 @@ cmake --build --preset windows-msvc-vcpkg
 ```powershell
 ctest --preset windows-msvc-vcpkg --timeout 10
 ```
-
-### Examples
-
-The default Windows preset builds example executables alongside tests:
-
-- `flowq_example_in_memory_loopback`
-- `flowq_example_udp_stream_echo`
-- `flowq_example_protection_policy`
-
-These examples demonstrate deterministic in-memory stream exchange, local UDP session wiring, and packet-protection policy behavior showing that plaintext/test-only protection is rejected when production protection is required.
 
 ### Install and package consumption
 
@@ -124,9 +114,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - `include/flowq/quic/recovery_scheduler.hpp`: ASIO scheduling adapter for deterministic QUIC recovery timer values.
 - `include/flowq/quic/lifecycle_scheduler.hpp`: ASIO scheduling adapter for idle, closing, and draining lifecycle timers.
 - `include/flowq/quic/timer_scheduler.hpp`: unified ASIO scheduling adapter that selects the earliest recovery or lifecycle timer.
-- `examples/in_memory_loopback.cpp`: deterministic in-memory session façade example.
-- `examples/udp_stream_echo.cpp`: local UDP session example.
-- `examples/protection_policy.cpp`: packet-protection policy example showing plaintext rejection under production-required policy.
+- `examples/qpack/main.cpp`: QPACK codec example.
 - `tests/integration/`: deterministic in-memory loopback tests that compose connection-loop pieces.
 - `tests/unit/`: Catch2 tests for each protocol module.
 - `.github/workflows/ci.yml`: Windows MSVC/vcpkg CI gate for build, tests, install, and package consumption.
@@ -158,12 +146,10 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 
 - **Transport core**: QUIC varints, frames, packet headers, packet pipeline, packet-number helpers, transport parameters, ACK/loss, stream state, and flow-control frames.
 - **Connection behavior**: deterministic packet-space handling, connection lifecycle, recovery timers, congestion accounting, connection ID routing, version negotiation, retry helpers, and endpoint-driver lifecycle.
-- **Packet protection**: OpenSSL-backed AES-128-GCM packet protection with header protection when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled; unsupported cipher suites are rejected; creation fails closed when the OpenSSL crypto backend is not compiled in.
+- **Packet protection**: OpenSSL-backed AES-128-GCM packet protection with header protection when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled; unsupported cipher suites are rejected; creation fails closed when the OpenSSL crypto backend is not compiled in; plaintext packet protection is kept in test support only.
 - **Path validation primitives**: PATH_CHALLENGE/PATH_RESPONSE codec support and Application-space same-value response scheduling.
-- **Public surfaces**: session facade, UDP/ASIO adapter, timer schedulers, diagnostics, examples, CMake package export, package-consumer check, fuzz targets, and sanitizer CI.
+- **Public surfaces**: session facade, UDP/ASIO adapter, timer schedulers, diagnostics, CMake package export, package-consumer check, fuzz targets, and sanitizer CI.
 - **Experimental surfaces**: HTTP/3/QPACK, WebTransport, 0-RTT, BBR, and CUBIC are structural modules and are not part of the production-candidate scope.
-
-The plaintext protector remains test-only and is rejected by production-required packet-protection policy.
 
 The test suite covers protocol core, RFC compliance, integration, performance, fuzz, and AEAD modules.
 

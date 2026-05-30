@@ -1,15 +1,18 @@
 # validate-build.ps1 - Run full build pipeline validation
-# Usage: .\scripts\validate-build.ps1 [-SkipTests] [-Release]
+# Usage: .\scripts\validate-build.ps1 [-Preset windows-msvc-vcpkg] [-BuildType Debug] [-SkipTests]
 #
 # This script runs the complete build pipeline:
 # - CMake configure
 # - Build
 # - Test (unless -SkipTests)
 # - Install
-# - Package-consumer build
+# - Package-consumer configure, build, and run
 # Exit code 0 if all steps succeed, 1 if any step fails.
 
 param(
+    [string]$Preset = "windows-msvc-vcpkg",
+    [ValidateSet("Debug", "Release", "RelWithDebInfo", "MinSizeRel")]
+    [string]$BuildType = "Debug",
     [switch]$SkipTests,
     [switch]$Release
 )
@@ -18,8 +21,9 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $RepoRoot
 
-$BuildType = if ($Release) { "Release" } else { "Debug" }
-$Preset = "windows-msvc-vcpkg"
+if ($Release) {
+    $BuildType = "Release"
+}
 
 Write-Host "=== FlowQ Build Validator ===" -ForegroundColor Cyan
 Write-Host "Repo root: $RepoRoot"
@@ -78,8 +82,8 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "OK: Install succeeded" -ForegroundColor Green
 Write-Host ""
 
-# Step 5: Package-consumer build
-Write-Host "Step 5/5: Building package-consumer..." -ForegroundColor Yellow
+# Step 5: Package-consumer build and run
+Write-Host "Step 5/5: Building and running package-consumer..." -ForegroundColor Yellow
 $ConsumerBuildDir = "build/package-consumer"
 
 cmake -S tests/package-consumer -B $ConsumerBuildDir -G "Visual Studio 18 2026" `
@@ -95,7 +99,18 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "FAILED: Package-consumer build failed" -ForegroundColor Red
     exit 1
 }
-Write-Host "OK: Package-consumer build succeeded" -ForegroundColor Green
+$ConsumerExe = Join-Path $ConsumerBuildDir "$BuildType/flowq_package_consumer.exe"
+if (-not (Test-Path $ConsumerExe)) {
+    Write-Host "FAILED: Package-consumer executable not found: $ConsumerExe" -ForegroundColor Red
+    exit 1
+}
+
+& $ConsumerExe
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "FAILED: Package-consumer run failed" -ForegroundColor Red
+    exit 1
+}
+Write-Host "OK: Package-consumer build and run succeeded" -ForegroundColor Green
 Write-Host ""
 
 Write-Host "=== Summary ===" -ForegroundColor Cyan

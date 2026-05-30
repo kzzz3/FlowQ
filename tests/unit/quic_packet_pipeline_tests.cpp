@@ -1,4 +1,5 @@
 #include <flowq/quic/packet_pipeline.hpp>
+#include "plaintext_packet_protector.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -184,7 +185,7 @@ flowq::quic::connection_id cid(std::initializer_list<unsigned int> values) {
 }
 
 TEST_CASE("packet pipeline rejects invalid packet metadata invariants") {
-    flowq::quic::plaintext_packet_protector plaintext{};
+    flowq::quic::test::plaintext_packet_protector plaintext{};
     flowq::quic::packet_build_request request{
         flowq::quic::long_packet_type::initial,
         1,
@@ -224,7 +225,7 @@ TEST_CASE("packet pipeline rejects invalid packet metadata invariants") {
 } // namespace
 
 TEST_CASE("packet pipeline round trips Initial frames through plaintext protector") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     flowq::quic::packet_build_request request{
         flowq::quic::long_packet_type::initial,
         1,
@@ -302,7 +303,7 @@ TEST_CASE("packet pipeline applies long header protection to packet number bytes
 }
 
 TEST_CASE("packet pipeline round trips Handshake frames") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     flowq::quic::packet_build_request request{
         flowq::quic::long_packet_type::handshake,
         1,
@@ -332,7 +333,7 @@ TEST_CASE("packet pipeline round trips Handshake frames") {
 }
 
 TEST_CASE("packet pipeline round trips Application frames through short headers") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     flowq::quic::application_packet_build_request request{
         cid({0xaa}),
         flowq::quic::packet_number{flowq::quic::packet_number_space::application, 3},
@@ -416,7 +417,7 @@ TEST_CASE("packet pipeline applies short header protection in production mode") 
 }
 
 TEST_CASE("packet pipeline parses short-header shell in test mode") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     const auto parsed = flowq::quic::parse_short_packet(
         flowq::buffer{bytes({0x40, 0xaa, 0x07, 0x01})},
         1,
@@ -453,7 +454,7 @@ TEST_CASE("packet pipeline accepts production short-header parsing when protecti
 }
 
 TEST_CASE("packet pipeline rejects invalid Application packet metadata invariants") {
-    flowq::quic::plaintext_packet_protector plaintext{};
+    flowq::quic::test::plaintext_packet_protector plaintext{};
     flowq::quic::application_packet_build_request request{
         cid({0xaa}),
         flowq::quic::packet_number{flowq::quic::packet_number_space::application, 0x1'0000'0000ULL},
@@ -485,7 +486,7 @@ TEST_CASE("packet pipeline rejects missing protectors") {
 }
 
 TEST_CASE("packet pipeline enforces maximum datagram size") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     flowq::quic::packet_build_request request{
         flowq::quic::long_packet_type::initial,
         1,
@@ -561,7 +562,7 @@ TEST_CASE("packet pipeline rejects packets without header protection sample") {
     auto encoded = flowq::quic::encode_packet_header(flowq::quic::packet_header{header});
     REQUIRE(encoded.ok());
 
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     CHECK_FALSE(flowq::quic::parse_long_packet(encoded.payload, protector).ok());
 }
 
@@ -597,7 +598,7 @@ TEST_CASE("packet pipeline calls transforming protector") {
 }
 
 TEST_CASE("packet protectors report explicit security capability") {
-    flowq::quic::plaintext_packet_protector plaintext{};
+    flowq::quic::test::plaintext_packet_protector plaintext{};
     xor_packet_protector external_adapter{};
 
     CHECK(plaintext.security_level() == flowq::quic::packet_security_level::test_only);
@@ -606,7 +607,7 @@ TEST_CASE("packet protectors report explicit security capability") {
 }
 
 TEST_CASE("packet pipeline defaults to production packet protection policy") {
-    flowq::quic::plaintext_packet_protector plaintext{};
+    flowq::quic::test::plaintext_packet_protector plaintext{};
     flowq::quic::packet_build_request initial_request{
         flowq::quic::long_packet_type::initial,
         1,
@@ -645,7 +646,7 @@ TEST_CASE("packet pipeline defaults to production packet protection policy") {
 }
 
 TEST_CASE("packet pipeline rejects test-only protectors when production protection is required") {
-    flowq::quic::plaintext_packet_protector plaintext{};
+    flowq::quic::test::plaintext_packet_protector plaintext{};
     flowq::quic::packet_build_request initial_request{
         flowq::quic::long_packet_type::initial,
         1,

@@ -1,3 +1,4 @@
+#include "plaintext_packet_protector.hpp"
 #include <flowq/context.hpp>
 #include <flowq/quic/lifecycle_scheduler.hpp>
 #include <flowq/quic/session.hpp>
@@ -169,7 +170,7 @@ TEST_CASE("lifecycle scheduler cancellation maps to stopped") {
 
 TEST_CASE("lifecycle scheduler drives real session idle timeout close") {
     flowq::context context{};
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     auto config = make_config(
         cid({0x01}),
         cid({0x02}),

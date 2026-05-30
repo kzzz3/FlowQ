@@ -1,4 +1,5 @@
 #include <flowq/quic/packet_pipeline.hpp>
+#include "plaintext_packet_protector.hpp"
 #include <flowq/quic/session.hpp>
 #include <flowq/quic/udp_session.hpp>
 
@@ -60,7 +61,7 @@ flowq::quic::session_config make_config(
 } // namespace
 
 TEST_CASE("example-facing session API compiles and produces an outbound datagram") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     flowq::quic::session session{make_config(
         cid({0x01}),
         cid({0x02}),
@@ -77,7 +78,7 @@ TEST_CASE("example-facing session API compiles and produces an outbound datagram
 }
 
 TEST_CASE("example-facing UDP session configuration compiles") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     flowq::quic::udp_session_config config{
         make_config(
             cid({0x01}),
@@ -93,7 +94,7 @@ TEST_CASE("example-facing UDP session configuration compiles") {
 }
 
 TEST_CASE("example-facing protection policy rejects plaintext when production is required") {
-    flowq::quic::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector protector{};
     auto rejected = flowq::quic::assemble_long_packet(flowq::quic::packet_build_request{
         flowq::quic::long_packet_type::initial,
         1,
