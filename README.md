@@ -7,7 +7,7 @@
 ![TLS](https://img.shields.io/badge/TLS-1.3-blue)
 ![OpenSSL](https://img.shields.io/badge/crypto-OpenSSL-orange)
 
-FlowQ is a C++20 QUIC transport library under production hardening. The current codebase provides deterministic QUIC transport primitives, connection-loop behavior, stream and flow-control state, recovery/congestion primitives, routing/retry helpers, OpenSSL-gated AES-128-GCM packet protection, provider-backed TLS adapter surfaces, and local session/endpoint adapters. It does not carry a production-candidate claim until external peer interop evidence and human review are recorded.
+FlowQ is a C++20 QUIC transport library under production hardening. The current codebase provides deterministic QUIC transport primitives, connection-loop behavior, stream and flow-control state, recovery/congestion primitives, routing/retry helpers, OpenSSL-gated AES-128-GCM packet protection, provider-backed TLS adapter surfaces, local session/endpoint adapters, and recorded aioquic handshake, stream, and loss-recovery interop evidence. It does not carry a production-candidate claim until release-gate evidence and human review are recorded.
 
 ## Features
 
@@ -167,7 +167,7 @@ The plaintext protector remains test-only and is rejected by production-required
 
 The test suite covers protocol core, RFC compliance, integration, performance, fuzz, and AEAD modules.
 
-FlowQ is **non-production**. A production-candidate claim requires recorded peer interop results, release-gate evidence, and human review.
+FlowQ is **non-production**. A production-candidate claim requires the remaining release-gate evidence and human review recorded in `docs/production/readiness-gate.md`.
 
 See `docs/production/readiness-gate.md` for the current production-candidate gate.
 

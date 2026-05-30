@@ -1,6 +1,6 @@
 # FlowQ Release Checklist
 
-Complete all items before claiming production-candidate status.
+Complete all items before claiming production-candidate status. Checked items must correspond to current evidence, not historical intent.
 
 ## Build and Test Gates
 
@@ -13,32 +13,32 @@ Complete all items before claiming production-candidate status.
 ## Code Quality Gates
 
 - [ ] All public APIs have documentation comments
-- [ ] No `as any` or type safety suppressions
-- [ ] No empty catch blocks
-- [ ] No TODO/FIXME comments in production code paths
+- [x] No `as any` or type safety suppressions
+- [x] No empty catch blocks
+- [x] No TODO/FIXME comments in production code paths
 - [ ] Consistent naming conventions across all modules
 
 ## Security Gates
 
-- [ ] No hardcoded keys, tokens, or credentials
+- [x] No hardcoded keys, tokens, or credentials
 - [ ] No plaintext secrets in source or config files
-- [ ] Crypto provider boundary rejects test-only protectors when production policy is required
-- [ ] TLS handshake adapter is boundary-only (no inline crypto)
+- [x] Crypto provider boundary rejects test-only protectors when production policy is required
+- [x] TLS handshake adapter is boundary-only (no inline crypto)
 - [ ] No timing-sensitive code without constant-time annotations
 
 ## Interop Gates
 
-- [ ] basic_handshake scenario passes against at least one peer implementation
-- [ ] stream_echo scenario passes against at least one peer implementation
-- [ ] loss_recovery scenario passes against at least one peer implementation
-- [ ] Interop results recorded with peer name, version, and FlowQ TLS backend version
+- [x] basic_handshake scenario passes against aioquic 1.3.0
+- [x] stream_echo scenario passes against aioquic 1.3.0
+- [x] loss_recovery scenario passes against aioquic 1.3.0
+- [x] Interop results recorded with peer name, version, FlowQ TLS backend version, and negotiated cipher suite
 
 ## Documentation Gates
 
-- [ ] README.md status section matches actual evidence
-- [ ] docs/plan.md roadmap checkboxes match actual milestone completion
+- [x] README.md status section matches actual evidence
+- [x] docs/plan.md roadmap checkboxes match actual milestone completion
 - [ ] docs/milestones/roadmap.md documents all milestone scopes
-- [ ] docs/production/readiness-gate.md status level matches evidence
+- [x] docs/production/readiness-gate.md status level matches evidence
 
 ## Scope Statement
 
