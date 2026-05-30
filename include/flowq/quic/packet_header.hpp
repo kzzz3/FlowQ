@@ -21,8 +21,7 @@ enum class packet_header_kind {
     initial,
     handshake,
     retry,
-    short_packet,
-    structural_application
+    short_packet
 };
 
 struct connection_id {
@@ -63,13 +62,6 @@ struct retry_header {
     flowq::buffer opaque_retry_tail;
 };
 
-struct structural_application_header {
-    std::byte first_byte{};
-    connection_id destination_connection_id;
-    std::uint64_t length{};
-    flowq::buffer protected_payload;
-};
-
 struct short_header {
     std::byte first_byte{};
     connection_id destination_connection_id;
@@ -81,7 +73,7 @@ struct short_header {
     flowq::buffer protected_payload;
 };
 
-using packet_header = std::variant<version_negotiation_header, initial_header, handshake_header, retry_header, short_header, structural_application_header>;
+using packet_header = std::variant<version_negotiation_header, initial_header, handshake_header, retry_header, short_header>;
 
 struct packet_header_decode_result {
     packet_header header{};
@@ -472,20 +464,6 @@ inline void append_u32(std::vector<std::byte>& output, std::uint32_t value) {
     return {flowq::buffer{output}, {}};
 }
 
-[[nodiscard]] inline packet_header_encode_result encode_structural_application(const structural_application_header& header) {
-    if (header.length != header.protected_payload.size()) {
-        return {{}, packet_error("structural Application length must match protected payload size")};
-    }
-
-    std::vector<std::byte> output;
-    output.push_back(header.first_byte);
-    if (!append_connection_id(output, header.destination_connection_id) || !append_varint_to_packet(output, header.length)) {
-        return {{}, packet_error("failed to encode structural Application header")};
-    }
-    output.insert(output.end(), header.protected_payload.data(), header.protected_payload.data() + static_cast<std::ptrdiff_t>(header.protected_payload.size()));
-    return {flowq::buffer{output}, {}};
-}
-
 [[nodiscard]] inline packet_header_encode_result encode_short(const short_header& header) {
     if (!header.fixed_bit) {
         return {{}, packet_error("short header fixed bit must be set")};
@@ -633,7 +611,7 @@ template <std::ranges::contiguous_range Range>
             } else if constexpr (std::is_same_v<header_type, short_header>) {
                 return detail::encode_short(concrete_header);
             } else {
-                return detail::encode_structural_application(concrete_header);
+                static_assert(sizeof(header_type) == 0, "unsupported packet header type");
             }
         },
         header);

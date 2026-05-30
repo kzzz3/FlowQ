@@ -271,12 +271,16 @@ public:
         if (!active()) {
             return;
         }
-        if (!datagram.payload.empty() && datagram.payload.data()[0] == std::byte{0x50}) {
+        if (!datagram.payload.empty() && (static_cast<std::uint8_t>(datagram.payload.data()[0]) & 0x80U) == 0) {
             if (packet_space_discarded(packet_number_space::application)) {
                 clear_packet_space(packet_number_space::application);
                 return;
             }
-            auto parsed = parse_application_packet(datagram.payload, detail::rx_protector_for(packet_number_space::application, config_), config_.protection_policy);
+            auto parsed = parse_short_packet(
+                datagram.payload,
+                config_.local_connection_id.bytes.size(),
+                detail::rx_protector_for(packet_number_space::application, config_),
+                config_.protection_policy);
             if (!parsed.ok()) {
                 enter_closing(parsed.error, received_at);
                 return;
@@ -561,7 +565,7 @@ private:
     }
 
     [[nodiscard]] static packet_number_space packet_space_for(const packet_header& header) noexcept {
-        if (std::holds_alternative<structural_application_header>(header)) {
+        if (std::holds_alternative<short_header>(header)) {
             return packet_number_space::application;
         }
         return std::holds_alternative<handshake_header>(header) ? packet_number_space::handshake : packet_number_space::initial;

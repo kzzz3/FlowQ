@@ -217,7 +217,7 @@ private:
 
 } // namespace
 
-TEST_CASE("loopback session delivers client stream data to server over structural Application packets") {
+TEST_CASE("loopback session delivers client stream data to server over short-header Application packets") {
     loopback_session session{};
 
     REQUIRE(session.client_append(0, "hello").ok());
@@ -226,7 +226,7 @@ TEST_CASE("loopback session delivers client stream data to server over structura
     CHECK(session.server_delivered_text(0) == "hello");
 }
 
-TEST_CASE("loopback session delivers server stream data to client over structural Application packets") {
+TEST_CASE("loopback session delivers server stream data to client over short-header Application packets") {
     loopback_session session{};
 
     REQUIRE(session.server_append(1, "world").ok());
