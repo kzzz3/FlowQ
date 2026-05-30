@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <variant>
@@ -35,6 +36,18 @@ enum class connection_lifecycle_timer_kind {
     idle,
     closing,
     draining
+};
+
+struct packet_protector_update {
+    flowq::error error{};
+    const packet_protector* handshake_tx{};
+    const packet_protector* handshake_rx{};
+    const packet_protector* application_tx{};
+    const packet_protector* application_rx{};
+
+    [[nodiscard]] bool ok() const noexcept {
+        return error.ok();
+    }
 };
 
 // Connection loop configuration
@@ -79,6 +92,7 @@ struct connection_loop_config {
     const packet_protector* application_tx_protector{};
     /// @pre The protector must outlive this connection loop.
     const packet_protector* application_rx_protector{};
+    std::function<packet_protector_update()> packet_protector_refresh;
 };
 
 // Apply transport parameters to connection config

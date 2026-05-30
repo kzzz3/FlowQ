@@ -289,6 +289,9 @@ public:
         while (!remaining.empty()) {
             const auto packet_size = detail::long_packet_wire_size(remaining);
             if (!packet_size.ok()) {
+                if (all_zero_padding(remaining)) {
+                    break;
+                }
                 enter_closing(packet_size.error, received_at);
                 return;
             }
@@ -299,6 +302,7 @@ public:
                 enter_closing(header.error, received_at);
                 return;
             }
+            update_remote_connection_id_from_header(header.header);
 
             const auto space = packet_space_for(header.header);
             if (packet_space_discarded(space)) {
@@ -315,6 +319,9 @@ public:
 
             process_parsed_packet(std::move(parsed), datagram.peer, packet_size.value, received_at);
             if (!active()) {
+                return;
+            }
+            if (!refresh_packet_protectors(received_at)) {
                 return;
             }
             remaining = remaining.subspan(packet_size.value);
@@ -499,6 +506,45 @@ private:
 
     [[nodiscard]] static bool same_endpoint(const flowq::endpoint& lhs, const flowq::endpoint& rhs) noexcept {
         return lhs.host == rhs.host && lhs.port == rhs.port && lhs.alpn == rhs.alpn;
+    }
+
+    [[nodiscard]] static bool all_zero_padding(std::span<const std::byte> bytes) noexcept {
+        return std::all_of(bytes.begin(), bytes.end(), [](std::byte item) {
+            return item == std::byte{0x00};
+        });
+    }
+
+    void update_remote_connection_id_from_header(const packet_header& header) {
+        const connection_id* source = nullptr;
+        if (const auto* initial = std::get_if<initial_header>(&header)) {
+            source = &initial->source_connection_id;
+        } else if (const auto* handshake = std::get_if<handshake_header>(&header)) {
+            source = &handshake->source_connection_id;
+        } else if (const auto* retry = std::get_if<retry_header>(&header)) {
+            source = &retry->source_connection_id;
+        }
+
+        if (source == nullptr || source->bytes.empty()) {
+            return;
+        }
+        config_.remote_connection_id = *source;
+    }
+
+    [[nodiscard]] bool refresh_packet_protectors(std::chrono::steady_clock::time_point at) {
+        if (!config_.packet_protector_refresh) {
+            return true;
+        }
+        auto update = config_.packet_protector_refresh();
+        if (!update.ok()) {
+            enter_closing(std::move(update.error), at);
+            return false;
+        }
+        set_packet_protectors(
+            update.handshake_tx,
+            update.handshake_rx,
+            update.application_tx,
+            update.application_rx);
+        return true;
     }
 
     [[nodiscard]] bool accept_peer(flowq::endpoint peer, std::chrono::steady_clock::time_point received_at) {
