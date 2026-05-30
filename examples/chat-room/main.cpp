@@ -7,10 +7,13 @@
 #include <flowq/quic/connection.hpp>
 #include <flowq/quic/packet_pipeline.hpp>
 
+#include <ctime>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 namespace {
 
@@ -96,12 +99,15 @@ private:
     [[nodiscard]] static std::string get_timestamp() {
         auto now = std::chrono::system_clock::now();
         auto time = std::chrono::system_clock::to_time_t(now);
-        std::string ts = std::ctime(&time);
-        // Remove newline
-        if (!ts.empty() && ts.back() == '\n') {
-            ts.pop_back();
-        }
-        return ts;
+        std::tm tm{};
+#if defined(_WIN32)
+        localtime_s(&tm, &time);
+#else
+        localtime_r(&time, &tm);
+#endif
+        std::ostringstream output;
+        output << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
+        return output.str();
     }
 };
 
@@ -116,7 +122,7 @@ int main() {
     // Create multiple client sessions
     flowq::quic::plaintext_packet_protector protector{};
 
-    auto create_client = [&](const std::string& name, std::uint8_t id) {
+    auto create_client = [&](std::uint8_t id) {
         auto config = flowq::quic::session_config{
             .role = flowq::quic::connection_role::client,
             .local_connection_id = make_cid({id}),
@@ -133,9 +139,9 @@ int main() {
     };
 
     // Create clients
-    auto alice = create_client("Alice", 0x01);
-    auto bob = create_client("Bob", 0x02);
-    auto charlie = create_client("Charlie", 0x03);
+    auto alice = create_client(0x01);
+    auto bob = create_client(0x02);
+    auto charlie = create_client(0x03);
 
     std::cout << "[Chat] Created 3 client sessions\n\n";
 

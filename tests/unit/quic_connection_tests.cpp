@@ -443,7 +443,7 @@ TEST_CASE("connection loop does not flush or recover discarded packet spaces") {
 
     CHECK(loop.drain_actions().empty());
     CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets().empty());
-    CHECK_FALSE(loop.next_recovery_timer(at(0ms)).has_value());
+    CHECK_FALSE(loop.next_recovery_timer().has_value());
 }
 
 TEST_CASE("connection loop applies TLS key lifecycle discard decisions") {
@@ -530,7 +530,7 @@ TEST_CASE("connection loop refreshes key lifecycle after inbound TLS CRYPTO chan
     server.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
     server.flush(at(0ms));
     auto server_initial = require_single_outbound(server.drain_actions());
-    REQUIRE(server.next_recovery_timer(at(1ms)).has_value());
+    REQUIRE(server.next_recovery_timer().has_value());
 
     client.queue_initial({flowq::quic::frame{flowq::quic::crypto_frame{0, text("client hello")}}});
     client.flush(at(2ms));
@@ -541,7 +541,7 @@ TEST_CASE("connection loop refreshes key lifecycle after inbound TLS CRYPTO chan
     auto received_actions = server.drain_actions();
     REQUIRE(received_actions.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(received_actions[0]));
-    CHECK_FALSE(server.next_recovery_timer(at(3ms)).has_value());
+    CHECK_FALSE(server.next_recovery_timer().has_value());
     CHECK(server.sent_packets(flowq::quic::packet_number_space::initial).packets().empty());
     server.acknowledge(flowq::quic::packet_number_space::initial);
     CHECK(server.drain_actions().empty());
@@ -578,7 +578,7 @@ TEST_CASE("connection loop refreshes key lifecycle after draining TLS CRYPTO") {
     REQUIRE(actions.size() == 1);
     CHECK(std::holds_alternative<flowq::quic::outbound_datagram>(actions[0]));
     CHECK(loop.sent_packets(flowq::quic::packet_number_space::handshake).packets().size() == 1);
-    CHECK(loop.next_recovery_timer(at(1ms)).has_value());
+    CHECK(loop.next_recovery_timer().has_value());
 }
 
 TEST_CASE("connection loop discards Initial space after draining TLS handshake keys") {
@@ -607,7 +607,7 @@ TEST_CASE("connection loop discards Initial space after draining TLS handshake k
 
     CHECK(loop.drain_actions().empty());
     CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets().empty());
-    CHECK_FALSE(loop.next_recovery_timer(at(1ms)).has_value());
+    CHECK_FALSE(loop.next_recovery_timer().has_value());
 }
 
 TEST_CASE("connection loop explicit packet-space discard clears recovery state") {
@@ -617,12 +617,12 @@ TEST_CASE("connection loop explicit packet-space discard clears recovery state")
     loop.queue_handshake({flowq::quic::frame{flowq::quic::ping_frame{}}});
     loop.flush(at(0ms));
     (void)loop.drain_actions();
-    REQUIRE(loop.next_recovery_timer(at(1ms)).has_value());
+    REQUIRE(loop.next_recovery_timer().has_value());
 
     loop.discard_packet_space(flowq::quic::packet_number_space::handshake);
 
     CHECK(loop.sent_packets(flowq::quic::packet_number_space::handshake).packets().empty());
-    CHECK_FALSE(loop.next_recovery_timer(at(1ms)).has_value());
+    CHECK_FALSE(loop.next_recovery_timer().has_value());
 }
 
 TEST_CASE("connection loop feeds inbound CRYPTO frames to TLS adapter by packet space") {
@@ -715,7 +715,7 @@ TEST_CASE("connection loop exposes recovery timer for outstanding ack eliciting 
     loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
 
     loop.flush(at(0ms));
-    auto timer = loop.next_recovery_timer(at(100ms));
+    auto timer = loop.next_recovery_timer();
 
     REQUIRE(timer.has_value());
     CHECK(timer->space == flowq::quic::packet_number_space::initial);
@@ -730,7 +730,7 @@ TEST_CASE("connection loop clears recovery timer after packet acknowledgment") {
     client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
     client.flush(at(0ms));
     auto outbound = require_single_outbound(client.drain_actions());
-    REQUIRE(client.next_recovery_timer(at(1ms)).has_value());
+    REQUIRE(client.next_recovery_timer().has_value());
 
     server.on_datagram(flowq::quic::inbound_datagram{std::move(outbound.payload), outbound.peer});
     (void)server.drain_actions();
@@ -738,7 +738,7 @@ TEST_CASE("connection loop clears recovery timer after packet acknowledgment") {
     auto ack_datagram = require_single_outbound(server.drain_actions());
     client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
 
-    CHECK_FALSE(client.next_recovery_timer(at(2ms)).has_value());
+    CHECK_FALSE(client.next_recovery_timer().has_value());
 }
 
 TEST_CASE("connection loop recovery timer polling does not move PTO deadline") {
@@ -747,8 +747,8 @@ TEST_CASE("connection loop recovery timer polling does not move PTO deadline") {
     loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
     loop.flush(at(0ms));
 
-    auto first = loop.next_recovery_timer(at(100ms));
-    auto later = loop.next_recovery_timer(at(500ms));
+    auto first = loop.next_recovery_timer();
+    auto later = loop.next_recovery_timer();
 
     REQUIRE(first.has_value());
     REQUIRE(later.has_value());
@@ -767,7 +767,7 @@ TEST_CASE("connection loop ACK only packets do not arm recovery timers") {
 
     server.acknowledge(flowq::quic::packet_number_space::initial);
 
-    CHECK_FALSE(server.next_recovery_timer(at(1ms)).has_value());
+    CHECK_FALSE(server.next_recovery_timer().has_value());
 }
 
 TEST_CASE("connection loop recovery timer expiry reports time threshold losses") {
@@ -803,7 +803,7 @@ TEST_CASE("connection loop does not arm loss timer without largest acknowledged 
     loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
     loop.flush(at(0ms));
 
-    auto timer = loop.next_recovery_timer(at(100ms));
+    auto timer = loop.next_recovery_timer();
 
     REQUIRE(timer.has_value());
     CHECK(timer->space == flowq::quic::packet_number_space::initial);
@@ -827,7 +827,7 @@ TEST_CASE("connection loop does not arm loss timer for packets above largest ack
     server.flush(at(20ms));
     auto ack_datagram = require_single_outbound(server.drain_actions());
     client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
-    auto timer = client.next_recovery_timer(at(100ms));
+    auto timer = client.next_recovery_timer();
     auto expired = client.on_recovery_timer(flowq::quic::packet_number_space::initial, at(100ms));
 
     REQUIRE(timer.has_value());
@@ -1138,7 +1138,7 @@ TEST_CASE("connection loop maps PTO to stream probe retransmission state") {
     client.flush(at(0ms));
     (void)client.drain_actions();
 
-    auto timer = client.next_recovery_timer(at(1000ms));
+    auto timer = client.next_recovery_timer();
     REQUIRE(timer.has_value());
     REQUIRE(timer->mode == flowq::quic::loss_timer_mode::pto);
     auto expired = client.on_recovery_timer(timer->space, timer->deadline);
@@ -1178,7 +1178,7 @@ TEST_CASE("connection loop arms Application PTO after TLS confirms handshake") {
     loop.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
     loop.flush(at(0ms));
     (void)loop.drain_actions();
-    auto timer = loop.next_recovery_timer(at(1000ms));
+    auto timer = loop.next_recovery_timer();
 
     REQUIRE(timer.has_value());
     CHECK(timer->space == flowq::quic::packet_number_space::application);
@@ -1724,7 +1724,7 @@ TEST_CASE("connection loop suppresses outbound work after a local close") {
     loop.flush(at(1ms));
 
     CHECK(loop.drain_actions().empty());
-    CHECK_FALSE(loop.next_recovery_timer(at(2ms)).has_value());
+    CHECK_FALSE(loop.next_recovery_timer().has_value());
 }
 
 TEST_CASE("connection loop ignores inbound packets after a local close") {

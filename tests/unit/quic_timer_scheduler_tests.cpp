@@ -78,7 +78,7 @@ struct fake_quic_timer_session {
     };
     flowq::quic::session_send_result lifecycle_expiry_result{};
 
-    [[nodiscard]] std::optional<flowq::quic::connection_recovery_timer> next_recovery_timer(clock_type::time_point) {
+    [[nodiscard]] std::optional<flowq::quic::connection_recovery_timer> next_recovery_timer() {
         return recovery_timer;
     }
 
@@ -109,7 +109,7 @@ struct order_sensitive_timer_session {
     bool recovery_checked{};
     std::vector<std::string_view> calls;
 
-    [[nodiscard]] std::optional<flowq::quic::connection_recovery_timer> next_recovery_timer(clock_type::time_point) {
+    [[nodiscard]] std::optional<flowq::quic::connection_recovery_timer> next_recovery_timer() {
         calls.push_back("recovery");
         recovery_checked = true;
         return std::nullopt;

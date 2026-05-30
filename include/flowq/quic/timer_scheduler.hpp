@@ -85,7 +85,7 @@ public:
         : timer_{context.io_context()}, session_{&session}, now_{now}, receiver_{std::move(receiver)} {}
 
     void start() {
-        auto recovery = session_->next_recovery_timer(now_);
+        auto recovery = session_->next_recovery_timer();
         auto lifecycle = session_->next_lifecycle_timer(now_);
         fired_ = select_quic_timer(recovery, lifecycle);
         if (!fired_.has_value()) {

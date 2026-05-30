@@ -58,7 +58,7 @@ struct fake_recovery_session {
     std::optional<flowq::quic::packet_number_space> expired_space;
     std::optional<clock_type::time_point> expired_at;
 
-    [[nodiscard]] std::optional<flowq::quic::connection_recovery_timer> next_recovery_timer(clock_type::time_point) const {
+    [[nodiscard]] std::optional<flowq::quic::connection_recovery_timer> next_recovery_timer() const {
         return timer;
     }
 

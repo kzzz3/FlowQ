@@ -195,11 +195,12 @@ struct decode_result {
 };
 
 /// QPACK encoder.
-/// Encodes HTTP/3 headers using QPACK static and dynamic tables.
+/// Encodes independently decodable HTTP/3 header blocks using the QPACK static
+/// table and literal fields. Dynamic table references are intentionally not
+/// emitted until encoder-stream synchronization is available.
 class encoder {
 public:
-    explicit encoder(std::uint64_t max_dynamic_table_capacity = 4096)
-        : dynamic_table_{max_dynamic_table_capacity} {
+    encoder() {
         // Build static table lookup cache
         build_static_cache();
     }
@@ -207,10 +208,6 @@ public:
     /// Encode a list of header fields.
     [[nodiscard]] encode_result encode(const std::vector<header_field>& headers) {
         std::vector<std::byte> body;
-        
-        // Track the base index (total dynamic table entries referenced or inserted)
-        std::uint64_t base_index = 0;
-        std::uint64_t required_insert_count = 0;
         
         for (const auto& header : headers) {
             // Try static table first (fast path)
@@ -220,69 +217,23 @@ public:
                 encode_static_reference(body, *static_index);
                 continue;
             }
-            
-            // Try dynamic table
-            auto dynamic_index = dynamic_table_.find(header.name, header.value);
-            if (dynamic_index.has_value()) {
-                // Dynamic table reference — track the referenced index
-                encode_dynamic_reference(body, *dynamic_index);
-                if (*dynamic_index >= base_index) {
-                    base_index = *dynamic_index + 1;
-                }
-                continue;
-            }
-            
+
             // Try static table name only (fast path)
             auto static_name_index = find_static_name_fast(header.name);
             if (static_name_index.has_value()) {
                 // Static name reference + literal value
                 encode_static_name_with_literal_value(body, *static_name_index, header.value);
-                // Insert into dynamic table
-                dynamic_table_.add(header.name, header.value);
-                ++required_insert_count;
-                base_index = required_insert_count;
-                continue;
-            }
-            
-            // Try dynamic table name only
-            auto dynamic_name_index = dynamic_table_.find_name(header.name);
-            if (dynamic_name_index.has_value()) {
-                // Dynamic name reference + literal value
-                encode_dynamic_name_with_literal_value(body, *dynamic_name_index, header.value);
-                // Insert into dynamic table
-                dynamic_table_.add(header.name, header.value);
-                ++required_insert_count;
-                base_index = required_insert_count;
                 continue;
             }
             
             // Literal name and value
             encode_literal_header(body, header.name, header.value);
-            // Insert into dynamic table
-            dynamic_table_.add(header.name, header.value);
-            ++required_insert_count;
-            base_index = required_insert_count;
         }
         
         // Build output with prefix (RIC + Delta Base) followed by body
         std::vector<std::byte> output;
-        
-        // Encode Required Insert Count
-        if (required_insert_count == 0) {
-            output.push_back(std::byte{0x00});
-        } else {
-            encode_varint_to(output, required_insert_count);
-        }
-        
-        // Encode Delta Base: difference between base index and required insert count.
-        // Per RFC 9204 §4.5.2:
-        //   T=0 (sign bit): Base = Required Insert Count + Delta Base
-        //   T=1 (sign bit): Base = Required Insert Count - Delta Base
-        // Since base_index >= required_insert_count in our encoding, use T=0.
-        std::uint64_t delta = base_index - required_insert_count;
-        // Encode sign bit (0 for positive) + 7-bit delta value
-        std::uint8_t delta_base_byte = static_cast<std::uint8_t>(delta & 0x7f);
-        output.push_back(static_cast<std::byte>(delta_base_byte));
+        output.push_back(std::byte{0x00});
+        output.push_back(std::byte{0x00});
         
         // Append encoded body
         output.insert(output.end(), body.begin(), body.end());
@@ -291,8 +242,6 @@ public:
     }
 
 private:
-    dynamic_table dynamic_table_;
-
     // Static table lookup cache for fast name+value matching
     struct static_cache_entry {
         std::uint64_t index{};
@@ -342,14 +291,6 @@ private:
         return std::nullopt;
     }
 
-    [[nodiscard]] std::optional<std::uint64_t> find_in_static_table(const std::string& name, const std::string& value) const {
-        return find_in_static_table_fast(name, value);
-    }
-
-    [[nodiscard]] std::optional<std::uint64_t> find_static_name(const std::string& name) const {
-        return find_static_name_fast(name);
-    }
-
     static void encode_static_reference(std::vector<std::byte>& output, std::uint64_t index) {
         // Encode as Static Indexed Header Field (0b10000000 + 7-bit index)
         if (index < 128) {
@@ -361,30 +302,8 @@ private:
         }
     }
 
-    static void encode_dynamic_reference(std::vector<std::byte>& output, std::uint64_t index) {
-        // Encode as Dynamic Indexed Header Field (0b10000000 with different prefix)
-        // For simplicity, use same encoding as static but with different prefix bit
-        if (index < 128) {
-            output.push_back(static_cast<std::byte>(0x80 | index));
-        } else {
-            output.push_back(std::byte{0xff});
-            encode_varint_to(output, index - 128);
-        }
-    }
-
     static void encode_static_name_with_literal_value(std::vector<std::byte>& output, std::uint64_t name_index, const std::string& value) {
         // Encode as Literal Header Field with Static Name Reference (0b01000000 + 6-bit index)
-        if (name_index < 64) {
-            output.push_back(static_cast<std::byte>(0x40 | name_index));
-        } else {
-            output.push_back(std::byte{0x7f});
-            encode_varint_to(output, name_index - 64);
-        }
-        encode_string(output, value);
-    }
-
-    static void encode_dynamic_name_with_literal_value(std::vector<std::byte>& output, std::uint64_t name_index, const std::string& value) {
-        // Encode as Literal Header Field with Dynamic Name Reference
         if (name_index < 64) {
             output.push_back(static_cast<std::byte>(0x40 | name_index));
         } else {
@@ -432,11 +351,11 @@ public:
 
         std::size_t offset = 0;
         
-        // Required Insert Count
-        auto required_insert_count = data[offset++];
-        
-        // Delta Base
-        auto delta_base = data[offset++];
+        const auto required_insert_count = data[offset++];
+        const auto delta_base = data[offset++];
+        if (required_insert_count != std::byte{0x00} || delta_base != std::byte{0x00}) {
+            return {{}, qpack_error("Dynamic QPACK references are not supported")};
+        }
         
         std::vector<header_field> headers;
         

@@ -372,7 +372,7 @@ TEST_CASE("QUIC session does not arm Application recovery timer before handshake
     REQUIRE(session.queue_stream_data({0}).ok());
     REQUIRE(session.flush(at(0ms)).ok());
 
-    auto timer = session.next_recovery_timer(at(0ms));
+    auto timer = session.next_recovery_timer();
 
     CHECK_FALSE(timer.has_value());
 }

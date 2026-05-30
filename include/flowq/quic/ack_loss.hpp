@@ -259,7 +259,6 @@ struct loss_timer_deadline {
 [[nodiscard]] inline loss_timer_deadline next_loss_timer(
     const std::vector<recovery_packet>& packets,
     const rtt_estimator& estimator,
-    std::chrono::steady_clock::time_point now,
     packet_number_space space,
     const pto_config& config) {
     std::optional<std::chrono::steady_clock::time_point> last_ack_eliciting_sent_at;

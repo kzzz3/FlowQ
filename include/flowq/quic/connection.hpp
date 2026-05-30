@@ -179,7 +179,7 @@ public:
         recovery_rtt_.update(sample);
     }
 
-    [[nodiscard]] std::optional<connection_recovery_timer> next_recovery_timer(std::chrono::steady_clock::time_point now) {
+    [[nodiscard]] std::optional<connection_recovery_timer> next_recovery_timer() {
         if (!active()) {
             return std::nullopt;
         }
@@ -187,12 +187,12 @@ public:
         if (!active()) {
             return std::nullopt;
         }
-        auto selected = recovery_timer_for(packet_number_space::initial, now);
-        auto handshake = recovery_timer_for(packet_number_space::handshake, now);
+        auto selected = recovery_timer_for(packet_number_space::initial);
+        auto handshake = recovery_timer_for(packet_number_space::handshake);
         if (handshake.has_value() && (!selected.has_value() || handshake->deadline < selected->deadline)) {
             selected = handshake;
         }
-        auto application = recovery_timer_for(packet_number_space::application, now);
+        auto application = recovery_timer_for(packet_number_space::application);
         if (application.has_value() && (!selected.has_value() || application->deadline < selected->deadline)) {
             selected = application;
         }
@@ -269,7 +269,7 @@ public:
             apply_stream_loss_mapping(space, result.newly_lost);
         }
 
-        if (auto timer = recovery_timer_for(space, now)) {
+        if (auto timer = recovery_timer_for(space)) {
             if (timer->mode == loss_timer_mode::pto && now >= timer->deadline && result.newly_lost.empty()) {
                 result.newly_lost = mark_oldest_ack_eliciting_packet_lost(space);
                 if (!result.newly_lost.empty()) {
@@ -875,7 +875,7 @@ private:
         return {};
     }
 
-    [[nodiscard]] std::optional<connection_recovery_timer> recovery_timer_for(packet_number_space space, std::chrono::steady_clock::time_point now) const {
+    [[nodiscard]] std::optional<connection_recovery_timer> recovery_timer_for(packet_number_space space) const {
         if (packet_space_discarded(space)) {
             return std::nullopt;
         }
@@ -981,10 +981,10 @@ private:
 
     void apply_flow_control_frames(const std::vector<frame>& frames) {
         for (const auto& item : frames) {
-            if (const auto* credit = std::get_if<max_stream_data_frame>(&item)) {
-                send_streams_.update_max_data(*credit);
-            } else if (const auto* credit = std::get_if<max_data_frame>(&item)) {
-                update_max_data(*credit);
+            if (const auto* stream_data_credit = std::get_if<max_stream_data_frame>(&item)) {
+                send_streams_.update_max_data(*stream_data_credit);
+            } else if (const auto* connection_data_credit = std::get_if<max_data_frame>(&item)) {
+                update_max_data(*connection_data_credit);
             } else if (const auto* stream_credit = std::get_if<max_streams_frame>(&item)) {
                 send_streams_.update_max_streams(*stream_credit);
             }
