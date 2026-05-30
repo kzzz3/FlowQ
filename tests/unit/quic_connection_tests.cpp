@@ -202,7 +202,10 @@ TEST_CASE("connection loop preserves queued frames that exceed payload budget fo
 
     loop.flush();
     auto first_datagram = require_single_outbound(loop.drain_actions());
-    auto first = flowq::quic::parse_long_packet(first_datagram.payload, protector);
+    auto first = flowq::quic::parse_long_packet(
+        first_datagram.payload,
+        protector,
+        flowq::quic::packet_protection_policy::test_allowed);
     REQUIRE(first.ok());
     REQUIRE(first.frames.size() == 2);
     CHECK(std::holds_alternative<flowq::quic::ping_frame>(first.frames[0]));
@@ -210,7 +213,10 @@ TEST_CASE("connection loop preserves queued frames that exceed payload budget fo
 
     loop.flush();
     auto second_datagram = require_single_outbound(loop.drain_actions());
-    auto second = flowq::quic::parse_long_packet(second_datagram.payload, protector);
+    auto second = flowq::quic::parse_long_packet(
+        second_datagram.payload,
+        protector,
+        flowq::quic::packet_protection_policy::test_allowed);
     REQUIRE(second.ok());
     REQUIRE(second.frames.size() == 1);
     CHECK(std::holds_alternative<flowq::quic::ping_frame>(second.frames[0]));
@@ -242,7 +248,10 @@ TEST_CASE("connection loop parses inbound Initial packets and generates ACK pack
 
     server.acknowledge(flowq::quic::packet_number_space::initial);
     auto ack_datagram = require_single_outbound(server.drain_actions());
-    auto parsed_ack = flowq::quic::parse_long_packet(ack_datagram.payload, protector);
+    auto parsed_ack = flowq::quic::parse_long_packet(
+        ack_datagram.payload,
+        protector,
+        flowq::quic::packet_protection_policy::test_allowed);
     REQUIRE(parsed_ack.ok());
     REQUIRE(parsed_ack.frames.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::ack_frame>(parsed_ack.frames[0]));
@@ -679,7 +688,10 @@ TEST_CASE("connection loop pumps TLS adapter CRYPTO bytes into packet-space fram
     loop.flush();
 
     auto datagram = require_single_outbound(loop.drain_actions());
-    auto parsed = flowq::quic::parse_long_packet(datagram.payload, protector);
+    auto parsed = flowq::quic::parse_long_packet(
+        datagram.payload,
+        protector,
+        flowq::quic::packet_protection_policy::test_allowed);
     REQUIRE(parsed.ok());
     CHECK(parsed.number.space == flowq::quic::packet_number_space::handshake);
     REQUIRE(parsed.frames.size() == 1);
@@ -1503,7 +1515,10 @@ TEST_CASE("connection loop parses and acknowledges Handshake packets") {
 
     server.acknowledge(flowq::quic::packet_number_space::handshake);
     auto ack_datagram = require_single_outbound(server.drain_actions());
-    auto parsed_ack = flowq::quic::parse_long_packet(ack_datagram.payload, protector);
+    auto parsed_ack = flowq::quic::parse_long_packet(
+        ack_datagram.payload,
+        protector,
+        flowq::quic::packet_protection_policy::test_allowed);
     REQUIRE(parsed_ack.ok());
     CHECK(parsed_ack.space == flowq::quic::packet_number_space::handshake);
     REQUIRE(parsed_ack.frames.size() == 1);
@@ -1519,7 +1534,11 @@ TEST_CASE("connection loop flushes queued Application frames as a short-header o
     loop.flush(at(0ms));
 
     auto datagram = require_single_outbound(loop.drain_actions());
-    auto parsed = flowq::quic::parse_short_packet(datagram.payload, 1, protector);
+    auto parsed = flowq::quic::parse_short_packet(
+        datagram.payload,
+        1,
+        protector,
+        flowq::quic::packet_protection_policy::test_allowed);
     REQUIRE(parsed.ok());
     CHECK(parsed.space == flowq::quic::packet_number_space::application);
     CHECK(parsed.number.value == 0);
@@ -1549,7 +1568,11 @@ TEST_CASE("connection loop parses and acknowledges short-header Application pack
 
     server.acknowledge(flowq::quic::packet_number_space::application);
     auto ack_datagram = require_single_outbound(server.drain_actions());
-    auto parsed_ack = flowq::quic::parse_short_packet(ack_datagram.payload, 1, protector);
+    auto parsed_ack = flowq::quic::parse_short_packet(
+        ack_datagram.payload,
+        1,
+        protector,
+        flowq::quic::packet_protection_policy::test_allowed);
     REQUIRE(parsed_ack.ok());
     CHECK(parsed_ack.space == flowq::quic::packet_number_space::application);
     REQUIRE(parsed_ack.frames.size() == 1);
@@ -1581,7 +1604,11 @@ TEST_CASE("connection loop answers Application PATH_CHALLENGE with matching PATH
 
     server.flush(at(1ms));
     auto response_datagram = require_single_outbound(server.drain_actions());
-    auto parsed_response = flowq::quic::parse_short_packet(response_datagram.payload, 1, protector);
+    auto parsed_response = flowq::quic::parse_short_packet(
+        response_datagram.payload,
+        1,
+        protector,
+        flowq::quic::packet_protection_policy::test_allowed);
     REQUIRE(parsed_response.ok());
     REQUIRE(parsed_response.frames.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::path_response_frame>(parsed_response.frames[0]));

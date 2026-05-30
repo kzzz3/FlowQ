@@ -128,7 +128,7 @@ struct packet_build_request {
     /// @pre The protector must outlive this request.
     const packet_protector* protector{};
     packet_pipeline_config config{};
-    packet_protection_policy protection_policy{packet_protection_policy::test_allowed};
+    packet_protection_policy protection_policy{packet_protection_policy::production_required};
 };
 
 struct application_packet_build_request {
@@ -138,7 +138,7 @@ struct application_packet_build_request {
     /// @pre The protector must outlive this request.
     const packet_protector* protector{};
     packet_pipeline_config config{};
-    packet_protection_policy protection_policy{packet_protection_policy::test_allowed};
+    packet_protection_policy protection_policy{packet_protection_policy::production_required};
 };
 
 struct assembled_packet {
@@ -713,7 +713,7 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
 [[nodiscard]] inline parsed_packet parse_long_packet(
     std::span<const std::byte> datagram,
     const packet_protector* protector,
-    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
+    packet_protection_policy protection_policy = packet_protection_policy::production_required) {
     if (protector == nullptr) {
         return {{}, {}, {}, protection_level::none, {}, detail::pipeline_error("packet protector is required")};
     }
@@ -790,7 +790,7 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     std::span<const std::byte> datagram,
     std::size_t destination_connection_id_length,
     const packet_protector* protector,
-    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
+    packet_protection_policy protection_policy = packet_protection_policy::production_required) {
     if (protector == nullptr) {
         return {{}, {}, {}, protection_level::none, {}, detail::pipeline_error("packet protector is required")};
     }
@@ -843,14 +843,14 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
 [[nodiscard]] inline parsed_packet parse_long_packet(
     const flowq::buffer& datagram,
     const packet_protector& protector,
-    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
+    packet_protection_policy protection_policy = packet_protection_policy::production_required) {
     return parse_long_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, &protector, protection_policy);
 }
 
 [[nodiscard]] inline parsed_packet parse_long_packet(
     const flowq::buffer& datagram,
     const packet_protector* protector,
-    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
+    packet_protection_policy protection_policy = packet_protection_policy::production_required) {
     return parse_long_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, protector, protection_policy);
 }
 
@@ -858,7 +858,7 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     const flowq::buffer& datagram,
     std::size_t destination_connection_id_length,
     const packet_protector& protector,
-    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
+    packet_protection_policy protection_policy = packet_protection_policy::production_required) {
     return parse_short_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, destination_connection_id_length, &protector, protection_policy);
 }
 
@@ -866,7 +866,7 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     const flowq::buffer& datagram,
     std::size_t destination_connection_id_length,
     const packet_protector* protector,
-    packet_protection_policy protection_policy = packet_protection_policy::test_allowed) {
+    packet_protection_policy protection_policy = packet_protection_policy::production_required) {
     return parse_short_packet(std::span<const std::byte>{datagram.data(), datagram.size()}, destination_connection_id_length, protector, protection_policy);
 }
 
