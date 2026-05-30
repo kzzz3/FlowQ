@@ -22,11 +22,6 @@ enum class stream_initiator {
     server
 };
 
-enum class stream_direction {
-    bidirectional,
-    unidirectional
-};
-
 struct stream_id_info {
     std::uint64_t id{};
     stream_initiator initiator{};
