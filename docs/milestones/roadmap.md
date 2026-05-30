@@ -14,12 +14,32 @@ Complete milestone tracking for FlowQ development.
 
 | Milestone | Status | Description |
 |-----------|--------|-------------|
-| M1-M10 | ✅ | Protocol primitives: varint, frame, header codecs, stream state, flow control |
-| M11-M15 | ✅ | Connection integration: owned streams, aggregate flow control, recovery timers |
-| M16-M18 | ✅ | Loopback: Application packet space, close/reset codecs, in-memory session |
+| M1 | ✅ | QUIC varint codec foundation |
+| M2 | ✅ | Transport frame value model and codecs |
+| M3 | ✅ | Long-header packet value model and codecs |
+| M4 | ✅ | Packet pipeline assembly and parsing |
+| M5 | ✅ | ACK frame tracking primitives |
+| M6 | ✅ | Stream send and receive state model |
+| M7 | ✅ | Stream frame delivery into stream state |
+| M8 | ✅ | Connection-level frame dispatch |
+| M9 | ✅ | Flow-control accounting |
+| M10 | ✅ | Deterministic connection loop smoke behavior |
+| M11 | ✅ | Connection-owned stream registry |
+| M12 | ✅ | Aggregate connection flow control |
+| M13 | ✅ | Payload budgeting across stream frames |
+| M14 | ✅ | Recovery timer value computation |
+| M15 | ✅ | Packet-to-stream ACK/loss mapping |
+| M16 | ✅ | Application packet-space structural support |
+| M17 | ✅ | Close/reset structural codecs and effects |
+| M18 | ✅ | In-memory transport loopback session |
 | M19 | ✅ | Security boundary: crypto adapter seam, test-only protection boundary |
-| M20-M23 | ✅ | Library surface: public session façade, UDP adapter, recovery scheduler |
-| M24-M26 | ✅ | Productization: examples, install/export, CI |
+| M20 | ✅ | Basic-complete library scope and public API contract |
+| M21 | ✅ | Public QUIC session façade over deterministic connection loop |
+| M22 | ✅ | Bounded UDP/ASIO session adapter |
+| M23 | ✅ | ASIO recovery timer scheduling integration |
+| M24 | ✅ | Library examples and public smoke tests |
+| M25 | ✅ | CMake install/export package and package-consumer test |
+| M26 | ✅ | CI and release-gate documentation |
 
 ### Production Readiness (M27-M39) ✅
 

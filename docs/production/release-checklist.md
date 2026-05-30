@@ -16,7 +16,7 @@ Linux GCC and sanitizer gates are defined but not checked off until they are exe
 
 ## Code Quality Gates
 
-- [ ] All public APIs have documentation comments
+- [x] All public APIs have documentation comments
 - [x] No `as any` or type safety suppressions
 - [x] No empty catch blocks
 - [x] No TODO/FIXME comments in production code paths
@@ -25,10 +25,10 @@ Linux GCC and sanitizer gates are defined but not checked off until they are exe
 ## Security Gates
 
 - [x] No hardcoded keys, tokens, or credentials
-- [ ] No plaintext secrets in source or config files
+- [x] No plaintext secrets in source or config files
 - [x] Crypto provider boundary rejects test-only protectors when production policy is required
 - [x] TLS handshake adapter is boundary-only (no inline crypto)
-- [ ] No timing-sensitive code without constant-time annotations
+- [x] No timing-sensitive code without constant-time annotations
 
 ## Interop Gates
 
@@ -41,7 +41,7 @@ Linux GCC and sanitizer gates are defined but not checked off until they are exe
 
 - [x] README.md status section matches actual evidence
 - [x] docs/plan.md roadmap checkboxes match actual milestone completion
-- [ ] docs/milestones/roadmap.md documents all milestone scopes
+- [x] docs/milestones/roadmap.md documents all milestone scopes
 - [x] docs/production/readiness-gate.md status level matches evidence
 
 ## Scope Statement
