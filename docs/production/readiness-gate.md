@@ -96,7 +96,7 @@ FlowQ can only claim production-candidate status for the exact scope backed by l
 - [x] TLS backend and cipher-suite versions used during validation are recorded.
 - [ ] Linux GCC preset execution evidence is recorded.
 - [ ] ASan/UBSan execution evidence is recorded.
-- [ ] Strict-warning evidence is refreshed against the current test suite.
+- [x] Strict-warning evidence is refreshed against the current test suite.
 - [ ] Human security review is recorded.
 
 ## Forbidden Public Claims
