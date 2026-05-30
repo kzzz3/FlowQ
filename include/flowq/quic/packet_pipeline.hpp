@@ -443,7 +443,7 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
         return {{}, request.number, protection_level::none, detail::pipeline_error("packet protector is required")};
     }
     if (request.number.value > 0xffff'ffffULL) {
-        return {{}, request.number, request.protector->level(), detail::pipeline_error("packet number exceeds fixed M4a encoding")};
+        return {{}, request.number, request.protector->level(), detail::pipeline_error("packet number exceeds supported long-header encoding")};
     }
     if (request.number.space != detail::space_for(request.type)) {
         return {{}, request.number, request.protector->level(), detail::pipeline_error("packet number space does not match packet type")};
@@ -563,7 +563,7 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
         return {{}, request.number, protection_level::none, detail::pipeline_error("packet protector is required")};
     }
     if (request.number.value > 0xffff'ffffULL) {
-        return {{}, request.number, request.protector->level(), detail::pipeline_error("packet number exceeds fixed M16 encoding")};
+        return {{}, request.number, request.protector->level(), detail::pipeline_error("packet number exceeds supported application-header encoding")};
     }
     if (request.number.space != packet_number_space::application) {
         return {{}, request.number, request.protector->level(), detail::pipeline_error("packet number space does not match structural Application packet")};

@@ -52,12 +52,6 @@ if(FLOWQ_BUILD_EXAMPLES)
     add_executable(flowq_example_protection_policy examples/protection-policy/main.cpp)
     target_link_libraries(flowq_example_protection_policy PRIVATE FlowQ::flowq)
 
-    add_executable(flowq_example_http3 examples/http3/main.cpp)
-    target_link_libraries(flowq_example_http3 PRIVATE FlowQ::flowq)
-
-    add_executable(flowq_example_webtransport examples/webtransport/main.cpp)
-    target_link_libraries(flowq_example_webtransport PRIVATE FlowQ::flowq)
-
     add_executable(flowq_example_qpack examples/qpack/main.cpp)
     target_link_libraries(flowq_example_qpack PRIVATE FlowQ::flowq)
 

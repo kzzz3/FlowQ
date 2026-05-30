@@ -385,7 +385,7 @@ TEST_CASE("QUIC frame codec rejects malformed RESET_STREAM and STOP_SENDING fram
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x05, 0x40})).ok());
 }
 
-TEST_CASE("QUIC frame codec leaves stream-count flow-control frames unsupported in M8") {
+TEST_CASE("QUIC frame codec leaves stream-count flow-control frames unsupported") {
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x12, 0x00})).ok());
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x13, 0x00})).ok());
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x16, 0x00})).ok());

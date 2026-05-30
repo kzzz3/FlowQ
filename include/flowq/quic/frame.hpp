@@ -398,7 +398,7 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
         }
 
         if (type == 0x03) {
-            return {{}, codec_error("ACK ECN frame is unsupported in M2c")};
+            return {{}, codec_error("ACK ECN frame is unsupported")};
         }
 
         if (type == 0x04) {

@@ -66,7 +66,7 @@ FlowQ is a C++20 QUIC transport library under production hardening. The current 
 
 - **diagnostics.hpp**: Event sink for qlog-style observability
 
-### HTTP/3
+### HTTP/3 Codec
 
 - **http3.hpp**: HTTP/3 frame encoding (DATA, HEADERS, SETTINGS, GOAWAY)
 

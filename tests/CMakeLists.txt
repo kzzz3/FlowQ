@@ -27,7 +27,6 @@ add_executable(
     unit/quic_frame_tests.cpp
     unit/quic_fuzz_regression_tests.cpp
     unit/quic_http3_tests.cpp
-    unit/quic_http3_server_tests.cpp
     unit/quic_initial_keys_tests.cpp
     unit/quic_initial_packet_protector_tests.cpp
     unit/quic_interop_tests.cpp
@@ -48,7 +47,6 @@ add_executable(
     unit/quic_timer_scheduler_tests.cpp
     unit/quic_transport_parameters_tests.cpp
     unit/quic_varint_tests.cpp
-    unit/quic_webtransport_tests.cpp
     unit/quic_zero_rtt_tests.cpp
     unit/timer_tests.cpp
     unit/udp_tests.cpp

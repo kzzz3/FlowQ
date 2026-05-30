@@ -5,7 +5,6 @@
 #include <flowq/quic/qpack.hpp>
 #include <flowq/quic/http3.hpp>
 #include <flowq/quic/congestion.hpp>
-#include <flowq/quic/webtransport.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -191,47 +190,10 @@ TEST_CASE("benchmark comprehensive congestion controller") {
     }
 }
 
-TEST_CASE("benchmark WebTransport session") {
-    flowq::benchmark::benchmark_suite suite;
-
-    suite.add("webtransport_connect_close", []() {
-        flowq::quic::webtransport::session_config config{};
-        config.authority = "example.com";
-        config.path = "/webtransport";
-        config.max_streams_bidi = 10;
-        config.max_streams_uni = 10;
-
-        flowq::quic::webtransport::webtransport_session session{config};
-        REQUIRE(session.connect().is_connected());
-        REQUIRE(session.close().error.ok());
-    });
-
-    suite.add("webtransport_open_streams", []() {
-        flowq::quic::webtransport::session_config config{};
-        config.authority = "example.com";
-        config.path = "/webtransport";
-        config.max_streams_bidi = 100;
-        config.max_streams_uni = 100;
-
-        flowq::quic::webtransport::webtransport_session session{config};
-        REQUIRE(session.connect().is_connected());
-        for (int i = 0; i < 50; ++i) {
-            CHECK(session.open_bidi_stream().has_value());
-            CHECK(session.open_uni_stream().has_value());
-        }
-    });
-
-    auto results = suite.run(500);
-    REQUIRE(results.size() == 2);
-    for (const auto& result : results) {
-        CHECK(result.ops_per_second > 0);
-    }
-}
-
 TEST_CASE("benchmark format results") {
     flowq::benchmark::benchmark_suite suite;
 
-    suite.add("dummy", []() {
+    suite.add("integer_accumulation", []() {
         volatile int x = 0;
         for (int i = 0; i < 100; ++i) {
             x += i;
@@ -243,6 +205,6 @@ TEST_CASE("benchmark format results") {
     auto formatted = flowq::benchmark::format_results(results);
 
     CHECK_FALSE(formatted.empty());
-    CHECK(formatted.find("dummy") != std::string::npos);
+    CHECK(formatted.find("integer_accumulation") != std::string::npos);
     CHECK(formatted.find("Ops/sec:") != std::string::npos);
 }
