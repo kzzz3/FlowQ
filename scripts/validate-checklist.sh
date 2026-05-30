@@ -64,6 +64,12 @@ DOCUMENTED_PUBLIC_API_HEADERS=(
     "include/flowq/quic/timer_scheduler.hpp"
 )
 
+is_snake_case_identifier() {
+    [[ "$1" =~ ^[a-z][a-z0-9_]*$ ]] &&
+    [[ "$1" != *"__"* ]] &&
+    [[ "$1" != *_ ]]
+}
+
 find_public_api_doc_gaps() {
     awk '
         function is_public_decl(line) {
@@ -268,6 +274,50 @@ if [[ $PUBLIC_API_DOC_GAP_COUNT -gt 0 ]]; then
     echo ""
 fi
 
+# 8. Check public QUIC API naming conventions
+echo ""
+echo "Checking public QUIC API naming conventions..."
+
+NAMING_VIOLATION_COUNT=0
+while IFS= read -r file; do
+    is_experimental_public_header "$file" && continue
+
+    in_detail=0
+    line_number=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line_number=$((line_number + 1))
+        trimmed="$(printf "%s\n" "$line" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+
+        if [[ "$trimmed" == "namespace detail {" ]]; then
+            in_detail=1
+            continue
+        fi
+        if [[ "$trimmed" == "} // namespace detail" ]]; then
+            in_detail=0
+            continue
+        fi
+        [[ $in_detail -eq 1 ]] && continue
+
+        name="$(printf "%s\n" "$trimmed" | sed -nE 's/^(enum class|struct|class)[[:space:]]+([A-Za-z_][A-Za-z0-9_]*).*/\2/p')"
+        kind="type"
+        if [[ -z "$name" ]]; then
+            name="$(printf "%s\n" "$trimmed" | sed -nE 's/^\[\[nodiscard\]\][[:space:]]+(inline[[:space:]]+)?(static[[:space:]]+)?(virtual[[:space:]]+)?(auto|[A-Za-z_:][A-Za-z0-9_:<>,&*[:space:]]*[[:space:]]+)([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*\(.*/\5/p')"
+            kind="function"
+        fi
+
+        if [[ -n "$name" ]] && ! is_snake_case_identifier "$name"; then
+            echo -e "${RED}VIOLATION${NC}: Public API ${kind} is not snake_case in ${file}:${line_number}"
+            echo "  ${trimmed}"
+            NAMING_VIOLATION_COUNT=$((NAMING_VIOLATION_COUNT + 1))
+        fi
+    done < "$file"
+done < <(find include/flowq/quic -name "*.hpp")
+
+if [[ $NAMING_VIOLATION_COUNT -gt 0 ]]; then
+    VIOLATIONS=$((VIOLATIONS + NAMING_VIOLATION_COUNT))
+    echo ""
+fi
+
 echo ""
 echo "=== Summary ==="
 echo "Type safety suppressions: ${AS_ANY_COUNT}"
@@ -277,6 +327,7 @@ echo "TODO/FIXME comments: ${TODO_COUNT}"
 echo "Forbidden production claims: ${FORBIDDEN_CLAIM_COUNT}"
 echo "Placeholder implementation wording: ${PLACEHOLDER_COUNT}"
 echo "Public API documentation gaps: ${PUBLIC_API_DOC_GAP_COUNT}"
+echo "Public API naming violations: ${NAMING_VIOLATION_COUNT}"
 
 if [[ $VIOLATIONS -gt 0 ]]; then
     echo -e "${RED}FAILED${NC}: Found ${VIOLATIONS} violations"
