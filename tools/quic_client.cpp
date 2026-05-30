@@ -9,6 +9,7 @@
 #include <iostream>
 #include <memory>
 #include <span>
+#include <string>
 #include <string_view>
 #include <thread>
 #include <vector>
@@ -59,6 +60,15 @@ bool send_stream_payload(
     }
     send_datagrams(socket, flush_result.datagrams);
     return true;
+}
+
+std::string buffer_to_string(const flowq::buffer& buffer) {
+    std::string output;
+    output.reserve(buffer.size());
+    for (std::size_t index = 0; index < buffer.size(); ++index) {
+        output.push_back(static_cast<char>(buffer.data()[index]));
+    }
+    return output;
 }
 
 } // namespace
@@ -144,6 +154,7 @@ int main() {
         std::array<std::byte, 65535> receive_buffer{};
         auto deadline = std::chrono::steady_clock::now() + 5s;
         bool application_stream_sent = false;
+        bool echo_received = false;
         auto stream_send_deadline = deadline;
         while (std::chrono::steady_clock::now() < deadline) {
             if (tls_adapter->state() == flowq::quic::handshake_state::handshake_confirmed && !application_stream_sent) {
@@ -155,7 +166,8 @@ int main() {
                 stream_send_deadline = std::chrono::steady_clock::now() + 500ms;
             }
             if (application_stream_sent && std::chrono::steady_clock::now() >= stream_send_deadline) {
-                return 0;
+                std::cerr << "Timed out waiting for aioquic stream echo" << std::endl;
+                return 1;
             }
 
             asio::ip::udp::endpoint sender;
@@ -182,6 +194,20 @@ int main() {
             if (!receive_result.closes.empty()) {
                 std::cerr << "Session closed: " << receive_result.closes.front().error.message() << std::endl;
                 return 1;
+            }
+            for (const auto& delivery : receive_result.stream_deliveries) {
+                if (!delivery.ok()) {
+                    std::cerr << "Stream delivery failed: " << delivery.error.message() << std::endl;
+                    return 1;
+                }
+                const auto payload = buffer_to_string(delivery.data);
+                std::cout << "Received stream " << delivery.stream_id << ": " << payload << std::endl;
+                if (delivery.stream_id == 0 && payload == "echo from aioquic") {
+                    echo_received = true;
+                }
+            }
+            if (echo_received) {
+                return 0;
             }
             send_datagrams(socket, receive_result.datagrams);
 
