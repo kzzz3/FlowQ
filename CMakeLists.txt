@@ -73,17 +73,6 @@ if(FLOWQ_BUILD_EXAMPLES)
     target_link_libraries(flowq_example_qpack PRIVATE FlowQ::flowq)
     flowq_enable_project_warnings(flowq_example_qpack)
 
-    add_executable(flowq_example_echo_server examples/echo/server.cpp)
-    target_link_libraries(flowq_example_echo_server PRIVATE FlowQ::flowq)
-    flowq_enable_project_warnings(flowq_example_echo_server)
-
-    add_executable(flowq_example_echo_client examples/echo/client.cpp)
-    target_link_libraries(flowq_example_echo_client PRIVATE FlowQ::flowq)
-    flowq_enable_project_warnings(flowq_example_echo_client)
-
-    add_executable(flowq_example_chat_room examples/chat-room/main.cpp)
-    target_link_libraries(flowq_example_chat_room PRIVATE FlowQ::flowq)
-    flowq_enable_project_warnings(flowq_example_chat_room)
 endif()
 
 if(FLOWQ_BUILD_TESTS)
