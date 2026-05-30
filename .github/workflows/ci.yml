@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  push:
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -87,23 +89,11 @@ jobs:
           ~/vcpkg/bootstrap-vcpkg.sh
           echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
 
-      - name: Configure FlowQ
-        run: |
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_CXX_STANDARD=20 \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DFLOWQ_BUILD_TESTS=ON \
-            -DFLOWQ_BUILD_EXAMPLES=ON
-
-      - name: Build FlowQ
-        run: cmake --build build
-
-      - name: Test FlowQ
-        run: ctest --test-dir build -C Debug --timeout 10 --output-on-failure
+      - name: Validate Linux GCC preset
+        run: ./scripts/validate-build.sh --preset linux-gcc-vcpkg
 
       - name: Install FlowQ package
-        run: cmake --install build --config Debug --prefix build/install-flowq
+        run: cmake --install build/linux-gcc-vcpkg --config Debug --prefix build/install-flowq
 
       - name: Configure package consumer
         run: |
