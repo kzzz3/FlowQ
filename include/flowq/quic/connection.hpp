@@ -337,7 +337,7 @@ public:
             return;
         }
         if (!detail::is_connection_loop_space(space)) {
-            enter_closing(flowq::error{flowq::error_code::protocol_error, "unsupported packet number space for M4b connection loop"}, sent_at);
+            enter_closing(flowq::error{flowq::error_code::protocol_error, "unsupported packet number space for connection loop"}, sent_at);
             return;
         }
         refresh_key_lifecycle();

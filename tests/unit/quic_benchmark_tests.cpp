@@ -99,7 +99,7 @@ TEST_CASE("benchmark packet header encode") {
 TEST_CASE("benchmark suite format results") {
     flowq::benchmark::benchmark_suite suite;
     
-    suite.add("dummy_benchmark", []() {
+    suite.add("integer_accumulation", []() {
         volatile int x = 0;
         for (int i = 0; i < 100; ++i) {
             x += i;
@@ -111,7 +111,7 @@ TEST_CASE("benchmark suite format results") {
     auto formatted = flowq::benchmark::format_results(results);
     
     CHECK_FALSE(formatted.empty());
-    CHECK(formatted.find("dummy_benchmark") != std::string::npos);
+    CHECK(formatted.find("integer_accumulation") != std::string::npos);
     CHECK(formatted.find("Iterations:") != std::string::npos);
     CHECK(formatted.find("Ops/sec:") != std::string::npos);
 }

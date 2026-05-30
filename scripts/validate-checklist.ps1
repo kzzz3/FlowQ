@@ -53,10 +53,8 @@ function Test-NegatedForbiddenClaim {
 $ExperimentalPublicHeaders = @(
     "include/flowq/quic/http3.hpp",
     "include/flowq/quic/http3_request.hpp",
-    "include/flowq/quic/http3_server.hpp",
     "include/flowq/quic/interop_runner.hpp",
     "include/flowq/quic/qpack.hpp",
-    "include/flowq/quic/webtransport.hpp",
     "include/flowq/quic/zero_rtt.hpp"
 )
 

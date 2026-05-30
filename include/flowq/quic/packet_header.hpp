@@ -522,7 +522,7 @@ inline void append_u32(std::vector<std::byte>& output, std::uint32_t value) {
     const auto first_byte = input[0];
     const auto first = static_cast<std::uint8_t>(first_byte);
     if ((first & 0x80U) == 0) {
-        return {{}, detail::packet_error("short headers are unsupported in M2b")};
+        return {{}, detail::packet_error("short headers are unsupported by this decoder")};
     }
 
     std::size_t offset = 1;

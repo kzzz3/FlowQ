@@ -28,7 +28,7 @@ cmake -S . -B build -DFLOWQ_BUILD_INTEROP=ON
 
 - Peer QUIC binary must be available in PATH or specified via `FLOWQ_INTEROP_PEER_BIN`
 - A selected scenario is provided with `FLOWQ_INTEROP_SCENARIO`
-- FlowQ must be configured with a provider-backed TLS adapter (M31b) for handshake/stream scenarios
+- FlowQ must be configured with a provider-backed TLS adapter for handshake and stream scenarios
 - External peer runs should record the peer name, version, scenario, result, and harness output
 
 ## Running
