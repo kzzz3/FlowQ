@@ -32,6 +32,8 @@ struct session_config {
     std::uint64_t initial_max_stream_data_bidi_local{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t initial_max_stream_data_bidi_remote{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t initial_max_stream_data_uni{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t initial_max_streams_bidi{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t initial_max_streams_uni{std::numeric_limits<std::uint64_t>::max()};
     std::chrono::milliseconds max_idle_timeout{};
     std::uint64_t max_udp_payload_size{1200};
     std::uint64_t active_connection_id_limit{2};
@@ -86,6 +88,8 @@ inline void apply_transport_parameters(session_config& config, const transport_p
         config.initial_max_stream_data_bidi_local,
         config.initial_max_stream_data_bidi_remote,
         config.initial_max_stream_data_uni,
+        config.initial_max_streams_bidi,
+        config.initial_max_streams_uni,
         config.max_idle_timeout,
         config.max_udp_payload_size,
         config.active_connection_id_limit,
@@ -105,6 +109,8 @@ inline void apply_transport_parameters(session_config& config, const transport_p
     config.initial_max_stream_data_bidi_remote = config.loop_config.initial_max_stream_data_bidi_remote;
     config.initial_max_stream_data_uni = config.loop_config.initial_max_stream_data_uni;
     config.initial_stream_send_max_data = config.loop_config.initial_stream_send_max_data;
+    config.initial_max_streams_bidi = config.loop_config.initial_max_streams_bidi;
+    config.initial_max_streams_uni = config.loop_config.initial_max_streams_uni;
     config.active_connection_id_limit = config.loop_config.active_connection_id_limit;
     config.disable_active_migration = config.loop_config.disable_active_migration;
 }
@@ -220,6 +226,8 @@ private:
             config.initial_max_stream_data_bidi_local,
             config.initial_max_stream_data_bidi_remote,
             config.initial_max_stream_data_uni,
+            config.initial_max_streams_bidi,
+            config.initial_max_streams_uni,
             config.max_idle_timeout,
             config.max_udp_payload_size,
             config.active_connection_id_limit,

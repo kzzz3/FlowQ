@@ -44,7 +44,6 @@ TEST_CASE("openssl_tls_handshake_adapter receive_crypto returns error for disabl
     
     auto result = adapter.receive_crypto(bytes);
     
-    // The stub implementation should return an error
     #if !defined(FLOWQ_ENABLE_OPENSSL_QUIC_TLS)
     CHECK_FALSE(result.ok());
     CHECK(adapter.state() == flowq::quic::handshake_state::idle);
@@ -146,7 +145,6 @@ TEST_CASE("openssl_tls_handshake_adapter state remains idle after failed receive
     
     (void)adapter.receive_crypto(bytes);
     
-    // State should remain idle for stub implementation
     #if !defined(FLOWQ_ENABLE_OPENSSL_QUIC_TLS)
     CHECK(adapter.state() == flowq::quic::handshake_state::idle);
     CHECK_FALSE(adapter.key_availability().initial);

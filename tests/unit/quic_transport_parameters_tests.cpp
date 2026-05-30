@@ -138,6 +138,8 @@ TEST_CASE("transport parameters map into connection and session config") {
     parameters.initial_max_stream_data_bidi_local = 1200;
     parameters.initial_max_stream_data_bidi_remote = 900;
     parameters.initial_max_stream_data_uni = 700;
+    parameters.initial_max_streams_bidi = 3;
+    parameters.initial_max_streams_uni = 2;
     parameters.disable_active_migration = true;
     parameters.active_connection_id_limit = 6;
 
@@ -152,6 +154,8 @@ TEST_CASE("transport parameters map into connection and session config") {
     CHECK(connection_config.initial_max_stream_data_bidi_local == 1200);
     CHECK(connection_config.initial_max_stream_data_bidi_remote == 900);
     CHECK(connection_config.initial_max_stream_data_uni == 700);
+    CHECK(connection_config.initial_max_streams_bidi == 3);
+    CHECK(connection_config.initial_max_streams_uni == 2);
     CHECK(connection_config.disable_active_migration);
     CHECK(connection_config.active_connection_id_limit == 6);
 
@@ -161,5 +165,7 @@ TEST_CASE("transport parameters map into connection and session config") {
     CHECK(session_config.max_packet_payload_size == 1400);
     CHECK(session_config.initial_connection_send_max_data == 5000);
     CHECK(session_config.initial_stream_send_max_data == 700);
+    CHECK(session_config.initial_max_streams_bidi == 3);
+    CHECK(session_config.initial_max_streams_uni == 2);
     CHECK(session_config.disable_active_migration);
 }

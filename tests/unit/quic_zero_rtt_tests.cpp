@@ -4,7 +4,7 @@
 
 namespace {
 
-class stub_tls_adapter final : public flowq::quic::tls_handshake_adapter {
+class recording_tls_adapter final : public flowq::quic::tls_handshake_adapter {
 public:
     flowq::quic::handshake_state state() const noexcept override { return state_; }
     flowq::quic::tls_key_availability key_availability() const noexcept override { return keys_; }
@@ -25,7 +25,7 @@ TEST_CASE("zero_rtt_manager starts unavailable") {
 
 TEST_CASE("zero_rtt_manager disabled by default") {
     flowq::quic::zero_rtt_manager manager{};
-    stub_tls_adapter adapter{};
+    recording_tls_adapter adapter{};
 
     auto result = manager.check_availability(adapter);
     CHECK_FALSE(result.can_send());
