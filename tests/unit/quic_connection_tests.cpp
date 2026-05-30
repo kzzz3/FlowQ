@@ -248,6 +248,58 @@ TEST_CASE("connection loop parses inbound Initial packets and generates ACK pack
     CHECK(std::get<flowq::quic::ack_frame>(parsed_ack.frames[0]).largest_acknowledged == 0);
 }
 
+TEST_CASE("connection loop learns peer source connection ID from long headers") {
+    flowq::quic::plaintext_packet_protector protector{};
+    flowq::endpoint server_peer{"server", 4433, "hq-interop"};
+    flowq::endpoint client_peer{"client", 1111, "hq-interop"};
+    auto client = make_loop(cid({0x01}), cid({0x02}), server_peer, protector);
+    auto server = make_loop(cid({0xa0, 0xa1}), cid({0x01}), client_peer, protector);
+
+    server.queue_handshake({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    server.flush(at(0ms));
+    auto inbound = require_single_outbound(server.drain_actions());
+
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(inbound.payload), server_peer}, at(1ms));
+    REQUIRE(client.drain_actions().size() == 1);
+
+    client.queue_handshake({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(2ms));
+    auto response = require_single_outbound(client.drain_actions());
+    auto decoded = flowq::quic::decode_packet_header(response.payload);
+    REQUIRE(decoded.ok());
+    REQUIRE(std::holds_alternative<flowq::quic::handshake_header>(decoded.header));
+    const auto& handshake = std::get<flowq::quic::handshake_header>(decoded.header);
+    CHECK(handshake.destination_connection_id.bytes.size() == 2);
+    CHECK(handshake.destination_connection_id.bytes.data()[0] == std::byte{0xa0});
+    CHECK(handshake.destination_connection_id.bytes.data()[1] == std::byte{0xa1});
+}
+
+TEST_CASE("connection loop accepts coalesced long datagrams with trailing zero padding") {
+    flowq::quic::plaintext_packet_protector protector{};
+    flowq::endpoint client_peer{"client", 1111, "hq-interop"};
+    flowq::endpoint server_peer{"server", 4433, "hq-interop"};
+    auto client = make_loop(cid({0x01}), cid({0x02}), server_peer, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), client_peer, protector);
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto inbound = require_single_outbound(client.drain_actions());
+    std::vector<std::byte> padded{
+        inbound.payload.data(),
+        inbound.payload.data() + inbound.payload.size()
+    };
+    padded.insert(padded.end(), {std::byte{0x00}, std::byte{0x00}, std::byte{0x00}});
+
+    server.on_datagram(flowq::quic::inbound_datagram{flowq::buffer{padded}, client_peer}, at(1ms));
+
+    auto actions = server.drain_actions();
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(actions[0]));
+    const auto& received = std::get<flowq::quic::received_packet_event>(actions[0]);
+    CHECK(received.number.space == flowq::quic::packet_number_space::initial);
+    CHECK(received.number.value == 0);
+}
+
 TEST_CASE("connection loop enforces server anti-amplification limit before peer address validation") {
     flowq::quic::plaintext_packet_protector protector{};
     flowq::endpoint client_peer{"client", 1111, "hq-interop"};

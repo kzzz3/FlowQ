@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <initializer_list>
 #include <limits>
 #include <span>
@@ -15,7 +16,6 @@
 namespace flowq::quic {
 
 /// @note Contains a connection_loop_config member for consolidated access.
-/// Direct field access is preserved for backward compatibility.
 struct session_config {
     connection_role role{};
     std::uint32_t version{1};
@@ -61,6 +61,7 @@ struct session_config {
     const packet_protector* application_tx_protector{};
     /// @pre The protector must outlive this session.
     const packet_protector* application_rx_protector{};
+    std::function<packet_protector_update()> packet_protector_refresh;
 };
 
 inline void apply_directional_protectors(session_config& config) noexcept {
@@ -70,6 +71,7 @@ inline void apply_directional_protectors(session_config& config) noexcept {
     config.loop_config.handshake_rx_protector = config.handshake_rx_protector;
     config.loop_config.application_tx_protector = config.application_tx_protector;
     config.loop_config.application_rx_protector = config.application_rx_protector;
+    config.loop_config.packet_protector_refresh = config.packet_protector_refresh;
 }
 
 /// @brief Apply transport parameters to session_config.

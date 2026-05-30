@@ -4,7 +4,6 @@
 #include <flowq/quic/initial_packet_protector.hpp>
 #include <flowq/quic/tls_protector_factory.hpp>
 #include <asio.hpp>
-#include <algorithm>
 #include <array>
 #include <chrono>
 #include <iostream>
@@ -21,17 +20,6 @@ bool send_datagrams(
     for (const auto& datagram : datagrams) {
         std::cout << "Sending " << datagram.payload.size() << " bytes" << std::endl;
 
-        std::cout << "Hex: ";
-        auto count = (std::min)(datagram.payload.size(), std::size_t(50));
-        for (std::size_t i = 0; i < count; ++i) {
-            auto byte = static_cast<unsigned int>(static_cast<unsigned char>(datagram.payload.data()[i]));
-            if (byte < 16) {
-                std::cout << "0";
-            }
-            std::cout << std::hex << byte << " ";
-        }
-        std::cout << std::dec << std::endl;
-
         auto endpoint = asio::ip::udp::endpoint{asio::ip::make_address(datagram.peer.host), datagram.peer.port};
         socket.send_to(asio::buffer(datagram.payload.data(), datagram.payload.size()), endpoint);
     }
@@ -47,9 +35,6 @@ int main() {
         asio::io_context io_context;
         asio::ip::udp::socket socket{io_context, asio::ip::udp::endpoint{asio::ip::udp::v4(), 0}};
         socket.non_blocking(true);
-        asio::ip::udp::resolver resolver{io_context};
-        auto endpoints = resolver.resolve(asio::ip::udp::v4(), "127.0.0.1", "4433");
-        auto server_endpoint = *endpoints.begin();
 
         // Create connection IDs
         flowq::quic::connection_id local_cid{flowq::buffer{std::vector<std::byte>{
@@ -73,6 +58,23 @@ int main() {
         auto initial_tx_protector = flowq::quic::initial_packet_protector::client(remote_cid);
         auto initial_rx_protector = flowq::quic::initial_packet_protector::server(remote_cid);
         flowq::quic::tls_protector_set tls_protectors;
+        auto refresh_tls_protectors = [&]() -> flowq::quic::packet_protector_update {
+            if (tls_adapter->negotiated_cipher() == flowq::quic::cipher_suite::unknown) {
+                return {};
+            }
+            auto refreshed = flowq::quic::tls_protector_set::create(*tls_adapter);
+            if (!refreshed.ok()) {
+                return {refreshed.error()};
+            }
+            tls_protectors = std::move(refreshed);
+            return {
+                {},
+                tls_protectors.protector(flowq::quic::packet_number_space::handshake, true),
+                tls_protectors.protector(flowq::quic::packet_number_space::handshake, false),
+                tls_protectors.protector(flowq::quic::packet_number_space::application, true),
+                tls_protectors.protector(flowq::quic::packet_number_space::application, false)
+            };
+        };
 
         // Create session
         flowq::quic::session_config session_cfg{};
@@ -85,6 +87,7 @@ int main() {
         session_cfg.protection_policy = flowq::quic::packet_protection_policy::production_required;
         session_cfg.tls_adapter = tls_adapter.get();
         session_cfg.pipeline.max_datagram_size = 65535;
+        session_cfg.packet_protector_refresh = refresh_tls_protectors;
 
         flowq::quic::session session{std::move(session_cfg)};
 
@@ -124,56 +127,30 @@ int main() {
             }
 
             std::cout << "Received " << received << " bytes" << std::endl;
-            auto remaining = std::span<const std::byte>{receive_buffer.data(), received};
-            while (!remaining.empty()) {
-                if (std::all_of(remaining.begin(), remaining.end(), [](std::byte item) { return item == std::byte{0x00}; })) {
-                    break;
-                }
-                auto packet_size = flowq::quic::detail::long_packet_wire_size(remaining);
-                if (!packet_size.ok()) {
-                    std::cerr << "Packet split failed: " << packet_size.error.message() << std::endl;
-                    return 1;
-                }
-                auto packet = remaining.first(packet_size.value);
-                auto decoded_header = flowq::quic::decode_packet_header(packet);
-                if (decoded_header.ok()) {
-                    if (const auto* initial = std::get_if<flowq::quic::initial_header>(&decoded_header.header)) {
-                        if (!initial->source_connection_id.bytes.empty()) {
-                            session.set_remote_connection_id(initial->source_connection_id);
-                        }
-                    } else if (const auto* handshake = std::get_if<flowq::quic::handshake_header>(&decoded_header.header)) {
-                        if (!handshake->source_connection_id.bytes.empty()) {
-                            session.set_remote_connection_id(handshake->source_connection_id);
-                        }
-                    }
-                }
-                auto inbound = flowq::buffer{packet};
-                auto receive_result = session.on_datagram(flowq::quic::inbound_datagram{
-                    std::move(inbound),
-                    flowq::endpoint{sender.address().to_string(), sender.port(), "hq-interop"}
-                });
-                if (!receive_result.ok()) {
-                    std::cerr << "Session receive failed: " << receive_result.error.message() << std::endl;
-                    return 1;
-                }
-                if (!receive_result.closes.empty()) {
-                    std::cerr << "Session closed: " << receive_result.closes.front().error.message() << std::endl;
-                    return 1;
-                }
-                send_datagrams(socket, receive_result.datagrams);
-
-                tls_protectors = flowq::quic::tls_protector_set::create(*tls_adapter);
-                if (!tls_protectors.ok()) {
-                    std::cerr << "TLS protector installation failed: " << tls_protectors.error().message() << std::endl;
-                    return 1;
-                }
-                session.set_packet_protectors(
-                    tls_protectors.protector(flowq::quic::packet_number_space::handshake, true),
-                    tls_protectors.protector(flowq::quic::packet_number_space::handshake, false),
-                    tls_protectors.protector(flowq::quic::packet_number_space::application, true),
-                    tls_protectors.protector(flowq::quic::packet_number_space::application, false));
-                remaining = remaining.subspan(packet_size.value);
+            auto receive_result = session.on_datagram(flowq::quic::inbound_datagram{
+                flowq::buffer{std::span<const std::byte>{receive_buffer.data(), received}},
+                flowq::endpoint{sender.address().to_string(), sender.port(), "hq-interop"}
+            });
+            if (!receive_result.ok()) {
+                std::cerr << "Session receive failed: " << receive_result.error.message() << std::endl;
+                return 1;
             }
+            if (!receive_result.closes.empty()) {
+                std::cerr << "Session closed: " << receive_result.closes.front().error.message() << std::endl;
+                return 1;
+            }
+            send_datagrams(socket, receive_result.datagrams);
+
+            auto protector_update = refresh_tls_protectors();
+            if (!protector_update.ok()) {
+                std::cerr << "TLS protector installation failed: " << protector_update.error.message() << std::endl;
+                return 1;
+            }
+            session.set_packet_protectors(
+                protector_update.handshake_tx,
+                protector_update.handshake_rx,
+                protector_update.application_tx,
+                protector_update.application_rx);
 
             auto next_flush = session.flush();
             if (!next_flush.ok()) {

@@ -6,7 +6,7 @@ This document records the current evidence required before FlowQ can claim produ
 
 - **Level**: Production-readiness gate
 - **Date**: 2026-05-30
-- **Status**: Non-production. The codebase has local build/test evidence, OpenSSL-gated AES-128-GCM packet protection, deterministic transport behavior, and a recorded aioquic handshake pass. Stream interop, multi-peer interop, and human security review are not recorded.
+- **Status**: Non-production. The codebase has local build/test evidence, OpenSSL-gated AES-128-GCM packet protection, deterministic transport behavior, and recorded aioquic handshake passes. Stream interop, multi-peer interop, and human security review are not recorded.
 
 ## Evidence In Place
 
@@ -43,6 +43,7 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ `scripts/run-interop.ps1` and `scripts/run-interop.sh` call the built harness binary and write per-scenario JSON results.
 - ✅ Harness wiring was verified locally with `FLOWQ_INTEROP_SCENARIO=basic_handshake` and a local executable peer.
 - ✅ FlowQ client handshake passes against Python `aioquic` 1.3.0 in conda environment `expr`.
+- ✅ Coalesced long-header datagrams now stay in core connection processing: peer source CID learning, trailing zero padding, and packet-protector refresh are covered by unit tests and the aioquic handshake regression.
 - ✅ Non-functional interop runner client/server placeholders and Docker interop scaffolding were removed.
 - ⚠️ Named non-aioquic QUIC peers are not available in the current local environment: ngtcp2, quiche, MsQuic, picoquic, and lsquic were not found on PATH.
 
