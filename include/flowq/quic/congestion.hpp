@@ -13,7 +13,8 @@ namespace flowq::quic {
 /// Congestion controller phase: slow start or congestion avoidance.
 enum class congestion_phase {
     slow_start,
-    congestion_avoidance
+    congestion_avoidance,
+    recovery
 };
 
 /// Packet metadata for persistent congestion detection.
