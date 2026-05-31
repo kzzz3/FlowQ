@@ -31,10 +31,32 @@ Write-Host "Build type: $BuildType"
 Write-Host "Preset: $Preset"
 Write-Host ""
 
+$VcpkgRoot = $env:VCPKG_ROOT
+if (-not $VcpkgRoot -and $Preset -like "*vcpkg*") {
+    $DefaultVcpkgRoot = "D:/vcpkg"
+    if (Test-Path (Join-Path $DefaultVcpkgRoot "scripts/buildsystems/vcpkg.cmake")) {
+        $VcpkgRoot = $DefaultVcpkgRoot
+        $env:VCPKG_ROOT = $VcpkgRoot
+    }
+}
+
+if ($Preset -like "*vcpkg*") {
+    if (-not $VcpkgRoot) {
+        Write-Host "FAILED: VCPKG_ROOT must point to a bootstrapped vcpkg checkout for preset: $Preset" -ForegroundColor Red
+        exit 1
+    }
+
+    $VcpkgToolchain = Join-Path $VcpkgRoot "scripts/buildsystems/vcpkg.cmake"
+    if (-not (Test-Path $VcpkgToolchain)) {
+        Write-Host "FAILED: vcpkg toolchain file not found: $VcpkgToolchain" -ForegroundColor Red
+        exit 1
+    }
+}
+
 # Step 1: Configure
 Write-Host "Step 1/5: Configuring..." -ForegroundColor Yellow
-if ($env:VCPKG_ROOT) {
-    Write-Host "Using VCPKG_ROOT: $env:VCPKG_ROOT"
+if ($VcpkgRoot) {
+    Write-Host "Using VCPKG_ROOT: $VcpkgRoot"
 } else {
     Write-Host "WARNING: VCPKG_ROOT not set, using default" -ForegroundColor Yellow
 }
@@ -108,10 +130,34 @@ Write-Host ""
 # Step 5: Package-consumer build and run
 Write-Host "Step 5/5: Building and running package-consumer..." -ForegroundColor Yellow
 $ConsumerBuildDir = "build/package-consumer"
+$VcpkgTriplet = if ($env:VCPKG_TARGET_TRIPLET) { $env:VCPKG_TARGET_TRIPLET } else { "x64-windows" }
+$DependencyPrefixPaths = @("$RepoRoot/$InstallDir")
+if ($VcpkgToolchain) {
+    $PresetVcpkgInstalled = Join-Path $RepoRoot "build/$Preset/vcpkg_installed/$VcpkgTriplet"
+    if (Test-Path $PresetVcpkgInstalled) {
+        $DependencyPrefixPaths += $PresetVcpkgInstalled
+    }
+}
+$ResolvedBuildRoot = Resolve-Path -Path "build" -ErrorAction SilentlyContinue
+if ($ResolvedBuildRoot -and (Test-Path $ConsumerBuildDir)) {
+    $ResolvedConsumerBuildDir = Resolve-Path -Path $ConsumerBuildDir
+    if (-not $ResolvedConsumerBuildDir.Path.StartsWith($ResolvedBuildRoot.Path, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Write-Host "FAILED: Refusing to clean package-consumer directory outside build/: $ResolvedConsumerBuildDir" -ForegroundColor Red
+        exit 1
+    }
+    Remove-Item -LiteralPath $ResolvedConsumerBuildDir.Path -Recurse -Force
+}
+$ConsumerConfigureArgs = @(
+    "-S", "tests/package-consumer",
+    "-B", $ConsumerBuildDir,
+    "-G", "Visual Studio 18 2026",
+    "-DCMAKE_PREFIX_PATH=$($DependencyPrefixPaths -join ';')"
+)
+if ($VcpkgToolchain) {
+    $ConsumerConfigureArgs += "-DCMAKE_TOOLCHAIN_FILE=$VcpkgToolchain"
+}
 
-cmake -S tests/package-consumer -B $ConsumerBuildDir -G "Visual Studio 18 2026" `
-    -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-    -DCMAKE_PREFIX_PATH="$RepoRoot/$InstallDir"
+cmake @ConsumerConfigureArgs
 if ($LASTEXITCODE -ne 0) {
     Write-Host "FAILED: Package-consumer configure failed" -ForegroundColor Red
     exit 1
