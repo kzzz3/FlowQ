@@ -1,4 +1,4 @@
-option(FLOWQ_ENABLE_OPENSSL_QUIC_TLS "Enable experimental OpenSSL QUIC TLS provider surface" OFF)
+option(FLOWQ_ENABLE_OPENSSL_QUIC_TLS "Enable OpenSSL QUIC TLS backend" OFF)
 
 if(FLOWQ_ENABLE_OPENSSL_QUIC_TLS)
     find_package(OpenSSL REQUIRED COMPONENTS SSL Crypto)
