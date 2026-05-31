@@ -126,7 +126,6 @@ Dependencies managed via `vcpkg.json` manifest:
 | Option | Default | Description |
 |--------|---------|-------------|
 | FLOWQ_BUILD_TESTS | ON | Build tests |
-| FLOWQ_BUILD_EXAMPLES | ON | Build production-scope examples |
 | FLOWQ_BUILD_SOURCE_ONLY_EXAMPLES | OFF | Build source-only examples outside the production-candidate API |
 | FLOWQ_BUILD_FUZZ | OFF | Build fuzz targets |
 | FLOWQ_BUILD_INTEROP | OFF | Build interop harness |
