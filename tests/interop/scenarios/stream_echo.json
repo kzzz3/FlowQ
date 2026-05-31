@@ -25,6 +25,5 @@
             "expect": "client_received"
         }
     ],
-    "timeout_ms": 10000,
-    "skip_if_missing": ["peer_binary", "tls_backend"]
+    "timeout_ms": 10000
 }

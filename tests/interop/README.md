@@ -30,6 +30,7 @@ cmake -S . -B build -DFLOWQ_BUILD_INTEROP=ON
 - A selected scenario is provided with `FLOWQ_INTEROP_SCENARIO`
 - FlowQ must be configured with a provider-backed TLS adapter for handshake and stream scenarios
 - External peer runs should record the peer name, version, scenario, result, and harness output
+- External wrapper scripts fail when any requested scenario is skipped; a production gate requires executed peer evidence.
 
 ## Running
 

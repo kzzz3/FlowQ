@@ -3,7 +3,9 @@
 #
 # This script runs interop scenarios against a specified peer QUIC implementation.
 # It records results in JSON format with peer version, FlowQ commit, TLS backend version.
-# Exit code 0 if all scenarios pass, 1 if any scenario fails.
+# Exit code 0 only if every selected scenario passes.
+# Failures and skips both exit 1 so external interop gates cannot pass without
+# executing the requested peer scenario.
 
 param(
     [Parameter(Mandatory=$true)]
@@ -225,7 +227,7 @@ Write-Host "Skipped: $SkippedScenarios"
 Write-Host ""
 Write-Host "Results written to: $ResultsFile"
 
-# Exit with failure if any scenarios failed
-if ($FailedScenarios -gt 0) {
+# Exit with failure if any scenarios failed or skipped.
+if ($FailedScenarios -gt 0 -or $SkippedScenarios -gt 0) {
     exit 1
 }
