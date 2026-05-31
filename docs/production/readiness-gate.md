@@ -16,6 +16,7 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ **Install + package-consumer** build path
 - ✅ **Clean install prefix** validation before package-consumer checks, preventing removed public headers from surviving as stale installed artifacts.
 - ✅ **Release-readiness script** (`scripts/check-release-readiness.ps1 -SkipBuild`)
+- ✅ **Strict production-candidate gate** (`scripts/check-release-readiness.ps1 -RequireCompleteReleaseChecklist`) fails until every required release checklist item is checked.
 - ✅ **Checklist validator** (`scripts/validate-checklist.ps1`)
 - ⚠️ **Linux GCC preset** (`linux-gcc-vcpkg`) and **ASan/UBSan preset** (`linux-asan-ubsan`) exist, but Linux execution evidence is not recorded in this local environment.
 

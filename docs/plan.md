@@ -38,6 +38,14 @@ Windows production gate:
 .\scripts\check-release-readiness.ps1 -SkipBuild
 ```
 
+Strict production-candidate gate:
+
+```powershell
+.\scripts\check-release-readiness.ps1 -RequireCompleteReleaseChecklist
+```
+
+The strict gate is expected to fail until Linux, sanitizer, and human review evidence is recorded and checked in `docs/production/release-checklist.md`.
+
 Python aioquic interop from the `expr` conda environment:
 
 ```powershell
@@ -45,5 +53,7 @@ conda run -n expr python tests\interop\test_interop.py
 $env:FLOWQ_INTEROP_SCENARIO = "loss_recovery"
 conda run -n expr python tests\interop\test_interop.py
 ```
+
+The direct Python aioquic harness supports `bidirectional_stream` (default) and `loss_recovery`; handshake completion is asserted in both scenarios. The C++ wrapper scenario files use `basic_handshake`, `stream_echo`, and `loss_recovery`.
 
 Linux and sanitizer evidence must be generated on a Linux host using the presets and scripts documented in `docs/production/release-checklist.md`.

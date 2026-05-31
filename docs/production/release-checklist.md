@@ -2,6 +2,14 @@
 
 Complete all items before claiming production-candidate status. Checked items must correspond to current evidence.
 
+The strict production-candidate gate is:
+
+```powershell
+.\scripts\check-release-readiness.ps1 -RequireCompleteReleaseChecklist
+```
+
+`-SkipBuild` is only for local documentation/checklist smoke checks and must not be used as production-candidate evidence.
+
 ## Build and Test Gates
 
 - [x] Full CTest passes on Windows MSVC/vcpkg preset
@@ -14,7 +22,7 @@ Current Windows evidence: `scripts/validate-build.ps1 -Preset windows-msvc-vcpkg
 
 Linux GCC and sanitizer gates are defined but not checked off until they are executed on a Linux host: `linux-gcc-vcpkg`, `linux-gcc-vcpkg-strict`, and `linux-asan-ubsan` presets are available, `scripts/validate-build.sh --preset linux-gcc-vcpkg` validates CMake configure, build, CTest, install, package-consumer build, and package-consumer execution, and `scripts/validate-sanitizers.sh` validates ASan/UBSan. The current local Windows host cannot produce this evidence because no WSL distribution, Docker daemon, GCC, or Clang is available.
 
-Code-quality evidence: `scripts/validate-checklist.ps1` checks production public QUIC headers for TODO/FIXME comments, placeholder wording, type-safety suppressions, empty catch blocks, hardcoded credentials, documentation comments, and public API snake_case naming.
+Code-quality evidence: `scripts/validate-checklist.ps1` checks production public QUIC headers for TODO/FIXME comments, placeholder wording, type-safety suppressions, empty catch blocks, hardcoded credentials, documentation comments, and public API snake_case naming. `scripts/check-release-readiness.ps1 -RequireCompleteReleaseChecklist` fails while any required checklist item remains unchecked.
 
 ## Code Quality Gates
 
@@ -35,9 +43,9 @@ Code-quality evidence: `scripts/validate-checklist.ps1` checks production public
 
 ## Interop Gates
 
-- [x] basic_handshake scenario passes against aioquic 1.3.0
-- [x] stream_echo scenario passes against aioquic 1.3.0
-- [x] loss_recovery scenario passes against aioquic 1.3.0
+- [x] aioquic 1.3.0 observes QUIC handshake completion from FlowQ
+- [x] Python `bidirectional_stream` scenario passes against aioquic 1.3.0
+- [x] Python `loss_recovery` scenario passes against aioquic 1.3.0
 - [x] Interop results recorded with peer name, version, FlowQ TLS backend version, and negotiated cipher suite
 
 ## Documentation Gates
@@ -60,6 +68,6 @@ Before claiming production-candidate:
 
 Production-ready status requires:
 
-1. External security review (not agent-generated)
-2. Sign-off from a human reviewer
-3. Explicit approval to change public wording
+- [ ] External security review (not agent-generated)
+- [ ] Sign-off from a human reviewer
+- [ ] Explicit approval to change public wording

@@ -1,11 +1,12 @@
 # check-release-readiness.ps1 - Check release readiness
-# Usage: .\scripts\check-release-readiness.ps1 [-SkipBuild] [-SourceRoot <path>]
+# Usage: .\scripts\check-release-readiness.ps1 [-SkipBuild] [-RequireCompleteReleaseChecklist] [-SourceRoot <path>]
 #
 # This script runs all validation checks and reports release readiness.
 # Exit code 0 if all checks pass, 1 if any check fails.
 
 param(
     [switch]$SkipBuild,
+    [switch]$RequireCompleteReleaseChecklist,
     [string]$SourceRoot
 )
 
@@ -37,17 +38,36 @@ if ($LASTEXITCODE -ne 0) {
     $Failed = $true
 }
 
-# 3. Check build (unless skipped)
+$StepNumber = 3
+
+if ($RequireCompleteReleaseChecklist) {
+    Write-Host ""
+    Write-Host "$StepNumber. Checking release checklist completion..." -ForegroundColor Yellow
+
+    $releaseChecklist = Join-Path $RepoRoot "docs\production\release-checklist.md"
+    $uncheckedItems = @(Select-String -Path $releaseChecklist -Pattern '^\s*-\s+\[\s\]\s+(.+)$')
+    if ($uncheckedItems.Count -gt 0) {
+        Write-Host "FAILED: Release checklist has unchecked required items:" -ForegroundColor Red
+        foreach ($item in $uncheckedItems) {
+            Write-Host "  $($item.Path):$($item.LineNumber): $($item.Line.Trim())" -ForegroundColor Red
+        }
+        $Failed = $true
+    }
+
+    $StepNumber += 1
+}
+
+# Check build (unless skipped)
 if (-not $SkipBuild) {
     Write-Host ""
-    Write-Host "3. Checking build..." -ForegroundColor Yellow
+    Write-Host "$StepNumber. Checking build..." -ForegroundColor Yellow
     & .\scripts\validate-build.ps1 -SkipTests
     if ($LASTEXITCODE -ne 0) {
         $Failed = $true
     }
 } else {
     Write-Host ""
-    Write-Host "3. Skipping build check (-SkipBuild)" -ForegroundColor Yellow
+    Write-Host "$StepNumber. Skipping build check (-SkipBuild)" -ForegroundColor Yellow
 }
 
 Write-Host ""
