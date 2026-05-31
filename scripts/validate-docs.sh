@@ -24,17 +24,18 @@ echo "=== FlowQ Documentation Link Validator ==="
 echo "Scanning: $REPO_ROOT"
 echo ""
 
-# Find all markdown files
-find . -name "*.md" -type f | while read -r md_file; do
+# Find all markdown files. Use process substitution instead of pipelines feeding
+# while loops so counter updates remain in this shell on Bash.
+while read -r md_file; do
     # Skip node_modules and build directories
     if [[ "$md_file" == *"/node_modules/"* ]] || [[ "$md_file" == *"/build/"* ]]; then
         continue
     fi
 
     # Extract all markdown links [text](url)
-    grep -n '\[.*\](.*\.md)' "$md_file" 2>/dev/null | while IFS=: read -r line_num link_line; do
+    while IFS=: read -r line_num link_line; do
         # Extract all links from the line
-        echo "$link_line" | grep -oP '\[.*?\]\(\K[^)]+\.md' | while read -r link; do
+        while read -r link; do
             TOTAL_LINKS=$((TOTAL_LINKS + 1))
 
             # Resolve relative path
@@ -58,9 +59,9 @@ find . -name "*.md" -type f | while read -r md_file; do
                 echo ""
                 BROKEN_LINKS=$((BROKEN_LINKS + 1))
             fi
-        done
-    done
-done
+        done < <(printf "%s\n" "$link_line" | perl -nE 'while (/\[[^\]]*\]\(([^)]+\.md)\)/g) { say $1 }')
+    done < <(grep -n '\[.*\](.*\.md)' "$md_file" 2>/dev/null || true)
+done < <(find . -name "*.md" -type f)
 
 echo ""
 echo "=== Summary ==="
