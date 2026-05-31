@@ -10,7 +10,7 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 option(FLOWQ_BUILD_TESTS "Build FlowQ tests" ON)
-option(FLOWQ_BUILD_SOURCE_ONLY_EXAMPLES "Build source-only examples outside the production-candidate API" OFF)
+option(FLOWQ_BUILD_EXPERIMENTAL_EXAMPLES "Build experimental examples excluded from the install package" OFF)
 option(FLOWQ_BUILD_FUZZ "Build FlowQ fuzz targets (requires libFuzzer)" OFF)
 option(FLOWQ_BUILD_INTEROP "Build FlowQ interop harness" OFF)
 option(FLOWQ_ENABLE_STRICT_WARNINGS "Build FlowQ project targets with warnings as errors" OFF)
@@ -65,7 +65,7 @@ target_link_libraries(
         STDEXEC::stdexec
 )
 
-if(FLOWQ_BUILD_SOURCE_ONLY_EXAMPLES)
+if(FLOWQ_BUILD_EXPERIMENTAL_EXAMPLES)
     add_executable(flowq_example_qpack examples/qpack/main.cpp)
     target_link_libraries(flowq_example_qpack PRIVATE FlowQ::flowq)
     flowq_enable_project_warnings(flowq_example_qpack)

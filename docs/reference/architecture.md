@@ -66,10 +66,10 @@ FlowQ is a C++20 QUIC transport library under production hardening. The current 
 
 - **diagnostics.hpp**: Event sink for qlog-style observability
 
-### Source-Only Codecs
+### Excluded Codecs
 
-- **http3.hpp / http3_request.hpp / qpack.hpp**: HTTP/3 and QPACK codecs kept in source and test coverage. They are excluded from the production install package and remain outside the production-candidate API scope.
-- **zero_rtt.hpp**: Early-data state helpers kept in source and test coverage. The header is excluded from the production install package and 0-RTT deployment policy remains outside the production-candidate API scope.
+- **http3.hpp / http3_request.hpp / qpack.hpp**: HTTP/3 and QPACK codecs kept in source and test coverage. They are excluded from the production install package.
+- **zero_rtt.hpp**: Early-data state helpers kept in source and test coverage. The header is excluded from the production install package.
 
 ## Packet Number Spaces
 
@@ -126,7 +126,7 @@ Dependencies managed via `vcpkg.json` manifest:
 | Option | Default | Description |
 |--------|---------|-------------|
 | FLOWQ_BUILD_TESTS | ON | Build tests |
-| FLOWQ_BUILD_SOURCE_ONLY_EXAMPLES | OFF | Build source-only examples outside the production-candidate API |
+| FLOWQ_BUILD_EXPERIMENTAL_EXAMPLES | OFF | Build experimental examples excluded from the install package |
 | FLOWQ_BUILD_FUZZ | OFF | Build fuzz targets |
 | FLOWQ_BUILD_INTEROP | OFF | Build interop harness |
 | FLOWQ_ENABLE_OPENSSL_QUIC_TLS | OFF | Enable OpenSSL QUIC TLS backend |
@@ -156,6 +156,6 @@ Robustness testing with random inputs.
 - Human security review is not recorded.
 - ChaCha20-Poly1305 and AES-256-GCM packet protection are rejected by `openssl_aead_protector`.
 - Live AEAD key update installation is outside current evidence.
-- Full path migration, stateless reset, HTTP/3 deployment, WebTransport deployment, and 0-RTT deployment policy are outside the production-candidate scope.
-- Source-only HTTP/3, QPACK, and 0-RTT headers are not installed by the production package; the install validation gate fails if they reappear in `build/install-flowq/include`.
-- Source-only examples are not part of the default build; they require `FLOWQ_BUILD_SOURCE_ONLY_EXAMPLES=ON`.
+- Full path migration, stateless reset, HTTP/3 deployment, WebTransport deployment, and 0-RTT deployment policy have no release evidence.
+- HTTP/3, QPACK, and 0-RTT headers are not installed by the production package; the install validation gate fails if they reappear in `build/install-flowq/include`.
+- Experimental examples are not part of the default build; they require `FLOWQ_BUILD_EXPERIMENTAL_EXAMPLES=ON`.

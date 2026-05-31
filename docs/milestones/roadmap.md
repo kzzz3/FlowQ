@@ -62,7 +62,7 @@ Current evidence:
 
 - `cmake --install` exports `FlowQ::flowq`, `FlowQConfig.cmake`, and `FlowQConfigVersion.cmake`.
 - Install validation rejects HTTP/3, QPACK, 0-RTT, and interop test-support headers in the installed package.
-- Source-only examples are outside the default build and require `FLOWQ_BUILD_SOURCE_ONLY_EXAMPLES=ON`.
+- Experimental examples are outside the default build and require `FLOWQ_BUILD_EXPERIMENTAL_EXAMPLES=ON`.
 
 Primary files:
 

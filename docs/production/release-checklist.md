@@ -37,7 +37,7 @@ Code-quality evidence: `scripts/validate-checklist.ps1` checks production public
 - [x] No hardcoded keys, tokens, or credentials
 - [x] No plaintext secrets in source or config files
 - [x] Packet protection boundary keeps plaintext protection out of installed public headers and rejects test-only protectors when production policy is required
-- [x] Installed package excludes source-only HTTP/3, QPACK, 0-RTT, and test-support interop headers
+- [x] Installed package excludes HTTP/3, QPACK, 0-RTT, and test-support interop headers
 - [x] TLS handshake adapter is boundary-only (no inline crypto)
 - [x] No timing-sensitive code without constant-time annotations
 
