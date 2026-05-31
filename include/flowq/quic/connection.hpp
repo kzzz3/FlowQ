@@ -193,6 +193,10 @@ public:
 
     void update_rtt(const rtt_sample& sample) {
         recovery_rtt_.update(sample);
+        // Update pacing with new RTT
+        if (pacing_enabled_) {
+            pacing_.set_smoothed_rtt(recovery_rtt_.smoothed_rtt());
+        }
     }
 
     [[nodiscard]] std::optional<connection_recovery_timer> next_recovery_timer() {
@@ -1290,6 +1294,13 @@ private:
         if (!congestion_.can_send()) {
             return;
         }
+        // Pacing: check if we're allowed to send now
+        if (pacing_enabled_ && space == packet_number_space::application) {
+            auto can_send_pacing = pacing_.can_send(congestion_.bytes_in_flight(), config_.max_packet_payload_size);
+            if (!can_send_pacing) {
+                return;  // Wait for next pacing slot
+            }
+        }
         if (space == packet_number_space::application && !application_send_allowed()) {
             enter_closing(flowq::error{flowq::error_code::protocol_error, "production Application data requires confirmed TLS handshake and application keys"}, sent_at);
             return;
@@ -1320,6 +1331,10 @@ private:
         recovery_packets_.push_back(recovery_packet{space, assembled.number.value, sent_at, ack_eliciting, sent_packet_state::outstanding});
         record_sent_stream_ranges(space, assembled.number.value, selected.frames);
         congestion_.on_packet_sent(assembled.datagram.size(), ack_eliciting);
+        // Update pacing after sending
+        if (pacing_enabled_) {
+            pacing_.on_packet_sent(assembled.datagram.size());
+        }
         record_peer_bytes_sent(assembled.datagram.size());
         queue.erase(queue.begin(), queue.begin() + static_cast<std::ptrdiff_t>(selected.next_index));
         mark_activity(sent_at);

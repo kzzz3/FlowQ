@@ -167,6 +167,11 @@ if(FLOWQ_BUILD_INTEROP)
     target_link_libraries(flowq_quic_client PRIVATE FlowQ::flowq)
     flowq_enable_project_warnings(flowq_quic_client)
 
+    # Soak test
+    add_executable(flowq_soak_test tests/interop/soak_test.cpp)
+    target_link_libraries(flowq_soak_test PRIVATE FlowQ::flowq)
+    flowq_enable_project_warnings(flowq_soak_test)
+
     # ngtcp2 interop test
     find_package(ngtcp2 CONFIG QUIET)
     if(ngtcp2_FOUND)
