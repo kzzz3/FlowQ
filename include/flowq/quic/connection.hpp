@@ -311,8 +311,12 @@ public:
             auto parsed = parse_short_packet(
                 datagram.payload,
                 config_.local_connection_id.bytes.size(),
-                detail::rx_protector_for(packet_number_space::application, config_),
-                config_.protection_policy);
+                detail::rx_protector_for(packet_number_space::application, config_)
+#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
+                ,
+                config_.protection_policy
+#endif
+            );
             if (!parsed.ok()) {
                 enter_closing(parsed.error, received_at);
                 return;
@@ -347,7 +351,12 @@ public:
                 continue;
             }
             const auto* protector = detail::rx_protector_for(space, config_);
-            auto parsed = parse_long_packet(packet_bytes, protector, config_.protection_policy);
+            auto parsed = parse_long_packet(packet_bytes, protector
+#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
+                ,
+                config_.protection_policy
+#endif
+            );
             if (!parsed.ok()) {
                 enter_closing(parsed.error, received_at);
                 return;
@@ -626,8 +635,11 @@ private:
                 packet_number{space, packet_number_value},
                 frames,
                 detail::tx_protector_for(space, config_),
-                config_.pipeline,
+                config_.pipeline
+#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
+                ,
                 config_.protection_policy
+#endif
             });
         }
         return assemble_long_packet(packet_build_request{
@@ -639,8 +651,11 @@ private:
             packet_number{space, packet_number_value},
             frames,
             detail::tx_protector_for(space, config_),
-            config_.pipeline,
+            config_.pipeline
+#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
+            ,
             config_.protection_policy
+#endif
         });
     }
 
