@@ -26,8 +26,10 @@ enum class protection_level {
 };
 
 enum class packet_security_level {
+    authenticated_encrypted,
+#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
     test_only,
-    authenticated_encrypted
+#endif
 };
 
 enum class packet_protection_policy {
