@@ -1,10 +1,26 @@
 #include <flowq/quic/session.hpp>
 
+#include <type_traits>
+#include <utility>
+
+namespace {
+
+template <typename T, typename = void>
+struct has_protection_policy : std::false_type {};
+
+template <typename T>
+struct has_protection_policy<T, std::void_t<decltype(std::declval<T&>().protection_policy)>> : std::true_type {};
+
+static_assert(!has_protection_policy<flowq::quic::session_config>::value);
+static_assert(!has_protection_policy<flowq::quic::connection_loop_config>::value);
+
+} // namespace
+
 int main() {
 #if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
     return 2;
 #endif
 
     flowq::quic::session_config config{};
-    return config.protection_policy == flowq::quic::packet_protection_policy::production_required ? 0 : 1;
+    return config.version == 1 ? 0 : 1;
 }
