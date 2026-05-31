@@ -39,8 +39,11 @@ public:
         if (material.suite == cipher_suite::unknown) {
             return {flowq::error{flowq::error_code::tls_error, "cannot create AEAD protector with unknown cipher suite"}};
         }
-        if (material.suite != cipher_suite::aes_128_gcm_sha256) {
-            return {flowq::error{flowq::error_code::tls_error, "only aes_128_gcm_sha256 is currently supported by openssl_aead_packet_protector"}};
+        // Support AES-128-GCM, AES-256-GCM, and ChaCha20-Poly1305
+        if (material.suite != cipher_suite::aes_128_gcm_sha256 &&
+            material.suite != cipher_suite::aes_256_gcm_sha384 &&
+            material.suite != cipher_suite::chacha20_poly1305_sha256) {
+            return {flowq::error{flowq::error_code::tls_error, "unsupported cipher suite for openssl_aead_packet_protector"}};
         }
         const auto lengths = cipher_suite_key_lengths(material.suite);
         if (material.key.size() != lengths.key ||
@@ -87,7 +90,9 @@ public:
     }
 
     [[nodiscard]] std::size_t protection_overhead() const noexcept override {
-        return 16; // GCM authentication tag
+        // All supported AEAD suites (AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305)
+        // use a 16-byte authentication tag
+        return 16;
     }
 
     [[nodiscard]] bool header_protection_enabled() const noexcept override {
@@ -132,7 +137,8 @@ public:
         if (context.associated_data.empty()) {
             return {{}, flowq::error{flowq::error_code::protocol_error, "AEAD protection requires associated data"}};
         }
-        auto sealed = initial_aead_seal(
+        auto sealed = aead_seal(
+            material_.suite,
             std::span<const std::byte>{material_.key.data(), material_.key.size()},
             std::span<const std::byte>{material_.iv.data(), material_.iv.size()},
             context.number.value,
@@ -156,7 +162,8 @@ public:
         if (context.associated_data.empty()) {
             return {{}, flowq::error{flowq::error_code::protocol_error, "AEAD unprotection requires associated data"}};
         }
-        auto opened = initial_aead_open(
+        auto opened = aead_open(
+            material_.suite,
             std::span<const std::byte>{material_.key.data(), material_.key.size()},
             std::span<const std::byte>{material_.iv.data(), material_.iv.size()},
             context.number.value,

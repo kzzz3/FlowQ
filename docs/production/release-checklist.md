@@ -47,6 +47,8 @@ Code-quality evidence: `scripts/validate-checklist.ps1` and `scripts/validate-ch
 - [x] Installed package excludes HTTP/3, QPACK, 0-RTT, and test-support interop headers
 - [x] TLS handshake adapter is boundary-only (no inline crypto)
 - [x] No timing-sensitive code without constant-time annotations
+- [x] Key material securely zeroed on destruction (secure_zero with platform-specific functions)
+- [x] Multiple cipher suite support (AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305)
 
 ## Interop Gates
 

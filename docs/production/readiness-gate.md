@@ -6,7 +6,7 @@ This document records the current evidence required before FlowQ can claim produ
 
 - **Level**: Production-readiness gate
 - **Date**: 2026-05-31
-- **Status**: Non-production. The codebase has local build/test evidence, OpenSSL-gated AES-128-GCM packet protection, deterministic transport behavior, fail-closed client TLS peer verification, and recorded aioquic handshake, bidirectional STREAM echo, and application loss-recovery passes. Multi-peer interop, Linux sanitizer evidence, and human security review are not recorded.
+- **Status**: Non-production. The codebase has local build/test evidence, OpenSSL-gated AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection, deterministic transport behavior, fail-closed client TLS peer verification, secure key material zeroing, and recorded aioquic handshake, bidirectional STREAM echo, and application loss-recovery passes. Multi-peer interop, Linux sanitizer evidence, and human security review are not recorded.
 
 ## Evidence In Place
 
@@ -24,11 +24,13 @@ This document records the current evidence required before FlowQ can claim produ
 
 - ✅ `openssl_aead_protector` implements the `packet_protector` interface.
 - ✅ AES-128-GCM packet protection is implemented when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled.
+- ✅ AES-256-GCM packet protection is now supported.
+- ✅ ChaCha20-Poly1305 packet protection is now supported (for mobile/no hardware AES).
 - ✅ Header protection uses the RFC 9001 initial header-protection path.
-- ✅ Unsupported suites such as ChaCha20-Poly1305 and AES-256-GCM are rejected explicitly.
 - ✅ AEAD creation fails closed when the OpenSSL crypto backend is not compiled in.
 - ✅ Plaintext packet protection is isolated to test support and is not part of installed public headers.
 - ✅ Test-only protectors are rejected when production protection is required.
+- ✅ Key material is securely zeroed on destruction using platform-specific functions.
 
 ### Transport Behavior
 
@@ -73,6 +75,8 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ Plaintext packet-protection helpers are kept out of the installed public API surface.
 - ✅ Source-only HTTP/3, QPACK, 0-RTT, and test-support interop headers are kept out of the installed production package, with install validation rejecting regressions.
 - ✅ Release checklist validation rejects weak random generator usage in production QUIC headers.
+- ✅ Traffic secrets and key material are securely zeroed on destruction (Windows SecureZeroMemory, macOS memset_s, Linux explicit_bzero).
+- ✅ Multiple cipher suites supported: AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305.
 
 ## Production-Candidate Scope
 

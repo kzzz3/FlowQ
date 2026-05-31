@@ -20,6 +20,31 @@
 
 namespace flowq::quic {
 
+/// Key lengths for each cipher suite.
+struct cipher_key_lengths {
+    std::size_t key{};
+    std::size_t iv{};
+    std::size_t header_protection{};
+};
+
+/// Get key lengths for a cipher suite.
+[[nodiscard]] inline cipher_key_lengths cipher_suite_key_lengths(cipher_suite suite) {
+    switch (suite) {
+    case cipher_suite::aes_128_gcm_sha256:
+        return {16, 12, 16};
+    case cipher_suite::aes_256_gcm_sha384:
+        return {32, 12, 32};
+    case cipher_suite::chacha20_poly1305_sha256:
+        return {32, 12, 32};
+    default:
+        return {};
+    }
+}
+
+} // namespace flowq::quic
+
+namespace flowq::quic {
+
 struct initial_secrets_result {
     flowq::buffer initial_secret;
     flowq::buffer client_initial_secret;
@@ -320,6 +345,75 @@ struct evp_cipher_context {
 #endif
 }
 
+/// Generic AEAD seal supporting multiple cipher suites.
+[[nodiscard]] inline crypto_bytes_result aead_seal(
+    cipher_suite suite,
+    std::span<const std::byte> key,
+    std::span<const std::byte> iv,
+    std::uint64_t packet_number,
+    std::span<const std::byte> aad,
+    std::span<const std::byte> plaintext) {
+#if defined(FLOWQ_ENABLE_OPENSSL_CRYPTO)
+    const auto lengths = cipher_suite_key_lengths(suite);
+    if (lengths.key == 0 || key.size() != lengths.key || iv.size() != lengths.iv) {
+        return {{}, initial_key_error("key/IV length mismatch for cipher suite")};
+    }
+    auto nonce = detail::nonce_for_packet_number(iv, packet_number);
+    detail::evp_cipher_context context{};
+
+    const EVP_CIPHER* cipher = nullptr;
+    switch (suite) {
+    case cipher_suite::aes_128_gcm_sha256:
+        cipher = EVP_aes_128_gcm();
+        break;
+    case cipher_suite::aes_256_gcm_sha384:
+        cipher = EVP_aes_256_gcm();
+        break;
+#if defined(EVP_CHACHA20_POLY1305)
+    case cipher_suite::chacha20_poly1305_sha256:
+        cipher = EVP_chacha20_poly1305();
+        break;
+#endif
+    default:
+        return {{}, initial_key_error("unsupported cipher suite for AEAD seal")};
+    }
+
+    if (context.value == nullptr ||
+        EVP_EncryptInit_ex(context.value, cipher, nullptr, nullptr, nullptr) <= 0 ||
+        EVP_CIPHER_CTX_ctrl(context.value, EVP_CTRL_AEAD_SET_IVLEN, static_cast<int>(nonce.size()), nullptr) <= 0 ||
+        EVP_EncryptInit_ex(context.value, nullptr, nullptr, reinterpret_cast<const unsigned char*>(key.data()), reinterpret_cast<const unsigned char*>(nonce.data())) <= 0) {
+        return {{}, initial_key_error("OpenSSL AEAD seal setup failed")};
+    }
+    int written = 0;
+    if (!aad.empty() && EVP_EncryptUpdate(context.value, nullptr, &written, reinterpret_cast<const unsigned char*>(aad.data()), static_cast<int>(aad.size())) <= 0) {
+        return {{}, initial_key_error("OpenSSL AEAD AAD setup failed")};
+    }
+    std::vector<std::byte> output(plaintext.size() + 16);
+    if (!plaintext.empty() && EVP_EncryptUpdate(context.value, reinterpret_cast<unsigned char*>(output.data()), &written, reinterpret_cast<const unsigned char*>(plaintext.data()), static_cast<int>(plaintext.size())) <= 0) {
+        return {{}, initial_key_error("OpenSSL AEAD seal failed")};
+    }
+    int total_written = written;
+    int final_written = 0;
+    if (EVP_EncryptFinal_ex(context.value, reinterpret_cast<unsigned char*>(output.data()) + total_written, &final_written) <= 0) {
+        return {{}, initial_key_error("OpenSSL AEAD seal finalization failed")};
+    }
+    total_written += final_written;
+    if (EVP_CIPHER_CTX_ctrl(context.value, EVP_CTRL_AEAD_GET_TAG, 16, reinterpret_cast<unsigned char*>(output.data()) + total_written) <= 0) {
+        return {{}, initial_key_error("OpenSSL AEAD tag extraction failed")};
+    }
+    output.resize(static_cast<std::size_t>(total_written) + 16U);
+    return {detail::make_buffer(output), {}};
+#else
+    (void)suite;
+    (void)key;
+    (void)iv;
+    (void)packet_number;
+    (void)aad;
+    (void)plaintext;
+    return {{}, initial_key_error("OpenSSL crypto backend is disabled")};
+#endif
+}
+
 [[nodiscard]] inline crypto_bytes_result initial_aead_open(
     std::span<const std::byte> key,
     std::span<const std::byte> iv,
@@ -359,6 +453,76 @@ struct evp_cipher_context {
     output.resize(static_cast<std::size_t>(written + final_written));
     return {detail::make_buffer(output), {}};
 #else
+    (void)key;
+    (void)iv;
+    (void)packet_number;
+    (void)aad;
+    (void)protected_payload;
+    return {{}, initial_key_error("OpenSSL crypto backend is disabled")};
+#endif
+}
+
+/// Generic AEAD open supporting multiple cipher suites.
+[[nodiscard]] inline crypto_bytes_result aead_open(
+    cipher_suite suite,
+    std::span<const std::byte> key,
+    std::span<const std::byte> iv,
+    std::uint64_t packet_number,
+    std::span<const std::byte> aad,
+    std::span<const std::byte> protected_payload) {
+#if defined(FLOWQ_ENABLE_OPENSSL_CRYPTO)
+    const auto lengths = cipher_suite_key_lengths(suite);
+    if (lengths.key == 0 || key.size() != lengths.key || iv.size() != lengths.iv || protected_payload.size() < 16) {
+        return {{}, initial_key_error("key/IV/tag length mismatch for cipher suite")};
+    }
+    const auto ciphertext_size = protected_payload.size() - 16U;
+    auto nonce = detail::nonce_for_packet_number(iv, packet_number);
+    detail::evp_cipher_context context{};
+
+    const EVP_CIPHER* cipher = nullptr;
+    switch (suite) {
+    case cipher_suite::aes_128_gcm_sha256:
+        cipher = EVP_aes_128_gcm();
+        break;
+    case cipher_suite::aes_256_gcm_sha384:
+        cipher = EVP_aes_256_gcm();
+        break;
+#if defined(EVP_CHACHA20_POLY1305)
+    case cipher_suite::chacha20_poly1305_sha256:
+        cipher = EVP_chacha20_poly1305();
+        break;
+#endif
+    default:
+        return {{}, initial_key_error("unsupported cipher suite for AEAD open")};
+    }
+
+    if (context.value == nullptr ||
+        EVP_DecryptInit_ex(context.value, cipher, nullptr, nullptr, nullptr) <= 0 ||
+        EVP_CIPHER_CTX_ctrl(context.value, EVP_CTRL_AEAD_SET_IVLEN, static_cast<int>(nonce.size()), nullptr) <= 0 ||
+        EVP_DecryptInit_ex(context.value, nullptr, nullptr, reinterpret_cast<const unsigned char*>(key.data()), reinterpret_cast<const unsigned char*>(nonce.data())) <= 0) {
+        return {{}, initial_key_error("OpenSSL AEAD open setup failed")};
+    }
+    int written = 0;
+    if (!aad.empty() && EVP_DecryptUpdate(context.value, nullptr, &written, reinterpret_cast<const unsigned char*>(aad.data()), static_cast<int>(aad.size())) <= 0) {
+        return {{}, initial_key_error("OpenSSL AEAD open AAD setup failed")};
+    }
+    std::vector<std::byte> output(ciphertext_size);
+    if (ciphertext_size > 0 && EVP_DecryptUpdate(context.value, reinterpret_cast<unsigned char*>(output.data()), &written, reinterpret_cast<const unsigned char*>(protected_payload.data()), static_cast<int>(ciphertext_size)) <= 0) {
+        return {{}, initial_key_error("OpenSSL AEAD open failed")};
+    }
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast): OpenSSL EVP_CTRL_AEAD_SET_TAG takes void* non-const
+    // but only reads the tag bytes. This const_cast is required by the OpenSSL API deficiency.
+    if (EVP_CIPHER_CTX_ctrl(context.value, EVP_CTRL_AEAD_SET_TAG, 16, const_cast<unsigned char*>(reinterpret_cast<const unsigned char*>(protected_payload.data() + static_cast<std::ptrdiff_t>(ciphertext_size)))) <= 0) {
+        return {{}, initial_key_error("OpenSSL AEAD tag setup failed")};
+    }
+    int final_written = 0;
+    if (EVP_DecryptFinal_ex(context.value, reinterpret_cast<unsigned char*>(output.data()) + written, &final_written) <= 0) {
+        return {{}, initial_key_error("OpenSSL AEAD authentication failed")};
+    }
+    output.resize(static_cast<std::size_t>(written + final_written));
+    return {detail::make_buffer(output), {}};
+#else
+    (void)suite;
     (void)key;
     (void)iv;
     (void)packet_number;

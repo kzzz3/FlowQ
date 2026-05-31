@@ -4,6 +4,7 @@
 #include <flowq/quic/tls_handshake.hpp>
 #include <flowq/quic/tls_provider_backend.hpp>
 #include <flowq/quic/transport_parameters.hpp>
+#include <flowq/secure.hpp>
 
 #include <cstdint>
 #include <cstring>
@@ -159,6 +160,15 @@ public:
     }
 
     ~openssl_tls_handshake_adapter() override {
+        // Securely zero all traffic secrets before freeing OpenSSL resources
+        secure_zero_buffer(initial_rx_secret_);
+        secure_zero_buffer(initial_tx_secret_);
+        secure_zero_buffer(handshake_rx_secret_);
+        secure_zero_buffer(handshake_tx_secret_);
+        secure_zero_buffer(application_rx_secret_);
+        secure_zero_buffer(application_tx_secret_);
+        secure_zero_buffer(peer_transport_params_);
+
         if (ssl_ != nullptr) {
             SSL_free(ssl_);
         }

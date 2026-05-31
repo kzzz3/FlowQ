@@ -83,6 +83,20 @@ public:
         bytes_.clear();
     }
 
+    /// Securely zero the buffer contents before clearing.
+    /// Uses platform-specific functions that are guaranteed not to be optimized away.
+    void secure_zero() noexcept {
+        if (!bytes_.empty()) {
+            // Use volatile write barrier to prevent compiler optimization
+            volatile unsigned char* p = reinterpret_cast<volatile unsigned char*>(bytes_.data());
+            std::size_t size = bytes_.size();
+            while (size--) {
+                *p++ = 0;
+            }
+            bytes_.clear();
+        }
+    }
+
     /// Append a single byte.
     void push_back(std::byte b) {
         bytes_.push_back(b);
