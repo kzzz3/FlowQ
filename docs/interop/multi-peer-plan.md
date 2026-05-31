@@ -2,31 +2,46 @@
 
 ## 候选 Peer 实现
 
-| Peer | 语言 | Install | 状态 |
-|------|------|---------|------|
-| **aioquic** | Python | `pip install aioquic` | ✅ 已验证 |
-| **ngtcp2** | C | vcpkg | ✅ 已验证 |
-| **quiche** | Rust | `cargo install` | ⏳ 待验证 |
+| Peer | 语言 | Install | 状态 | 备注 |
+|------|------|---------|------|------|
+| **aioquic** | Python | `pip install aioquic` | ✅ 已验证 | 完整握手+流+丢包恢复 |
+| **ngtcp2** | C | vcpkg | ✅ 已验证 | Initial 包生成 |
+| **quic-go** | Go | `go build` | ⚠️ 已构建 | 二进制已构建，需要单独终端运行服务器 |
+| **quiche** | Rust | `cargo build` | ❌ 阻塞 | Windows 需要 NASM 编译 BoringSSL |
 
 ## 已验证结果
 
 ### aioquic 1.3.0
-- bidirectional_stream: PASS
-- loss_recovery: PASS
+- bidirectional_stream: **PASS**
+- loss_recovery: **PASS**
 
 ### ngtcp2 1.20.0
-- initial_packet: PASS
+- initial_packet: **PASS**
 
 ## 待完成
 
-### quiche (Cloudflare)
+### quic-go (已构建)
 
-quiche 是 Cloudflare 的 Rust QUIC 实现。
+```powershell
+# 构建
+git clone --depth 1 https://github.com/quic-go/quic-go.git tools/quic-go
+cd tools/quic-go
+go build -o ..\quic-go-client.exe .\example\client\main.go
+go build -o ..\quic-go-server.exe .\example\main.go
 
-**步骤**:
-1. 安装 Rust 工具链 (`rustup`)
-2. 编译 quiche client/server 示例
-3. 运行握手、流、丢包恢复场景
+# 运行服务器（需要单独终端）
+.\quic-go-server.exe --cert build\certs\cert.pem --key build\certs\key.pem --bind :4434
+
+# 运行客户端
+.\quic-go-client.exe --cert build\certs\cert.pem https://localhost:4434/
+```
+
+### quiche (需要 NASM)
+
+Windows 上编译 quiche 需要 NASM：
+1. 下载安装 [NASM](https://www.nasm.us/)
+2. 添加到 PATH
+3. 然后 `cargo build --examples --release`
 
 ## 运行命令
 
