@@ -3,6 +3,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <string>
+#include <string_view>
+
 TEST_CASE("openssl_tls_handshake_adapter constructs with default config") {
     flowq::quic::openssl_tls_config config{};
     config.is_client = true;
@@ -111,6 +114,32 @@ TEST_CASE("openssl_tls_config can be set to server mode") {
     CHECK(config.cert_file != nullptr);
     CHECK(config.key_file != nullptr);
 }
+
+#if defined(FLOWQ_ENABLE_OPENSSL_QUIC_TLS)
+TEST_CASE("openssl_tls_handshake_adapter rejects server config without certificate and key") {
+    flowq::quic::openssl_tls_config config{};
+    config.is_client = false;
+
+    flowq::quic::openssl_tls_handshake_adapter adapter{config};
+
+    CHECK(adapter.state() == flowq::quic::handshake_state::failed);
+    CHECK_FALSE(adapter.last_error().ok());
+    CHECK(adapter.last_error().message().find("server TLS requires certificate chain and private key") != std::string::npos);
+}
+
+TEST_CASE("openssl_tls_handshake_adapter rejects unreadable server certificate") {
+    flowq::quic::openssl_tls_config config{};
+    config.is_client = false;
+    config.cert_file = "missing-flowq-server-cert.pem";
+    config.key_file = "missing-flowq-server-key.pem";
+
+    flowq::quic::openssl_tls_handshake_adapter adapter{config};
+
+    CHECK(adapter.state() == flowq::quic::handshake_state::failed);
+    CHECK_FALSE(adapter.last_error().ok());
+    CHECK(adapter.last_error().message().find("failed to load server certificate chain") != std::string::npos);
+}
+#endif
 
 TEST_CASE("openssl_tls_config defaults to FlowQ-supported TLS 1.3 cipher suite") {
     flowq::quic::openssl_tls_config config{};

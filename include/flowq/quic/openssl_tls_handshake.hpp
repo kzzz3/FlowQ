@@ -64,17 +64,30 @@ public:
             return;
         }
 
-        // Configure certificates
-        if (!config.is_client && config.cert_file != nullptr) {
-            SSL_CTX_use_certificate_chain_file(ctx_, config.cert_file);
-            if (config.key_file != nullptr) {
-                SSL_CTX_use_PrivateKey_file(ctx_, config.key_file, SSL_FILETYPE_PEM);
+        if (!config.is_client) {
+            if (config.cert_file == nullptr || config.key_file == nullptr) {
+                set_failure("server TLS requires certificate chain and private key");
+                return;
+            }
+            if (SSL_CTX_use_certificate_chain_file(ctx_, config.cert_file) != 1) {
+                set_failure("failed to load server certificate chain");
+                return;
+            }
+            if (SSL_CTX_use_PrivateKey_file(ctx_, config.key_file, SSL_FILETYPE_PEM) != 1) {
+                set_failure("failed to load server private key");
+                return;
+            }
+            if (SSL_CTX_check_private_key(ctx_) != 1) {
+                set_failure("server certificate and private key do not match");
+                return;
             }
         }
 
-        // Configure CA for client verification
         if (config.is_client && config.ca_file != nullptr) {
-            SSL_CTX_load_verify_locations(ctx_, config.ca_file, nullptr);
+            if (SSL_CTX_load_verify_locations(ctx_, config.ca_file, nullptr) != 1) {
+                set_failure("failed to load client CA certificate");
+                return;
+            }
             SSL_CTX_set_verify(ctx_, SSL_VERIFY_PEER, nullptr);
         }
 

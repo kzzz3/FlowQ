@@ -1,6 +1,6 @@
 # FlowQ Release Checklist
 
-Complete all items before claiming production-candidate status. Checked items must correspond to current evidence, not historical intent.
+Complete all items before claiming production-candidate status. Checked items must correspond to current evidence.
 
 ## Build and Test Gates
 
@@ -29,7 +29,7 @@ Code-quality evidence: `scripts/validate-checklist.ps1` checks production public
 - [x] No hardcoded keys, tokens, or credentials
 - [x] No plaintext secrets in source or config files
 - [x] Packet protection boundary keeps plaintext protection out of installed public headers and rejects test-only protectors when production policy is required
-- [x] Installed package excludes experimental HTTP/3, QPACK, 0-RTT, and test-support interop headers
+- [x] Installed package excludes source-only HTTP/3, QPACK, 0-RTT, and test-support interop headers
 - [x] TLS handshake adapter is boundary-only (no inline crypto)
 - [x] No timing-sensitive code without constant-time annotations
 
@@ -43,8 +43,8 @@ Code-quality evidence: `scripts/validate-checklist.ps1` checks production public
 ## Documentation Gates
 
 - [x] README.md status section matches actual evidence
-- [x] docs/plan.md roadmap checkboxes match actual milestone completion
-- [x] docs/milestones/roadmap.md documents all milestone scopes
+- [x] docs/plan.md describes current production scope and gates
+- [x] docs/milestones/roadmap.md maps current evidence to production gates
 - [x] docs/production/readiness-gate.md status level matches evidence
 
 ## Scope Statement

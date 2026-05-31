@@ -44,7 +44,7 @@ ctest --preset windows-msvc-vcpkg --timeout 10
 - **Recovery**: ACK/loss detection, congestion control, recovery timers
 - **Diagnostics**: Event sink, qlog-style observability
 - **Path Validation Primitives**: PATH_CHALLENGE/PATH_RESPONSE codec and Application-space response scheduling
-- **Structural Extensions**: HTTP/3/QPACK, WebTransport, and 0-RTT modules outside the production-candidate scope
+- **Source-Only Extensions**: HTTP/3/QPACK, WebTransport, and 0-RTT modules outside the production-candidate scope
 
 ## Project Structure
 
