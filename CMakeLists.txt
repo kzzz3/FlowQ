@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.25)
 
 project(FlowQ VERSION 0.1.0 LANGUAGES CXX)
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND NOT "cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
+    list(APPEND CMAKE_CXX_COMPILE_FEATURES cxx_std_20 cxx_std_17 cxx_std_14 cxx_std_11)
+endif()
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
@@ -27,7 +31,12 @@ endfunction()
 add_library(flowq INTERFACE)
 add_library(FlowQ::flowq ALIAS flowq)
 
-target_compile_features(flowq INTERFACE cxx_std_20)
+target_compile_options(
+    flowq
+    INTERFACE
+        $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/std:c++20>
+        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-std=c++20>
+)
 target_compile_definitions(flowq INTERFACE $<$<PLATFORM_ID:Windows>:_WIN32_WINNT=0x0A00>)
 target_include_directories(
     flowq

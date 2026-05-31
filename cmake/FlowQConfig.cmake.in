@@ -2,6 +2,10 @@
 
 include(CMakeFindDependencyMacro)
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND NOT "cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
+    list(APPEND CMAKE_CXX_COMPILE_FEATURES cxx_std_20 cxx_std_17 cxx_std_14 cxx_std_11)
+endif()
+
 find_dependency(asio CONFIG)
 find_dependency(stdexec CONFIG)
 @FLOWQ_CONFIG_FIND_OPENSSL@
