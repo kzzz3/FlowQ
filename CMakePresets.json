@@ -14,7 +14,8 @@
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "FLOWQ_BUILD_TESTS": "ON",
-        "FLOWQ_BUILD_EXAMPLES": "ON"
+        "FLOWQ_BUILD_EXAMPLES": "ON",
+        "FLOWQ_ENABLE_OPENSSL_CRYPTO": "ON"
       }
     },
     {
@@ -28,7 +29,8 @@
         "CMAKE_CXX_STANDARD": "20",
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "FLOWQ_BUILD_TESTS": "ON",
-        "FLOWQ_BUILD_EXAMPLES": "ON"
+        "FLOWQ_BUILD_EXAMPLES": "ON",
+        "FLOWQ_ENABLE_OPENSSL_CRYPTO": "ON"
       }
     },
     {
@@ -53,7 +55,8 @@
         "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined",
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "FLOWQ_BUILD_TESTS": "ON",
-        "FLOWQ_BUILD_EXAMPLES": "OFF"
+        "FLOWQ_BUILD_EXAMPLES": "OFF",
+        "FLOWQ_ENABLE_OPENSSL_CRYPTO": "ON"
       }
     },
     {

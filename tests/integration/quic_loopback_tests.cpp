@@ -1,4 +1,4 @@
-#include "plaintext_packet_protector.hpp"
+#include "production_quic_test_context.hpp"
 #include <flowq/quic/connection.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -57,7 +57,9 @@ flowq::quic::connection_loop make_loop(
     flowq::quic::connection_id local,
     flowq::quic::connection_id remote,
     flowq::endpoint peer,
-    const flowq::quic::packet_protector& protector,
+    flowq::quic::test::production_packet_protectors& protectors,
+    flowq::quic::test::confirmed_tls_adapter& tls,
+    bool client_direction,
     std::uint64_t initial_stream_send_max_data = UINT64_MAX,
     std::uint64_t initial_connection_send_max_data = UINT64_MAX) {
     flowq::quic::connection_loop_config config{};
@@ -69,13 +71,14 @@ flowq::quic::connection_loop make_loop(
     config.initial_stream_send_max_data = initial_stream_send_max_data;
     config.initial_connection_send_max_data = initial_connection_send_max_data;
     config.max_packet_payload_size = SIZE_MAX;
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
+    config.tls_adapter = &tls;
+    flowq::quic::test::mark_application_ready(config.key_lifecycle);
+    config.initial_tx_protector = client_direction ? &protectors.client_initial_tx : &protectors.server_initial_tx;
+    config.initial_rx_protector = client_direction ? &protectors.server_initial_tx : &protectors.client_initial_tx;
+    config.handshake_tx_protector = client_direction ? &protectors.client_handshake_tx : &protectors.server_handshake_tx;
+    config.handshake_rx_protector = client_direction ? &protectors.server_handshake_tx : &protectors.client_handshake_tx;
+    config.application_tx_protector = client_direction ? &protectors.client_application_tx : &protectors.server_application_tx;
+    config.application_rx_protector = client_direction ? &protectors.server_application_tx : &protectors.client_application_tx;
     return flowq::quic::connection_loop{std::move(config)};
 }
 
@@ -88,10 +91,20 @@ public:
               cid({0x01}),
               cid({0x02}),
               flowq::endpoint{"server", 4433, "hq-interop"},
-              protector_,
+              protectors_,
+              client_tls_,
+              true,
               client_initial_stream_send_max_data,
               client_initial_connection_send_max_data)},
-          server_{make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector_)} {}
+          server_{make_loop(
+              cid({0x02}),
+              cid({0x01}),
+              flowq::endpoint{"client", 1111, "hq-interop"},
+              protectors_,
+              server_tls_,
+              false)} {
+        REQUIRE(protectors_.ok());
+    }
 
     [[nodiscard]] flowq::quic::stream_operation_result client_append(std::uint64_t stream_id, std::string value) {
         return client_.append_stream_data(stream_id, text(std::move(value)));
@@ -176,7 +189,9 @@ public:
     }
 
 private:
-    flowq::quic::test::plaintext_packet_protector protector_{};
+    flowq::quic::test::production_packet_protectors protectors_{flowq::quic::test::make_production_packet_protectors()};
+    flowq::quic::test::confirmed_tls_adapter client_tls_{};
+    flowq::quic::test::confirmed_tls_adapter server_tls_{};
     flowq::quic::connection_loop client_;
     flowq::quic::connection_loop server_;
     std::map<std::uint64_t, std::string> client_delivered_{};

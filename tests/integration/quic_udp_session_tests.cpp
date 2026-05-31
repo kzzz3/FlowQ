@@ -1,4 +1,4 @@
-#include "plaintext_packet_protector.hpp"
+#include "production_quic_test_context.hpp"
 #include <flowq/context.hpp>
 #include <flowq/quic/lifecycle_scheduler.hpp>
 #include <flowq/quic/udp_session.hpp>
@@ -61,19 +61,22 @@ flowq::quic::session_config make_config(
     flowq::quic::connection_id local,
     flowq::quic::connection_id remote,
     flowq::endpoint peer,
-    const flowq::quic::packet_protector& protector) {
+    flowq::quic::test::production_packet_protectors& protectors,
+    flowq::quic::test::confirmed_tls_adapter& tls,
+    bool client_direction) {
     flowq::quic::session_config config{};
     config.role = flowq::quic::connection_role::client;
     config.local_connection_id = std::move(local);
     config.remote_connection_id = std::move(remote);
     config.peer = std::move(peer);
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
+    config.tls_adapter = &tls;
+    flowq::quic::test::mark_application_ready(config.key_lifecycle);
+    config.initial_tx_protector = client_direction ? &protectors.client_initial_tx : &protectors.server_initial_tx;
+    config.initial_rx_protector = client_direction ? &protectors.server_initial_tx : &protectors.client_initial_tx;
+    config.handshake_tx_protector = client_direction ? &protectors.client_handshake_tx : &protectors.server_handshake_tx;
+    config.handshake_rx_protector = client_direction ? &protectors.server_handshake_tx : &protectors.client_handshake_tx;
+    config.application_tx_protector = client_direction ? &protectors.client_application_tx : &protectors.server_application_tx;
+    config.application_rx_protector = client_direction ? &protectors.server_application_tx : &protectors.client_application_tx;
     return config;
 }
 
@@ -115,11 +118,13 @@ struct lifecycle_receiver {
 TEST_CASE("UDP session binds an externally owned socket without taking ownership") {
     flowq::context context{};
     udp::socket socket{context.io_context(), udp::endpoint{udp::v4(), 0}};
-    flowq::quic::test::plaintext_packet_protector protector{};
+    auto protectors = flowq::quic::test::make_production_packet_protectors();
+    REQUIRE(protectors.ok());
+    flowq::quic::test::confirmed_tls_adapter tls{};
     udp::endpoint peer{::asio::ip::address_v4::loopback(), 4433};
 
     flowq::quic::udp_session adapter{socket, flowq::quic::udp_session_config{
-        make_config(cid({0x01}), cid({0x02}), flowq::endpoint{"127.0.0.1", 4433, "hq-interop"}, protector),
+        make_config(cid({0x01}), cid({0x02}), flowq::endpoint{"127.0.0.1", 4433, "hq-interop"}, protectors, tls, true),
         peer,
         1200
     }};
@@ -136,15 +141,18 @@ TEST_CASE("UDP session sends flushed QUIC session datagrams over loopback") {
     udp::socket client_socket{context.io_context(), udp::endpoint{udp::v4(), 0}};
     auto server_endpoint = udp::endpoint{::asio::ip::address_v4::loopback(), server_socket.local_endpoint().port()};
     auto client_endpoint = udp::endpoint{::asio::ip::address_v4::loopback(), client_socket.local_endpoint().port()};
-    flowq::quic::test::plaintext_packet_protector protector{};
+    auto protectors = flowq::quic::test::make_production_packet_protectors();
+    REQUIRE(protectors.ok());
+    flowq::quic::test::confirmed_tls_adapter client_tls{};
+    flowq::quic::test::confirmed_tls_adapter server_tls{};
 
     flowq::quic::udp_session client{client_socket, flowq::quic::udp_session_config{
-        make_config(cid({0x01}), cid({0x02}), flowq::endpoint{"127.0.0.1", server_endpoint.port(), "hq-interop"}, protector),
+        make_config(cid({0x01}), cid({0x02}), flowq::endpoint{"127.0.0.1", server_endpoint.port(), "hq-interop"}, protectors, client_tls, true),
         server_endpoint,
         1200
     }};
     flowq::quic::udp_session server{server_socket, flowq::quic::udp_session_config{
-        make_config(cid({0x02}), cid({0x01}), flowq::endpoint{"127.0.0.1", client_endpoint.port(), "hq-interop"}, protector),
+        make_config(cid({0x02}), cid({0x01}), flowq::endpoint{"127.0.0.1", client_endpoint.port(), "hq-interop"}, protectors, server_tls, false),
         client_endpoint,
         1200
     }};
@@ -175,8 +183,10 @@ TEST_CASE("UDP session exposes QUIC lifecycle timer for scheduler integration") 
     flowq::context context{};
     udp::socket socket{context.io_context(), udp::endpoint{udp::v4(), 0}};
     udp::endpoint peer{::asio::ip::address_v4::loopback(), 4433};
-    flowq::quic::test::plaintext_packet_protector protector{};
-    auto config = make_config(cid({0x01}), cid({0x02}), flowq::endpoint{"127.0.0.1", 4433, "hq-interop"}, protector);
+    auto protectors = flowq::quic::test::make_production_packet_protectors();
+    REQUIRE(protectors.ok());
+    flowq::quic::test::confirmed_tls_adapter tls{};
+    auto config = make_config(cid({0x01}), cid({0x02}), flowq::endpoint{"127.0.0.1", 4433, "hq-interop"}, protectors, tls, true);
     config.max_idle_timeout = 5ms;
 
     flowq::quic::udp_session adapter{socket, flowq::quic::udp_session_config{

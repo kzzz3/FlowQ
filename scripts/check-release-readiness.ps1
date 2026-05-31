@@ -40,6 +40,22 @@ if ($LASTEXITCODE -ne 0) {
 
 $StepNumber = 3
 
+Write-Host ""
+Write-Host "$StepNumber. Checking integration packet protection..." -ForegroundColor Yellow
+$integrationBypassHits = @(
+    Select-String `
+        -Path (Join-Path $RepoRoot "tests\integration\*.cpp") `
+        -Pattern 'plaintext_packet_protector|packet_protection_policy::test_allowed|\.protection_policy\s*='
+)
+if ($integrationBypassHits.Count -gt 0) {
+    Write-Host "FAILED: integration tests must exercise provider-backed packet protection instead of test bypasses:" -ForegroundColor Red
+    foreach ($hit in $integrationBypassHits) {
+        Write-Host "  $($hit.Path):$($hit.LineNumber): $($hit.Line.Trim())" -ForegroundColor Red
+    }
+    $Failed = $true
+}
+$StepNumber += 1
+
 if ($RequireCompleteReleaseChecklist) {
     Write-Host ""
     Write-Host "$StepNumber. Checking release checklist completion..." -ForegroundColor Yellow

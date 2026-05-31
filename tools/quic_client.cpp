@@ -161,7 +161,6 @@ int main() {
         session_cfg.peer = flowq::endpoint{"127.0.0.1", 4433, "hq-interop"};
         session_cfg.initial_tx_protector = &initial_tx_protector;
         session_cfg.initial_rx_protector = &initial_rx_protector;
-        session_cfg.protection_policy = flowq::quic::packet_protection_policy::production_required;
         session_cfg.tls_adapter = tls_adapter.get();
         session_cfg.pipeline.max_datagram_size = 65535;
         session_cfg.packet_protector_refresh = refresh_tls_protectors;
