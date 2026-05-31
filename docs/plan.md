@@ -27,7 +27,7 @@ Out of scope for the current production-candidate boundary:
 
 1. Keep installed headers limited to the production QUIC transport API.
 2. Keep test-only plaintext protection out of installed public headers.
-3. Keep external interop wrappers failing when requested scenarios are skipped.
+3. Keep external interop wrappers free of skip paths; missing peers or scenario configuration must be recorded as errors.
 4. Keep experimental examples outside the default build and install package.
 5. Keep documentation synchronized with current code and evidence only.
 
