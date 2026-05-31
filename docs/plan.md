@@ -10,6 +10,7 @@ In scope:
 - Deterministic connection loop behavior for packet spaces, streams, flow control, ACK/loss, recovery timers, congestion accounting, lifecycle timers, routing, version negotiation, retry helpers, and endpoint lifecycle.
 - OpenSSL-gated AES-128-GCM packet protection and RFC 9001 header protection when `FLOWQ_ENABLE_OPENSSL_CRYPTO=ON`.
 - OpenSSL QUIC TLS adapter when `FLOWQ_ENABLE_OPENSSL_QUIC_TLS=ON`, including fail-closed server certificate/key configuration.
+- Peer-issued connection ID migration policy: active CID limit enforcement, conflicting duplicate NEW_CONNECTION_ID rejection, retire_prior_to destination CID switching, and RETIRE_CONNECTION_ID emission.
 - Public session, UDP/ASIO, endpoint-driver, timer scheduler, diagnostics, CMake package export, package-consumer, fuzz, and interop harness surfaces.
 - aioquic external-peer evidence for handshake, bidirectional stream echo, and loss recovery.
 
@@ -17,7 +18,7 @@ Out of scope for the current production-candidate boundary:
 
 - HTTP/3, QPACK, WebTransport, and 0-RTT deployment guarantees.
 - Live AEAD key update installation.
-- Connection-ID migration policy hardening and stateless reset.
+- Stateless reset.
 - AES-256-GCM and ChaCha20-Poly1305 packet protection.
 - Security-audit, Linux, and sanitizer claims until evidence is recorded in the production gate.
 

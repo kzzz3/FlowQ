@@ -60,6 +60,7 @@ public:
 
     void set_remote_connection_id(connection_id remote_connection_id) {
         config_.remote_connection_id = std::move(remote_connection_id);
+        reset_remote_connection_id_state();
     }
 
     void queue_initial(std::vector<frame> frames) {
@@ -481,6 +482,17 @@ private:
     bool peer_path_migrated_{};
     std::vector<sent_packet_stream_ranges> sent_stream_ranges_{};
 
+    struct remote_connection_id_entry {
+        std::uint64_t sequence_number{};
+        connection_id id;
+        flowq::buffer stateless_reset_token;
+        bool retired{};
+    };
+
+    std::vector<remote_connection_id_entry> remote_connection_ids_{};
+    bool remote_connection_ids_initialized_{};
+    std::uint64_t active_remote_connection_id_sequence_{};
+
     [[nodiscard]] bool active() const noexcept {
         return state_ == connection_loop_state::active;
     }
@@ -689,6 +701,139 @@ private:
         });
     }
 
+    [[nodiscard]] static bool same_bytes(const flowq::buffer& lhs, const flowq::buffer& rhs) noexcept {
+        if (lhs.size() != rhs.size()) {
+            return false;
+        }
+        if (lhs.empty()) {
+            return true;
+        }
+        return std::equal(lhs.data(), lhs.data() + lhs.size(), rhs.data());
+    }
+
+    [[nodiscard]] static bool same_connection_id(const connection_id& lhs, const connection_id& rhs) noexcept {
+        return same_bytes(lhs.bytes, rhs.bytes);
+    }
+
+    void reset_remote_connection_id_state() noexcept {
+        remote_connection_ids_.clear();
+        remote_connection_ids_initialized_ = false;
+        active_remote_connection_id_sequence_ = 0;
+    }
+
+    void ensure_remote_connection_id_state() {
+        if (remote_connection_ids_initialized_) {
+            return;
+        }
+        remote_connection_ids_.push_back(remote_connection_id_entry{0, config_.remote_connection_id, {}, false});
+        remote_connection_ids_initialized_ = true;
+        active_remote_connection_id_sequence_ = 0;
+    }
+
+    [[nodiscard]] remote_connection_id_entry* find_remote_connection_id(std::uint64_t sequence_number) noexcept {
+        auto found = std::find_if(remote_connection_ids_.begin(), remote_connection_ids_.end(), [sequence_number](const auto& item) {
+            return item.sequence_number == sequence_number;
+        });
+        return found == remote_connection_ids_.end() ? nullptr : &*found;
+    }
+
+    [[nodiscard]] std::size_t active_remote_connection_id_count() const noexcept {
+        return static_cast<std::size_t>(std::count_if(remote_connection_ids_.begin(), remote_connection_ids_.end(), [](const auto& item) {
+            return !item.retired;
+        }));
+    }
+
+    void queue_retire_connection_id(std::uint64_t sequence_number) {
+        packet_spaces_.get(packet_number_space::application).queue.push_back(frame{retire_connection_id_frame{sequence_number}});
+    }
+
+    [[nodiscard]] remote_connection_id_entry* lowest_active_remote_connection_id() noexcept {
+        remote_connection_id_entry* selected = nullptr;
+        for (auto& item : remote_connection_ids_) {
+            if (item.retired) {
+                continue;
+            }
+            if (selected == nullptr || item.sequence_number < selected->sequence_number) {
+                selected = &item;
+            }
+        }
+        return selected;
+    }
+
+    [[nodiscard]] flowq::error retire_remote_connection_ids_before(std::uint64_t retire_prior_to) {
+        bool retired_active = false;
+        for (auto& item : remote_connection_ids_) {
+            if (item.retired || item.sequence_number >= retire_prior_to) {
+                continue;
+            }
+            item.retired = true;
+            queue_retire_connection_id(item.sequence_number);
+            if (item.sequence_number == active_remote_connection_id_sequence_) {
+                retired_active = true;
+            }
+        }
+
+        if (!retired_active) {
+            return {};
+        }
+
+        auto* replacement = lowest_active_remote_connection_id();
+        if (replacement == nullptr) {
+            return flowq::error{
+                flowq::error_code::protocol_error,
+                "NEW_CONNECTION_ID retired every usable peer connection ID"};
+        }
+        active_remote_connection_id_sequence_ = replacement->sequence_number;
+        config_.remote_connection_id = replacement->id;
+        return {};
+    }
+
+    [[nodiscard]] flowq::error apply_new_connection_id_frame(const new_connection_id_frame& item) {
+        ensure_remote_connection_id_state();
+        if (item.retire_prior_to > item.sequence_number) {
+            return flowq::error{
+                flowq::error_code::protocol_error,
+                "NEW_CONNECTION_ID retire_prior_to exceeds sequence number"};
+        }
+
+        if (auto* existing = find_remote_connection_id(item.sequence_number); existing != nullptr) {
+            if (!same_connection_id(existing->id, item.connection_id) ||
+                !same_bytes(existing->stateless_reset_token, item.stateless_reset_token)) {
+                return flowq::error{
+                    flowq::error_code::protocol_error,
+                    "NEW_CONNECTION_ID reused a sequence number with different connection ID state"};
+            }
+            return retire_remote_connection_ids_before(item.retire_prior_to);
+        }
+
+        remote_connection_ids_.push_back(remote_connection_id_entry{
+            item.sequence_number,
+            item.connection_id,
+            item.stateless_reset_token,
+            false});
+
+        if (auto error = retire_remote_connection_ids_before(item.retire_prior_to); !error.ok()) {
+            return error;
+        }
+        if (active_remote_connection_id_count() > config_.active_connection_id_limit) {
+            return flowq::error{
+                flowq::error_code::protocol_error,
+                "peer exceeded active_connection_id_limit"};
+        }
+        return {};
+    }
+
+    [[nodiscard]] flowq::error apply_connection_id_frames(const std::vector<frame>& frames) {
+        for (const auto& item : frames) {
+            if (const auto* connection_id = std::get_if<new_connection_id_frame>(&item)) {
+                if (auto error = apply_new_connection_id_frame(*connection_id); !error.ok()) {
+                    return error;
+                }
+            }
+        }
+        return {};
+    }
+
     void update_remote_connection_id_from_header(const packet_header& header) {
         const connection_id* source = nullptr;
         if (const auto* initial = std::get_if<initial_header>(&header)) {
@@ -703,6 +848,7 @@ private:
             return;
         }
         config_.remote_connection_id = *source;
+        reset_remote_connection_id_state();
     }
 
     [[nodiscard]] bool refresh_packet_protectors(std::chrono::steady_clock::time_point at) {
@@ -1312,6 +1458,10 @@ private:
         }
         if (auto error = peer_close_error(parsed.frames); error.has_value()) {
             enter_draining(std::move(*error), received_at);
+            return;
+        }
+        if (auto error = apply_connection_id_frames(parsed.frames); !error.ok()) {
+            enter_closing(error, received_at);
             return;
         }
         apply_path_validation_frames(parsed.frames);

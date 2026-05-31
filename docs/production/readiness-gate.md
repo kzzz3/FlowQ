@@ -41,6 +41,7 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ PATH_CHALLENGE/PATH_RESPONSE outside Application packet space closes with protocol error.
 - ✅ Peer address migration queues PATH_CHALLENGE after 1-RTT send keys are available and keeps the server anti-amplification limit in force.
 - ✅ Matching PATH_RESPONSE validates the migrated peer path and lifts the server anti-amplification limit for that path.
+- ✅ Peer-issued NEW_CONNECTION_ID handling enforces active_connection_id_limit, rejects conflicting duplicate sequence numbers, switches away from retired destination CIDs, and emits RETIRE_CONNECTION_ID for retired peer CIDs.
 
 ### Interop Harness
 
@@ -82,7 +83,6 @@ FlowQ can only claim production-candidate status for the exact scope backed by l
 
 **Explicitly Outside Scope**
 
-- Connection-ID migration policy hardening
 - Stateless reset
 - 0-RTT deployment policy
 - HTTP/3 deployment

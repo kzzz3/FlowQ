@@ -4,6 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
@@ -33,6 +34,22 @@ std::vector<std::byte> bytes(std::initializer_list<unsigned int> values) {
 
 flowq::quic::connection_id cid(std::initializer_list<unsigned int> values) {
     return flowq::quic::connection_id{flowq::buffer{bytes(values)}};
+}
+
+bool same_cid(const flowq::quic::connection_id& lhs, const flowq::quic::connection_id& rhs) {
+    if (lhs.bytes.size() != rhs.bytes.size()) {
+        return false;
+    }
+    if (lhs.bytes.empty()) {
+        return true;
+    }
+    return std::equal(lhs.bytes.data(), lhs.bytes.data() + lhs.bytes.size(), rhs.bytes.data());
+}
+
+flowq::buffer reset_token(std::initializer_list<unsigned int> values) {
+    auto token = bytes(values);
+    REQUIRE(token.size() == 16);
+    return flowq::buffer{std::move(token)};
 }
 
 flowq::buffer text(std::string value) {
@@ -1837,6 +1854,114 @@ TEST_CASE("connection loop parses and acknowledges short-header Application pack
     REQUIRE(parsed_ack.frames.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::ack_frame>(parsed_ack.frames[0]));
     CHECK(std::get<flowq::quic::ack_frame>(parsed_ack.frames[0]).largest_acknowledged == 0);
+}
+
+TEST_CASE("connection loop rejects peer connection IDs above active limit") {
+    flowq::quic::test::plaintext_packet_protector_set protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    server.queue_application({
+        flowq::quic::frame{flowq::quic::new_connection_id_frame{
+            1,
+            0,
+            cid({0x30}),
+            reset_token({0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+                         0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f})}},
+        flowq::quic::frame{flowq::quic::new_connection_id_frame{
+            2,
+            0,
+            cid({0x31}),
+            reset_token({0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27,
+                         0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f})}},
+    });
+    server.flush(at(0ms));
+    auto datagram = require_single_outbound(server.drain_actions());
+
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer});
+    auto actions = client.drain_actions();
+
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(actions[0]));
+    CHECK(std::get<flowq::quic::close_action>(actions[0]).error.code() == flowq::error_code::protocol_error);
+    CHECK(client.state() == flowq::quic::connection_loop_state::closing);
+}
+
+TEST_CASE("connection loop retires peer connection IDs below retire_prior_to") {
+    flowq::quic::test::plaintext_packet_protector_set protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+    const auto replacement_cid = cid({0x30});
+
+    server.queue_application({
+        flowq::quic::frame{flowq::quic::new_connection_id_frame{
+            1,
+            1,
+            replacement_cid,
+            reset_token({0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+                         0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f})}},
+    });
+    server.flush(at(0ms));
+    auto datagram = require_single_outbound(server.drain_actions());
+
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer});
+    auto received_actions = client.drain_actions();
+    REQUIRE(received_actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(received_actions[0]));
+
+    client.flush(at(1ms));
+    auto retire_datagram = require_single_outbound(client.drain_actions());
+    auto parsed_retire = flowq::quic::parse_short_packet(
+        retire_datagram.payload,
+        replacement_cid.bytes.size(),
+        protector.application);
+
+    REQUIRE(parsed_retire.ok());
+    const auto& short_packet = std::get<flowq::quic::short_header>(parsed_retire.header);
+    CHECK(same_cid(short_packet.destination_connection_id, replacement_cid));
+    REQUIRE(parsed_retire.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::retire_connection_id_frame>(parsed_retire.frames[0]));
+    CHECK(std::get<flowq::quic::retire_connection_id_frame>(parsed_retire.frames[0]).sequence_number == 0);
+}
+
+TEST_CASE("connection loop closes on conflicting duplicate peer connection ID sequence") {
+    flowq::quic::test::plaintext_packet_protector_set protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    server.queue_application({
+        flowq::quic::frame{flowq::quic::new_connection_id_frame{
+            1,
+            0,
+            cid({0x30}),
+            reset_token({0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+                         0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f})}},
+    });
+    server.flush(at(0ms));
+    auto first = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(first.payload), first.peer});
+    auto accepted_actions = client.drain_actions();
+    REQUIRE(accepted_actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(accepted_actions[0]));
+
+    server.queue_application({
+        flowq::quic::frame{flowq::quic::new_connection_id_frame{
+            1,
+            0,
+            cid({0x31}),
+            reset_token({0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27,
+                         0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f})}},
+    });
+    server.flush(at(1ms));
+    auto second = require_single_outbound(server.drain_actions());
+
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(second.payload), second.peer});
+    auto actions = client.drain_actions();
+
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(actions[0]));
+    CHECK(std::get<flowq::quic::close_action>(actions[0]).error.code() == flowq::error_code::protocol_error);
+    CHECK(client.state() == flowq::quic::connection_loop_state::closing);
 }
 
 TEST_CASE("connection loop answers Application PATH_CHALLENGE with matching PATH_RESPONSE") {
