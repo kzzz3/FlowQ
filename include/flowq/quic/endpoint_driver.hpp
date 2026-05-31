@@ -11,7 +11,6 @@ namespace flowq::quic {
 
 struct endpoint_driver_config {
     std::size_t max_connections{100};
-    std::size_t max_send_queue_size{1000};
 };
 
 /// Production-shaped endpoint driver with explicit lifecycle, CID routing, and connection limits.

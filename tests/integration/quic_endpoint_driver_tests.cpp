@@ -21,7 +21,6 @@ flowq::quic::connection_id make_cid(std::initializer_list<unsigned char> bytes) 
 TEST_CASE("endpoint driver starts and stops cleanly") {
     flowq::quic::endpoint_driver_config config{};
     config.max_connections = 10;
-    config.max_send_queue_size = 100;
 
     flowq::quic::endpoint_driver driver{config};
 
@@ -127,13 +126,13 @@ TEST_CASE("endpoint driver rejects operations when not running") {
     CHECK_FALSE(result.ok());
 }
 
-TEST_CASE("endpoint driver config exposes max send queue size") {
+TEST_CASE("endpoint driver config exposes max connections") {
     flowq::quic::endpoint_driver_config config{};
-    config.max_send_queue_size = 500;
+    config.max_connections = 500;
 
     flowq::quic::endpoint_driver driver{config};
 
-    CHECK(driver.config().max_send_queue_size == 500);
+    CHECK(driver.config().max_connections == 500);
 }
 
 TEST_CASE("endpoint driver reports stopped state after construction") {
