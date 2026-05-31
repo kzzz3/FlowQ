@@ -103,6 +103,7 @@ struct packet_build_request {
     /// @pre The protector must outlive this request.
     const packet_protector* protector{};
     packet_pipeline_config config{};
+    bool enforce_initial_datagram_minimum{};
 };
 
 struct application_packet_build_request {
@@ -159,6 +160,8 @@ struct packet_size_result {
 };
 
 namespace detail {
+
+inline constexpr std::size_t minimum_client_initial_datagram_size = 1200;
 
 [[nodiscard]] inline flowq::error pipeline_error(const char* message) {
     return flowq::error{flowq::error_code::protocol_error, message};
@@ -437,6 +440,35 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
     return {};
 }
 
+[[nodiscard]] inline packet_header_encode_result encode_long_packet_sizing_header(
+    long_packet_type type,
+    std::uint32_t version,
+    const connection_id& destination_connection_id,
+    const connection_id& source_connection_id,
+    const flowq::buffer& token,
+    std::size_t protected_payload_length) {
+    auto length_accounting_payload = flowq::buffer{std::vector<std::byte>(protected_payload_length, std::byte{0x00})};
+    if (type == long_packet_type::initial) {
+        return encode_packet_header(initial_header{
+            long_header_first_byte(type),
+            version,
+            destination_connection_id,
+            source_connection_id,
+            token,
+            protected_payload_length,
+            std::move(length_accounting_payload)
+        });
+    }
+    return encode_packet_header(handshake_header{
+        long_header_first_byte(type),
+        version,
+        destination_connection_id,
+        source_connection_id,
+        protected_payload_length,
+        std::move(length_accounting_payload)
+    });
+}
+
 } // namespace detail
 
 [[nodiscard]] inline frame_payload_budget_selection select_frames_for_payload_budget(std::span<const frame> candidates, std::size_t budget) {
@@ -496,6 +528,44 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
             return {{}, request.number, request.protector->level(), encoded.error};
         }
         frame_bytes.insert(frame_bytes.end(), encoded.payload.data(), encoded.payload.data() + static_cast<std::ptrdiff_t>(encoded.payload.size()));
+    }
+
+    if (request.enforce_initial_datagram_minimum) {
+        if (request.type != long_packet_type::initial) {
+            return {{}, request.number, request.protector->level(), detail::pipeline_error("Initial datagram minimum can only be enforced on Initial packets")};
+        }
+        if (request.config.max_datagram_size < detail::minimum_client_initial_datagram_size) {
+            return {{}, request.number, request.protector->level(), detail::pipeline_error("client Initial datagram minimum exceeds configured maximum size")};
+        }
+        std::size_t padding_added = 0;
+        while (true) {
+            const auto protected_payload_length = detail::fixed_packet_number_length + frame_bytes.size() + request.protector->protection_overhead();
+            auto sizing_header = detail::encode_long_packet_sizing_header(
+                request.type,
+                request.version,
+                request.destination_connection_id,
+                request.source_connection_id,
+                request.token,
+                protected_payload_length);
+            if (!sizing_header.ok()) {
+                return {{}, request.number, request.protector->level(), sizing_header.error};
+            }
+            if (sizing_header.payload.size() == detail::minimum_client_initial_datagram_size) {
+                break;
+            }
+            if (sizing_header.payload.size() > detail::minimum_client_initial_datagram_size) {
+                const auto excess = sizing_header.payload.size() - detail::minimum_client_initial_datagram_size;
+                if (excess > padding_added) {
+                    return {{}, request.number, request.protector->level(), detail::pipeline_error("client Initial datagram exceeds minimum before padding")};
+                }
+                frame_bytes.resize(frame_bytes.size() - excess);
+                padding_added -= excess;
+            } else {
+                const auto padding_bytes = detail::minimum_client_initial_datagram_size - sizing_header.payload.size();
+                frame_bytes.insert(frame_bytes.end(), padding_bytes, std::byte{0x00});
+                padding_added += padding_bytes;
+            }
+        }
     }
 
     const auto protected_payload_length = detail::fixed_packet_number_length + frame_bytes.size() + request.protector->protection_overhead();

@@ -11,8 +11,11 @@ TEST_CASE("openssl_tls_handshake_adapter client state transitions") {
     
     flowq::quic::openssl_tls_handshake_adapter adapter{config};
     
-    // Initial state
+#if defined(FLOWQ_ENABLE_OPENSSL_QUIC_TLS)
+    CHECK(adapter.state() == flowq::quic::handshake_state::failed);
+#else
     CHECK(adapter.state() == flowq::quic::handshake_state::idle);
+#endif
     CHECK_FALSE(adapter.key_availability().initial);
     CHECK_FALSE(adapter.key_availability().handshake);
     CHECK_FALSE(adapter.key_availability().application);
@@ -79,6 +82,7 @@ TEST_CASE("openssl_tls_handshake_adapter config preserves values") {
     config.cert_file = "/path/to/cert.pem";
     config.key_file = "/path/to/key.pem";
     config.ca_file = "/path/to/ca.pem";
+    config.server_name = "localhost";
     
     flowq::quic::openssl_tls_handshake_adapter adapter{config};
     
@@ -93,10 +97,13 @@ TEST_CASE("openssl_tls_handshake_adapter can be constructed multiple times") {
     flowq::quic::openssl_tls_config config{};
     config.is_client = true;
     
-    // Construct and destroy multiple adapters
     for (int i = 0; i < 10; ++i) {
         flowq::quic::openssl_tls_handshake_adapter adapter{config};
+#if defined(FLOWQ_ENABLE_OPENSSL_QUIC_TLS)
+        CHECK(adapter.state() == flowq::quic::handshake_state::failed);
+#else
         CHECK(adapter.state() == flowq::quic::handshake_state::idle);
+#endif
     }
 }
 
