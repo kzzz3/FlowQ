@@ -60,7 +60,7 @@ FlowQ is a C++20 QUIC transport library under production hardening. The current 
 - **crypto_provider.hpp**: External crypto provider capability evidence
 - **tls_handshake.hpp**: TLS handshake adapter boundary
 - **key_lifecycle.hpp**: Key availability and packet-space discard state
-- **tls_provider_backend.hpp**: OpenSSL QUIC TLS provider surface
+- **tls_provider_backend.hpp**: OpenSSL QUIC TLS backend status
 
 ### Diagnostics
 
@@ -130,7 +130,7 @@ Dependencies managed via `vcpkg.json` manifest:
 | FLOWQ_BUILD_SOURCE_ONLY_EXAMPLES | OFF | Build source-only examples outside the production-candidate API |
 | FLOWQ_BUILD_FUZZ | OFF | Build fuzz targets |
 | FLOWQ_BUILD_INTEROP | OFF | Build interop harness |
-| FLOWQ_ENABLE_OPENSSL_QUIC_TLS | OFF | Enable OpenSSL QUIC TLS provider surface |
+| FLOWQ_ENABLE_OPENSSL_QUIC_TLS | OFF | Enable OpenSSL QUIC TLS backend |
 | FLOWQ_ENABLE_OPENSSL_CRYPTO | OFF | Enable OpenSSL-backed packet-protection primitives |
 
 ## Testing Strategy
