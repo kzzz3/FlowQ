@@ -255,7 +255,14 @@ public:
         return peer_transport_params_;
     }
 
+    /// Check if traffic secret is available for a specific level and direction.
+    [[nodiscard]] bool has_traffic_secret(tls_encryption_level level, bool is_tx) const noexcept {
+        return !const_cast<openssl_tls_handshake_adapter*>(this)->secret_for(level, is_tx ? 1 : 0).empty();
+    }
+
+#if defined(FLOWQ_ENABLE_INSPECTION)
     /// Get traffic secret for a specific encryption level and direction.
+    /// @warning This exposes raw key material. Only available when FLOWQ_ENABLE_INSPECTION is defined.
     /// @param level The encryption level (initial, handshake, application)
     /// @param is_tx true for transmit secret, false for receive secret
     /// @return Reference to the secret bytes, empty if not yet available
@@ -263,11 +270,7 @@ public:
         tls_encryption_level level, bool is_tx) const noexcept {
         return const_cast<openssl_tls_handshake_adapter*>(this)->secret_for(level, is_tx ? 1 : 0);
     }
-
-    /// Check if traffic secret is available for a specific level and direction.
-    [[nodiscard]] bool has_traffic_secret(tls_encryption_level level, bool is_tx) const noexcept {
-        return !traffic_secret(level, is_tx).empty();
-    }
+#endif
 
     /// Get negotiated cipher suite.
     [[nodiscard]] cipher_suite negotiated_cipher() const noexcept {
