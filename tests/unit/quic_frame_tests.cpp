@@ -54,6 +54,28 @@ TEST_CASE("QUIC frame codec round trips transport CONNECTION_CLOSE") {
     CHECK(close.reason == "closing");
 }
 
+TEST_CASE("QUIC frame codec round trips application CONNECTION_CLOSE") {
+    flowq::quic::application_close_frame frame{
+        0x123,
+        "app done"
+    };
+
+    auto encoded = flowq::quic::encode_frame(frame);
+    REQUIRE(encoded.ok());
+    REQUIRE(encoded.payload.size() >= 1);
+    CHECK(encoded.payload.data()[0] == std::byte{0x1d});
+
+    auto decoded = flowq::quic::decode_frames(encoded.payload);
+
+    REQUIRE(decoded.ok());
+    REQUIRE(decoded.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::application_close_frame>(decoded.frames[0]));
+
+    const auto& close = std::get<flowq::quic::application_close_frame>(decoded.frames[0]);
+    CHECK(close.error_code == 0x123);
+    CHECK(close.reason == "app done");
+}
+
 TEST_CASE("QUIC frame codec round trips ACK frames structurally") {
     flowq::quic::ack_frame frame{
         100,
@@ -432,6 +454,12 @@ TEST_CASE("QUIC frame codec reports empty unknown and truncated frames") {
 
     // CONNECTION_CLOSE with reason length 4 but only one byte present.
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x1c, 0x0a, 0x01, 0x04, 0x78})).ok());
+
+    // APPLICATION_CLOSE with error code and missing reason phrase length.
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x1d, 0x0a})).ok());
+
+    // APPLICATION_CLOSE with reason length 4 but only one byte present.
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x1d, 0x0a, 0x04, 0x78})).ok());
 }
 
 TEST_CASE("QUIC frame codec rejects malformed ACK CRYPTO and STREAM frames") {

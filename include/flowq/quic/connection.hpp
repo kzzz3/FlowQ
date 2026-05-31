@@ -539,6 +539,10 @@ private:
                 auto message = close->reason.empty() ? std::string{"peer closed connection"} : close->reason;
                 return flowq::error{flowq::error_code::connection_closed, std::move(message)};
             }
+            if (const auto* close = std::get_if<application_close_frame>(&item)) {
+                auto message = close->reason.empty() ? std::string{"peer closed application"} : close->reason;
+                return flowq::error{flowq::error_code::connection_closed, std::move(message)};
+            }
         }
         return std::nullopt;
     }
