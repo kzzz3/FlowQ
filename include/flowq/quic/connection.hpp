@@ -557,6 +557,9 @@ private:
         if (std::holds_alternative<stop_sending_frame>(item)) {
             return "STOP_SENDING";
         }
+        if (std::holds_alternative<new_token_frame>(item)) {
+            return "NEW_TOKEN";
+        }
         if (std::holds_alternative<stream_frame>(item)) {
             return "STREAM";
         }
@@ -619,6 +622,11 @@ private:
                 return flowq::error{
                     flowq::error_code::protocol_error,
                     "HANDSHAKE_DONE frames are only sent by servers"};
+            }
+            if (std::holds_alternative<new_token_frame>(item)) {
+                return flowq::error{
+                    flowq::error_code::protocol_error,
+                    "NEW_TOKEN frames are only sent by servers"};
             }
         }
         return {};
