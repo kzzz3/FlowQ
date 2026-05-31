@@ -624,6 +624,42 @@ private:
         return {};
     }
 
+    [[nodiscard]] static bool ack_ranges_valid(const ack_frame& ack) noexcept {
+        if (ack.first_ack_range > ack.largest_acknowledged) {
+            return false;
+        }
+
+        auto range_low = ack.largest_acknowledged - ack.first_ack_range;
+        for (const auto& range : ack.ranges) {
+            if (range.gap > std::numeric_limits<std::uint64_t>::max() - 2U) {
+                return false;
+            }
+            const auto skipped_packets = range.gap + 2U;
+            if (range_low < skipped_packets) {
+                return false;
+            }
+
+            const auto range_high = range_low - skipped_packets;
+            if (range.length > range_high) {
+                return false;
+            }
+            range_low = range_high - range.length;
+        }
+
+        return true;
+    }
+
+    [[nodiscard]] static flowq::error validate_inbound_ack_ranges(const std::vector<frame>& frames) {
+        for (const auto& item : frames) {
+            if (const auto* ack = std::get_if<ack_frame>(&item); ack != nullptr && !ack_ranges_valid(*ack)) {
+                return flowq::error{
+                    flowq::error_code::protocol_error,
+                    "ACK frame contains invalid packet number ranges"};
+            }
+        }
+        return {};
+    }
+
     [[nodiscard]] static bool same_endpoint(const flowq::endpoint& lhs, const flowq::endpoint& rhs) noexcept {
         return lhs.host == rhs.host && lhs.port == rhs.port && lhs.alpn == rhs.alpn;
     }
@@ -1134,6 +1170,10 @@ private:
             return;
         }
         if (auto error = validate_inbound_frame_role(config_.role, parsed.frames); !error.ok()) {
+            enter_closing(error, received_at);
+            return;
+        }
+        if (auto error = validate_inbound_ack_ranges(parsed.frames); !error.ok()) {
             enter_closing(error, received_at);
             return;
         }
