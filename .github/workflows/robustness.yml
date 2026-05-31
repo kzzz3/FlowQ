@@ -35,6 +35,8 @@ jobs:
           echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
       - name: Validate sanitizer preset
         run: ./scripts/validate-sanitizers.sh
+      - name: Release readiness smoke gate
+        run: ./scripts/check-release-readiness.sh --skip-build
 
   fuzz:
     # Builds fuzz targets with libFuzzer + ASan + UBSan, then runs each for a

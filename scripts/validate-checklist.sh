@@ -213,10 +213,10 @@ fi
 echo ""
 echo "Checking for empty catch blocks..."
 
-EMPTY_CATCH=$(find include/ -name "*.hpp" -o -name "*.h" | xargs grep -rP "catch\s*\([^)]*\)\s*\{\s*\}" 2>/dev/null | wc -l || echo "0")
+EMPTY_CATCH=$(find include/ -name "*.hpp" -o -name "*.h" | xargs grep -rE "catch[[:space:]]*\([^)]*\)[[:space:]]*\{[[:space:]]*\}" 2>/dev/null | wc -l || echo "0")
 if [[ $EMPTY_CATCH -gt 0 ]]; then
     echo -e "${RED}VIOLATION${NC}: Found ${EMPTY_CATCH} empty catch blocks"
-    find include/ -name "*.hpp" -o -name "*.h" | xargs grep -rP "catch\s*\([^)]*\)\s*\{\s*\}" 2>/dev/null
+    find include/ -name "*.hpp" -o -name "*.h" | xargs grep -rE "catch[[:space:]]*\([^)]*\)[[:space:]]*\{[[:space:]]*\}" 2>/dev/null
     VIOLATIONS=$((VIOLATIONS + EMPTY_CATCH))
     echo ""
 fi
@@ -227,7 +227,7 @@ echo "Checking for hardcoded credentials..."
 
 CRED_COUNT=$(find . -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.json" -o -name "*.yml" -o -name "*.yaml" | \
     grep -v "node_modules\|build\|\.git" | \
-    xargs grep -rP "(password|secret|token|key)\s*[:=]\s*['\"][^'\"]+['\"]" 2>/dev/null | wc -l || echo "0")
+    xargs grep -rE "(password|secret|token|key)[[:space:]]*[:=][[:space:]]*['\"][^'\"]+['\"]" 2>/dev/null | wc -l || echo "0")
 if [[ $CRED_COUNT -gt 0 ]]; then
     echo -e "${RED}VIOLATION${NC}: Found ${CRED_COUNT} potential hardcoded credentials"
     VIOLATIONS=$((VIOLATIONS + CRED_COUNT))

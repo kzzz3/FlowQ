@@ -38,10 +38,20 @@ Windows production gate:
 .\scripts\check-release-readiness.ps1 -SkipBuild
 ```
 
+Linux/macOS release-readiness smoke gate:
+
+```bash
+./scripts/check-release-readiness.sh --skip-build
+```
+
 Strict production-candidate gate:
 
 ```powershell
 .\scripts\check-release-readiness.ps1 -RequireCompleteReleaseChecklist
+```
+
+```bash
+./scripts/check-release-readiness.sh --require-complete-release-checklist
 ```
 
 The strict gate is expected to fail until Linux, sanitizer, and human review evidence is recorded and checked in `docs/production/release-checklist.md`.

@@ -66,6 +66,10 @@ jobs:
         shell: pwsh
         run: .\build\package-consumer\Debug\flowq_package_consumer.exe
 
+      - name: Release readiness smoke gate
+        shell: pwsh
+        run: .\scripts\check-release-readiness.ps1 -SkipBuild
+
   linux-gcc:
     name: Linux GCC
     runs-on: ubuntu-latest
@@ -91,6 +95,9 @@ jobs:
 
       - name: Validate Linux GCC preset
         run: ./scripts/validate-build.sh --preset linux-gcc-vcpkg
+
+      - name: Release readiness smoke gate
+        run: ./scripts/check-release-readiness.sh --skip-build
 
   linux-clang:
     name: Linux Clang
@@ -131,6 +138,9 @@ jobs:
 
       - name: Test FlowQ
         run: ctest --test-dir build -C Debug --timeout 10 --output-on-failure
+
+      - name: Release readiness smoke gate
+        run: ./scripts/check-release-readiness.sh --skip-build
 
   macos-clang:
     name: macOS Clang
@@ -183,3 +193,6 @@ jobs:
 
       - name: Run package consumer
         run: ./build/package-consumer/flowq_package_consumer
+
+      - name: Release readiness smoke gate
+        run: ./scripts/check-release-readiness.sh --skip-build

@@ -8,6 +8,12 @@ The strict production-candidate gate is:
 .\scripts\check-release-readiness.ps1 -RequireCompleteReleaseChecklist
 ```
 
+Linux/macOS CI uses the matching POSIX smoke gate:
+
+```bash
+./scripts/check-release-readiness.sh --skip-build
+```
+
 `-SkipBuild` is only for local documentation/checklist smoke checks and must not be used as production-candidate evidence.
 
 ## Build and Test Gates
@@ -22,7 +28,7 @@ Current Windows evidence: `scripts/validate-build.ps1 -Preset windows-msvc-vcpkg
 
 Linux GCC and sanitizer gates are defined but not checked off until they are executed on a Linux host: `linux-gcc-vcpkg`, `linux-gcc-vcpkg-strict`, and `linux-asan-ubsan` presets are available, `scripts/validate-build.sh --preset linux-gcc-vcpkg` validates CMake configure, build, CTest, install, package-consumer build, and package-consumer execution, and `scripts/validate-sanitizers.sh` validates ASan/UBSan. The current local Windows host cannot produce this evidence because no WSL distribution, Docker daemon, GCC, or Clang is available.
 
-Code-quality evidence: `scripts/validate-checklist.ps1` checks production public QUIC headers for TODO/FIXME comments, placeholder wording, type-safety suppressions, empty catch blocks, hardcoded credentials, documentation comments, and public API snake_case naming. `scripts/check-release-readiness.ps1 -RequireCompleteReleaseChecklist` fails while any required checklist item remains unchecked.
+Code-quality evidence: `scripts/validate-checklist.ps1` and `scripts/validate-checklist.sh` check production public QUIC headers for TODO/FIXME comments, placeholder wording, type-safety suppressions, empty catch blocks, hardcoded credentials, documentation comments, and public API snake_case naming. `scripts/check-release-readiness.ps1 -RequireCompleteReleaseChecklist` and `scripts/check-release-readiness.sh --require-complete-release-checklist` fail while any required checklist item remains unchecked. CI runs the non-build readiness smoke gate after Windows, Linux, macOS, and sanitizer validation so release-gate regressions fail before checklist sign-off.
 
 ## Code Quality Gates
 
