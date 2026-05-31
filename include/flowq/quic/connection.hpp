@@ -26,7 +26,8 @@ public:
               config_.initial_stream_send_max_data,
               stream_limits{config_.initial_max_streams_bidi, config_.initial_max_streams_uni}},
           connection_send_max_data_{config_.initial_connection_send_max_data},
-          peer_address_validated_{config_.peer_address_validated} {}
+          peer_address_validated_{config_.peer_address_validated},
+          recovery_pto_config_{config_.max_ack_delay} {}
 
     connection_loop(connection_loop&&) noexcept = default;
     connection_loop& operator=(connection_loop&&) noexcept = default;
@@ -926,11 +927,14 @@ private:
         actions_.emplace_back(outbound_datagram{std::move(assembled.datagram), config_.peer});
     }
 
-    void apply_ack_frames(packet_number_space space, const std::vector<frame>& frames) {
+    void apply_ack_frames(packet_number_space space, const std::vector<frame>& frames, std::chrono::steady_clock::time_point received_at) {
         for (const auto& item : frames) {
             if (const auto* ack = std::get_if<ack_frame>(&item)) {
                 record_largest_acknowledged(space, ack->largest_acknowledged);
                 auto result = sent_tracker(space).on_ack_received(*ack);
+                if (const auto sample = rtt_sample_from_ack(space, *ack, result.newly_acknowledged, received_at); sample.has_value()) {
+                    update_rtt(*sample);
+                }
                 mark_recovery_packets(space, result.newly_acknowledged, sent_packet_state::acknowledged);
                 mark_recovery_packets(space, result.newly_lost, sent_packet_state::lost);
                 apply_stream_ack_mapping(space, result.newly_acknowledged);
@@ -943,6 +947,36 @@ private:
                 }
             }
         }
+    }
+
+    [[nodiscard]] std::optional<rtt_sample> rtt_sample_from_ack(
+        packet_number_space space,
+        const ack_frame& ack,
+        const std::vector<std::uint64_t>& newly_acknowledged,
+        std::chrono::steady_clock::time_point received_at) const {
+        std::optional<const recovery_packet*> sampled_packet;
+        for (const auto packet_number : newly_acknowledged) {
+            for (const auto& packet : recovery_packets_) {
+                if (packet.space != space || packet.packet_number != packet_number || !packet.ack_eliciting || packet.state != sent_packet_state::outstanding) {
+                    continue;
+                }
+                if (!sampled_packet.has_value() || packet.packet_number > (*sampled_packet)->packet_number) {
+                    sampled_packet = &packet;
+                }
+            }
+        }
+        if (!sampled_packet.has_value()) {
+            return std::nullopt;
+        }
+
+        const auto& packet = **sampled_packet;
+        if (received_at < packet.sent_at) {
+            return std::nullopt;
+        }
+        const auto ack_delay = space == packet_number_space::application
+            ? detail::decode_ack_delay(ack.ack_delay, config_.ack_delay_exponent)
+            : std::chrono::steady_clock::duration{};
+        return rtt_sample{received_at - packet.sent_at, ack_delay, config_.max_ack_delay, recovery_pto_config_.handshake_confirmed};
     }
 
     void record_sent_stream_ranges(packet_number_space space, std::uint64_t packet_number, const std::vector<frame>& frames) {
@@ -1190,7 +1224,7 @@ private:
             return;
         }
         apply_path_validation_frames(parsed.frames);
-        apply_ack_frames(parsed.number.space, parsed.frames);
+        apply_ack_frames(parsed.number.space, parsed.frames, received_at);
         apply_flow_control_frames(parsed.frames);
         if (auto error = apply_stream_control_frames(parsed.frames); !error.ok()) {
             enter_closing(error, received_at);

@@ -23,6 +23,8 @@ inline constexpr std::uint64_t transport_parameter_initial_max_stream_data_bidi_
 inline constexpr std::uint64_t transport_parameter_initial_max_stream_data_uni = 0x07;
 inline constexpr std::uint64_t transport_parameter_initial_max_streams_bidi = 0x08;
 inline constexpr std::uint64_t transport_parameter_initial_max_streams_uni = 0x09;
+inline constexpr std::uint64_t transport_parameter_ack_delay_exponent = 0x0a;
+inline constexpr std::uint64_t transport_parameter_max_ack_delay = 0x0b;
 inline constexpr std::uint64_t transport_parameter_disable_active_migration = 0x0c;
 inline constexpr std::uint64_t transport_parameter_active_connection_id_limit = 0x0e;
 inline constexpr std::uint64_t transport_parameter_initial_source_connection_id = 0x0f;
@@ -43,6 +45,8 @@ struct transport_parameters {
     std::optional<std::uint64_t> initial_max_stream_data_uni;
     std::optional<std::uint64_t> initial_max_streams_bidi;
     std::optional<std::uint64_t> initial_max_streams_uni;
+    std::optional<std::uint64_t> ack_delay_exponent;
+    std::optional<std::uint64_t> max_ack_delay;
     bool disable_active_migration{};
     std::optional<std::uint64_t> active_connection_id_limit;
     std::optional<flowq::buffer> initial_source_connection_id;
@@ -132,6 +136,8 @@ namespace detail {
     case transport_parameter_initial_max_stream_data_uni:
     case transport_parameter_initial_max_streams_bidi:
     case transport_parameter_initial_max_streams_uni:
+    case transport_parameter_ack_delay_exponent:
+    case transport_parameter_max_ack_delay:
     case transport_parameter_disable_active_migration:
     case transport_parameter_active_connection_id_limit:
     case transport_parameter_initial_source_connection_id:
@@ -166,6 +172,12 @@ namespace detail {
     }
     if (id == transport_parameter_active_connection_id_limit && value < 2) {
         return codec_error("active_connection_id_limit transport parameter must be at least 2");
+    }
+    if (id == transport_parameter_ack_delay_exponent && value > 20) {
+        return codec_error("ack_delay_exponent transport parameter must be at most 20");
+    }
+    if (id == transport_parameter_max_ack_delay && value >= 16384) {
+        return codec_error("max_ack_delay transport parameter must be less than 16384");
     }
     return {};
 }
@@ -285,6 +297,14 @@ namespace detail {
     if (!error.ok()) {
         return {{}, error};
     }
+    error = detail::append_checked_numeric_transport_parameter(output, emitted, transport_parameter_ack_delay_exponent, parameters.ack_delay_exponent);
+    if (!error.ok()) {
+        return {{}, error};
+    }
+    error = detail::append_checked_numeric_transport_parameter(output, emitted, transport_parameter_max_ack_delay, parameters.max_ack_delay);
+    if (!error.ok()) {
+        return {{}, error};
+    }
     if (parameters.disable_active_migration) {
         error = detail::remember_transport_parameter(emitted, transport_parameter_disable_active_migration);
         if (!error.ok()) {
@@ -396,6 +416,18 @@ namespace detail {
             break;
         case transport_parameter_initial_max_streams_uni:
             error = detail::assign_numeric_parameter(result.initial_max_streams_uni, value, "malformed initial_max_streams_uni transport parameter");
+            break;
+        case transport_parameter_ack_delay_exponent:
+            error = detail::assign_numeric_parameter(result.ack_delay_exponent, value, "malformed ack_delay_exponent transport parameter");
+            if (error.ok() && *result.ack_delay_exponent > 20) {
+                error = codec_error("ack_delay_exponent transport parameter must be at most 20");
+            }
+            break;
+        case transport_parameter_max_ack_delay:
+            error = detail::assign_numeric_parameter(result.max_ack_delay, value, "malformed max_ack_delay transport parameter");
+            if (error.ok() && *result.max_ack_delay >= 16384) {
+                error = codec_error("max_ack_delay transport parameter must be less than 16384");
+            }
             break;
         case transport_parameter_disable_active_migration:
             if (!value.empty()) {

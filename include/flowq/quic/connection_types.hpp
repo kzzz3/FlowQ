@@ -69,6 +69,8 @@ struct connection_loop_config {
     std::chrono::milliseconds max_idle_timeout{};
     std::uint64_t max_udp_payload_size{1200};
     std::uint64_t active_connection_id_limit{2};
+    std::uint64_t ack_delay_exponent{3};
+    std::chrono::milliseconds max_ack_delay{25};
     bool disable_active_migration{};
     /// @pre The adapter must outlive this connection loop.
     tls_handshake_adapter* tls_adapter{};
@@ -122,6 +124,12 @@ inline void apply_transport_parameters(connection_loop_config& config, const tra
     }
     if (parameters.active_connection_id_limit.has_value()) {
         config.active_connection_id_limit = *parameters.active_connection_id_limit;
+    }
+    if (parameters.ack_delay_exponent.has_value()) {
+        config.ack_delay_exponent = *parameters.ack_delay_exponent;
+    }
+    if (parameters.max_ack_delay.has_value()) {
+        config.max_ack_delay = std::chrono::milliseconds{*parameters.max_ack_delay};
     }
     config.disable_active_migration = parameters.disable_active_migration;
 }

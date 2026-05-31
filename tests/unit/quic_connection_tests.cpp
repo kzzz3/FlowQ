@@ -220,10 +220,47 @@ flowq::quic::connection_loop make_loop(
     return flowq::quic::connection_loop{std::move(config)};
 }
 
+flowq::quic::connection_loop make_application_loop(
+    flowq::quic::connection_id local,
+    flowq::quic::connection_id remote,
+    flowq::endpoint peer,
+    const flowq::quic::test::plaintext_packet_protector_set& protectors,
+    std::uint64_t ack_delay_exponent,
+    std::chrono::milliseconds max_ack_delay) {
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = std::move(local);
+    config.remote_connection_id = std::move(remote);
+    config.peer = std::move(peer);
+    config.pipeline = flowq::quic::packet_pipeline_config{1200};
+    config.initial_tx_protector = &protectors.initial;
+    config.initial_rx_protector = &protectors.initial;
+    config.handshake_tx_protector = &protectors.handshake;
+    config.handshake_rx_protector = &protectors.handshake;
+    config.application_tx_protector = &protectors.application;
+    config.application_rx_protector = &protectors.application;
+    config.tls_adapter = &application_ready_tls_adapter();
+    config.ack_delay_exponent = ack_delay_exponent;
+    config.max_ack_delay = max_ack_delay;
+    return flowq::quic::connection_loop{std::move(config)};
+}
+
 flowq::quic::outbound_datagram require_single_outbound(std::vector<flowq::quic::connection_loop_action> actions) {
     REQUIRE(actions.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::outbound_datagram>(actions[0]));
     return std::get<flowq::quic::outbound_datagram>(std::move(actions[0]));
+}
+
+flowq::quic::outbound_datagram require_only_outbound_datagram(std::vector<flowq::quic::connection_loop_action> actions) {
+    std::optional<flowq::quic::outbound_datagram> outbound;
+    for (auto& action : actions) {
+        if (std::holds_alternative<flowq::quic::outbound_datagram>(action)) {
+            REQUIRE_FALSE(outbound.has_value());
+            outbound = std::get<flowq::quic::outbound_datagram>(std::move(action));
+        }
+    }
+    REQUIRE(outbound.has_value());
+    return std::move(*outbound);
 }
 
 } // namespace
@@ -831,7 +868,7 @@ TEST_CASE("connection loop clears recovery timer after packet acknowledgment") {
     (void)server.drain_actions();
     server.acknowledge(flowq::quic::packet_number_space::initial);
     auto ack_datagram = require_single_outbound(server.drain_actions());
-    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer}, at(20ms));
 
     CHECK_FALSE(client.next_recovery_timer().has_value());
 }
@@ -880,7 +917,7 @@ TEST_CASE("connection loop recovery timer expiry reports time threshold losses")
     server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{1, 0, 0, {}}}});
     server.flush(at(20ms));
     auto ack_datagram = require_single_outbound(server.drain_actions());
-    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer}, at(20ms));
     auto result = client.on_recovery_timer(flowq::quic::packet_number_space::initial, at(100ms));
 
     CHECK(result.space == flowq::quic::packet_number_space::initial);
@@ -921,16 +958,16 @@ TEST_CASE("connection loop does not arm loss timer for packets above largest ack
     server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{0, 0, 0, {}}}});
     server.flush(at(20ms));
     auto ack_datagram = require_single_outbound(server.drain_actions());
-    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer}, at(20ms));
     auto timer = client.next_recovery_timer();
     auto expired = client.on_recovery_timer(flowq::quic::packet_number_space::initial, at(100ms));
 
     REQUIRE(timer.has_value());
     CHECK(timer->mode == flowq::quic::loss_timer_mode::pto);
-    CHECK(timer->deadline == at(250ms));
+    CHECK(timer->deadline == clock_type::time_point{262500us});
     CHECK(expired.newly_lost.empty());
     REQUIRE(expired.next_deadline.has_value());
-    CHECK(*expired.next_deadline == at(250ms));
+    CHECK(*expired.next_deadline == clock_type::time_point{262500us});
 }
 
 TEST_CASE("connection loop routes inbound STREAM frames to receive streams") {
@@ -1242,7 +1279,7 @@ TEST_CASE("connection loop maps packet loss to stream retransmission state") {
     server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{4, 0, 0, {}}}});
     server.flush(at(20ms));
     auto ack_datagram = require_single_outbound(server.drain_actions());
-    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer}, at(20ms));
     auto retransmit = client.schedule_stream_frames(order, 1, 16);
 
     REQUIRE(retransmit.ok());
@@ -1276,7 +1313,7 @@ TEST_CASE("connection loop retransmits lost STREAM data without fresh connection
     server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{4, 0, 0, {}}}});
     server.flush(at(20ms));
     auto ack_datagram = require_single_outbound(server.drain_actions());
-    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer}, at(20ms));
     auto retransmit = client.schedule_stream_frames(order, 1, 16);
 
     REQUIRE(retransmit.ok());
@@ -1306,7 +1343,7 @@ TEST_CASE("connection loop maps recovery timer loss to stream retransmission sta
     server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{1, 0, 0, {}}}});
     server.flush(at(20ms));
     auto ack_datagram = require_single_outbound(server.drain_actions());
-    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer});
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer}, at(20ms));
     auto lost = client.on_recovery_timer(flowq::quic::packet_number_space::initial, at(100ms));
     auto retransmit = client.schedule_stream_frames(order, 1, 16);
 
@@ -1376,6 +1413,50 @@ TEST_CASE("connection loop arms Application PTO after TLS confirms handshake") {
     REQUIRE(timer.has_value());
     CHECK(timer->space == flowq::quic::packet_number_space::application);
     CHECK(timer->mode == flowq::quic::loss_timer_mode::pto);
+}
+
+TEST_CASE("connection loop scales Application ACK delay with peer ack_delay_exponent for RTT") {
+    flowq::quic::test::plaintext_packet_protector_set protector{};
+    auto client = make_application_loop(
+        cid({0x01}),
+        cid({0x02}),
+        flowq::endpoint{"server", 4433, "hq-interop"},
+        protector,
+        10,
+        500ms);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    client.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto first = require_single_outbound(client.drain_actions());
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(first.payload), first.peer}, at(1ms));
+    (void)server.drain_actions();
+    server.queue_application({flowq::quic::frame{flowq::quic::ack_frame{0, 0, 0, {}}}});
+    server.flush(at(100ms));
+    auto first_ack = require_only_outbound_datagram(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(first_ack.payload), first_ack.peer}, at(100ms));
+    (void)client.drain_actions();
+
+    client.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(110ms));
+    auto second = require_single_outbound(client.drain_actions());
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(second.payload), second.peer}, at(111ms));
+    (void)server.drain_actions();
+    server.queue_application({flowq::quic::frame{flowq::quic::ack_frame{1, 50, 0, {}}}});
+    server.flush(at(270ms));
+    auto second_ack = require_only_outbound_datagram(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(second_ack.payload), second_ack.peer}, at(270ms));
+    (void)client.drain_actions();
+
+    client.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(280ms));
+    (void)client.drain_actions();
+
+    auto timer = client.next_recovery_timer();
+    REQUIRE(timer.has_value());
+    CHECK(timer->space == flowq::quic::packet_number_space::application);
+    CHECK(timer->mode == flowq::quic::loss_timer_mode::pto);
+    CHECK(timer->deadline == clock_type::time_point{1039900us});
 }
 
 TEST_CASE("connection loop maps packet ACK to suppress later stream retransmission") {

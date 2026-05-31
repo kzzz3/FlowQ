@@ -35,6 +35,8 @@ struct session_config {
     std::chrono::milliseconds max_idle_timeout{};
     std::uint64_t max_udp_payload_size{1200};
     std::uint64_t active_connection_id_limit{2};
+    std::uint64_t ack_delay_exponent{3};
+    std::chrono::milliseconds max_ack_delay{25};
     bool disable_active_migration{};
     /// @pre The adapter must outlive this session.
     tls_handshake_adapter* tls_adapter{};
@@ -57,30 +59,31 @@ struct session_config {
 };
 
 [[nodiscard]] inline connection_loop_config to_connection_config(const session_config& config) {
-    connection_loop_config connection_config{
-        config.role,
-        config.version,
-        config.local_connection_id,
-        config.remote_connection_id,
-        config.peer,
-        config.pipeline,
-        config.initial_stream_send_max_data,
-        config.initial_connection_send_max_data,
-        config.max_packet_payload_size,
-        config.initial_max_stream_data_bidi_local,
-        config.initial_max_stream_data_bidi_remote,
-        config.initial_max_stream_data_uni,
-        config.initial_max_streams_bidi,
-        config.initial_max_streams_uni,
-        config.max_idle_timeout,
-        config.max_udp_payload_size,
-        config.active_connection_id_limit,
-        config.disable_active_migration,
-        config.tls_adapter,
-        config.key_lifecycle,
-        config.closing_draining_timeout,
-        config.peer_address_validated
-    };
+    connection_loop_config connection_config{};
+    connection_config.role = config.role;
+    connection_config.version = config.version;
+    connection_config.local_connection_id = config.local_connection_id;
+    connection_config.remote_connection_id = config.remote_connection_id;
+    connection_config.peer = config.peer;
+    connection_config.pipeline = config.pipeline;
+    connection_config.initial_stream_send_max_data = config.initial_stream_send_max_data;
+    connection_config.initial_connection_send_max_data = config.initial_connection_send_max_data;
+    connection_config.max_packet_payload_size = config.max_packet_payload_size;
+    connection_config.initial_max_stream_data_bidi_local = config.initial_max_stream_data_bidi_local;
+    connection_config.initial_max_stream_data_bidi_remote = config.initial_max_stream_data_bidi_remote;
+    connection_config.initial_max_stream_data_uni = config.initial_max_stream_data_uni;
+    connection_config.initial_max_streams_bidi = config.initial_max_streams_bidi;
+    connection_config.initial_max_streams_uni = config.initial_max_streams_uni;
+    connection_config.max_idle_timeout = config.max_idle_timeout;
+    connection_config.max_udp_payload_size = config.max_udp_payload_size;
+    connection_config.active_connection_id_limit = config.active_connection_id_limit;
+    connection_config.ack_delay_exponent = config.ack_delay_exponent;
+    connection_config.max_ack_delay = config.max_ack_delay;
+    connection_config.disable_active_migration = config.disable_active_migration;
+    connection_config.tls_adapter = config.tls_adapter;
+    connection_config.key_lifecycle = config.key_lifecycle;
+    connection_config.closing_draining_timeout = config.closing_draining_timeout;
+    connection_config.peer_address_validated = config.peer_address_validated;
     connection_config.initial_tx_protector = config.initial_tx_protector;
     connection_config.initial_rx_protector = config.initial_rx_protector;
     connection_config.handshake_tx_protector = config.handshake_tx_protector;
@@ -106,6 +109,8 @@ inline void apply_transport_parameters(session_config& config, const transport_p
     config.initial_max_streams_bidi = connection_config.initial_max_streams_bidi;
     config.initial_max_streams_uni = connection_config.initial_max_streams_uni;
     config.active_connection_id_limit = connection_config.active_connection_id_limit;
+    config.ack_delay_exponent = connection_config.ack_delay_exponent;
+    config.max_ack_delay = connection_config.max_ack_delay;
     config.disable_active_migration = connection_config.disable_active_migration;
 }
 

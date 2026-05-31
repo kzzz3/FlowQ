@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <set>
 #include <utility>
@@ -48,6 +49,20 @@ namespace detail {
 
 [[nodiscard]] inline std::chrono::steady_clock::duration abs_duration(std::chrono::steady_clock::duration duration) {
     return duration < std::chrono::steady_clock::duration::zero() ? -duration : duration;
+}
+
+[[nodiscard]] inline std::chrono::steady_clock::duration decode_ack_delay(
+    std::uint64_t encoded_ack_delay,
+    std::uint64_t ack_delay_exponent) {
+    if (ack_delay_exponent >= std::numeric_limits<std::uint64_t>::digits) {
+        return std::chrono::steady_clock::duration::max();
+    }
+    const auto multiplier = std::uint64_t{1} << ack_delay_exponent;
+    constexpr auto maximum = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::duration::max()).count();
+    if (encoded_ack_delay > static_cast<std::uint64_t>(maximum) / multiplier) {
+        return std::chrono::steady_clock::duration::max();
+    }
+    return std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::microseconds{encoded_ack_delay * multiplier});
 }
 
 [[nodiscard]] inline bool append_ack_range(std::set<std::uint64_t>& packets, std::uint64_t low, std::uint64_t high) {

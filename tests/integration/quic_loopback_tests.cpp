@@ -214,12 +214,20 @@ private:
         flowq::quic::connection_loop& from,
         flowq::quic::connection_loop& to,
         std::map<std::uint64_t, std::string>& delivered) {
+        pump(from, to, delivered, at(20ms));
+    }
+
+    static void pump(
+        flowq::quic::connection_loop& from,
+        flowq::quic::connection_loop& to,
+        std::map<std::uint64_t, std::string>& delivered,
+        clock_type::time_point received_at) {
         auto actions = from.drain_actions();
         REQUIRE_FALSE(actions.empty());
         for (auto& action : actions) {
             REQUIRE(std::holds_alternative<flowq::quic::outbound_datagram>(action));
             auto datagram = std::get<flowq::quic::outbound_datagram>(std::move(action));
-            to.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer});
+            to.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer}, received_at);
         }
         collect_deliveries(to.drain_actions(), delivered);
     }

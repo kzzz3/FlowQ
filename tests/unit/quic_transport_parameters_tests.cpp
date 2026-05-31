@@ -41,6 +41,8 @@ TEST_CASE("transport parameters round trip selected QUIC values") {
     parameters.initial_max_stream_data_uni = 4000;
     parameters.initial_max_streams_bidi = 16;
     parameters.initial_max_streams_uni = 8;
+    parameters.ack_delay_exponent = 12;
+    parameters.max_ack_delay = 75;
     parameters.disable_active_migration = true;
     parameters.active_connection_id_limit = 4;
     parameters.original_destination_connection_id = flowq::buffer{bytes({0x05, 0x06, 0x07, 0x08})};
@@ -60,6 +62,8 @@ TEST_CASE("transport parameters round trip selected QUIC values") {
     CHECK(decoded.parameters.initial_max_stream_data_uni == 4000);
     CHECK(decoded.parameters.initial_max_streams_bidi == 16);
     CHECK(decoded.parameters.initial_max_streams_uni == 8);
+    CHECK(decoded.parameters.ack_delay_exponent == 12);
+    CHECK(decoded.parameters.max_ack_delay == 75);
     CHECK(decoded.parameters.disable_active_migration);
     CHECK(decoded.parameters.active_connection_id_limit == 4);
     REQUIRE(decoded.parameters.original_destination_connection_id.has_value());
@@ -93,6 +97,8 @@ TEST_CASE("transport parameters reject duplicate and malformed inputs") {
     CHECK_FALSE(flowq::quic::decode_transport_parameters(flowq::buffer{bytes({0x0c, 0x01, 0x00})}).ok());
     CHECK_FALSE(flowq::quic::decode_transport_parameters(flowq::buffer{bytes({0x0e, 0x01, 0x01})}).ok());
     CHECK_FALSE(flowq::quic::decode_transport_parameters(flowq::buffer{bytes({0x03, 0x02, 0x44, 0xaf})}).ok());
+    CHECK_FALSE(flowq::quic::decode_transport_parameters(flowq::buffer{bytes({0x0a, 0x01, 0x15})}).ok());
+    CHECK_FALSE(flowq::quic::decode_transport_parameters(flowq::buffer{bytes({0x0b, 0x02, 0x80, 0x00})}).ok());
     CHECK_FALSE(flowq::quic::decode_transport_parameters(flowq::buffer{bytes({
         0x0f, 0x15,
         0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
@@ -111,6 +117,14 @@ TEST_CASE("transport parameters reject invalid encoder inputs") {
 
     parameters = flowq::quic::transport_parameters{};
     parameters.active_connection_id_limit = 1;
+    CHECK_FALSE(flowq::quic::encode_transport_parameters(parameters).ok());
+
+    parameters = flowq::quic::transport_parameters{};
+    parameters.ack_delay_exponent = 21;
+    CHECK_FALSE(flowq::quic::encode_transport_parameters(parameters).ok());
+
+    parameters = flowq::quic::transport_parameters{};
+    parameters.max_ack_delay = 16384;
     CHECK_FALSE(flowq::quic::encode_transport_parameters(parameters).ok());
 
     parameters = flowq::quic::transport_parameters{};
@@ -140,6 +154,8 @@ TEST_CASE("transport parameters map into connection and session config") {
     parameters.initial_max_stream_data_uni = 700;
     parameters.initial_max_streams_bidi = 3;
     parameters.initial_max_streams_uni = 2;
+    parameters.ack_delay_exponent = 9;
+    parameters.max_ack_delay = 50;
     parameters.disable_active_migration = true;
     parameters.active_connection_id_limit = 6;
 
@@ -156,6 +172,8 @@ TEST_CASE("transport parameters map into connection and session config") {
     CHECK(connection_config.initial_max_stream_data_uni == 700);
     CHECK(connection_config.initial_max_streams_bidi == 3);
     CHECK(connection_config.initial_max_streams_uni == 2);
+    CHECK(connection_config.ack_delay_exponent == 9);
+    CHECK(connection_config.max_ack_delay == std::chrono::milliseconds{50});
     CHECK(connection_config.disable_active_migration);
     CHECK(connection_config.active_connection_id_limit == 6);
 
@@ -167,5 +185,7 @@ TEST_CASE("transport parameters map into connection and session config") {
     CHECK(session_config.initial_stream_send_max_data == 700);
     CHECK(session_config.initial_max_streams_bidi == 3);
     CHECK(session_config.initial_max_streams_uni == 2);
+    CHECK(session_config.ack_delay_exponent == 9);
+    CHECK(session_config.max_ack_delay == std::chrono::milliseconds{50});
     CHECK(session_config.disable_active_migration);
 }
