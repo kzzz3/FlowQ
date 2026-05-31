@@ -65,6 +65,10 @@ public:
         return output;
     }
 
+    flowq::error advance() override {
+        return {};
+    }
+
     flowq::quic::handshake_state state_value{flowq::quic::handshake_state::idle};
     flowq::quic::tls_key_availability keys{};
     std::vector<flowq::quic::crypto_bytes> received;
