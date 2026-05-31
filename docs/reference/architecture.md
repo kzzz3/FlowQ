@@ -54,7 +54,7 @@ FlowQ is a C++20 QUIC transport library under production hardening. The current 
 ### Recovery and Congestion
 
 - **ack_loss.hpp**: ACK/loss detection, RTT estimation, PTO
-- **congestion.hpp**: NewReno-style congestion controller plus structural BBR/CUBIC controllers
+- **congestion.hpp**: NewReno-style congestion controller and the production congestion-control factory adapter
 
 ### Security Boundaries
 

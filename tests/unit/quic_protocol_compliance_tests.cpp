@@ -314,7 +314,7 @@ TEST_CASE("FlowQ protocol compliance summary") {
     SECTION("RFC 9002: Loss Detection and Congestion Control") {
         // RTT estimation: ✅
         // Loss detection: ✅
-        // Congestion control: ✅ (NewReno, BBR, CUBIC)
+        // Congestion control: ✅ (NewReno)
         CHECK(true);
     }
 

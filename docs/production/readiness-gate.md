@@ -91,7 +91,7 @@ FlowQ can only claim production-candidate status for the exact scope backed by l
 - HTTP/3 deployment
 - WebTransport deployment
 - QPACK deployment guarantees
-- BBR/CUBIC production tuning
+- Alternative congestion-control algorithms beyond NewReno
 - Cross-platform release evidence
 - Production TLS certificate-validation policy
 - External security audit
