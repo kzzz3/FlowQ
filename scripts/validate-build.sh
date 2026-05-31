@@ -7,7 +7,7 @@
 # - Build
 # - Test (unless --skip-tests)
 # - Install
-# - Package-consumer build
+# - Package-consumer build and run
 # Exit code 0 if all steps succeed, 1 if any step fails.
 
 set -e
@@ -76,6 +76,9 @@ echo ""
 echo "Step 1/5: Configuring..."
 if [[ -n "$VCPKG_ROOT" ]]; then
     echo "Using VCPKG_ROOT: $VCPKG_ROOT"
+elif [[ "$PRESET" == *vcpkg* ]]; then
+    echo -e "${RED}FAILED${NC}: VCPKG_ROOT must be set for vcpkg preset: $PRESET"
+    exit 1
 else
     echo -e "${YELLOW}WARNING${NC}: VCPKG_ROOT not set, using default"
 fi
@@ -124,22 +127,24 @@ esac
 cmake --install "build/$PRESET" --config "$BUILD_TYPE" --prefix "$INSTALL_DIR"
 for header in "${DISALLOWED_INSTALL_HEADERS[@]}"; do
     if [[ -e "$INSTALL_DIR/$header" ]]; then
-        echo -e "${RED}FAILED${NC}: Experimental/test header installed in production package: $header"
+        echo -e "${RED}FAILED${NC}: Source-only/test-support header installed in production package: $header"
         exit 1
     fi
 done
 echo -e "${GREEN}OK${NC}: Install succeeded"
 echo ""
 
-# Step 5: Package-consumer build
-echo "Step 5/5: Building package-consumer..."
+# Step 5: Package-consumer build and run
+echo "Step 5/5: Building and running package-consumer..."
 CONSUMER_BUILD_DIR="build/package-consumer"
 
 # Detect generator
 if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$PRESET" == windows-* ]]; then
     GENERATOR="Visual Studio 18 2026"
+    CONSUMER_EXE="$CONSUMER_BUILD_DIR/$BUILD_TYPE/flowq_package_consumer.exe"
 else
     GENERATOR="Ninja"
+    CONSUMER_EXE="$CONSUMER_BUILD_DIR/flowq_package_consumer"
 fi
 
 cmake -S tests/package-consumer -B "$CONSUMER_BUILD_DIR" -G "$GENERATOR" \
@@ -147,7 +152,8 @@ cmake -S tests/package-consumer -B "$CONSUMER_BUILD_DIR" -G "$GENERATOR" \
     -DCMAKE_PREFIX_PATH="$REPO_ROOT/$INSTALL_DIR"
 
 cmake --build "$CONSUMER_BUILD_DIR" --config "$BUILD_TYPE"
-echo -e "${GREEN}OK${NC}: Package-consumer build succeeded"
+"$CONSUMER_EXE"
+echo -e "${GREEN}OK${NC}: Package-consumer build and run succeeded"
 echo ""
 
 echo "=== Summary ==="

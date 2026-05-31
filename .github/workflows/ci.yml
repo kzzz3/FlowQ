@@ -92,21 +92,6 @@ jobs:
       - name: Validate Linux GCC preset
         run: ./scripts/validate-build.sh --preset linux-gcc-vcpkg
 
-      - name: Install FlowQ package
-        run: cmake --install build/linux-gcc-vcpkg --config Debug --prefix build/install-flowq
-
-      - name: Configure package consumer
-        run: |
-          cmake -S tests/package-consumer -B build/package-consumer -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/build/install-flowq"
-
-      - name: Build package consumer
-        run: cmake --build build/package-consumer
-
-      - name: Run package consumer
-        run: ./build/package-consumer/flowq_package_consumer
-
   linux-clang:
     name: Linux Clang
     runs-on: ubuntu-latest
