@@ -39,6 +39,8 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ PATH_CHALLENGE/PATH_RESPONSE frame codec support.
 - ✅ Application-space PATH_CHALLENGE scheduling emits a same-value PATH_RESPONSE.
 - ✅ PATH_CHALLENGE/PATH_RESPONSE outside Application packet space closes with protocol error.
+- ✅ Peer address migration queues PATH_CHALLENGE after 1-RTT send keys are available and keeps the server anti-amplification limit in force.
+- ✅ Matching PATH_RESPONSE validates the migrated peer path and lifts the server anti-amplification limit for that path.
 
 ### Interop Harness
 
@@ -76,11 +78,11 @@ FlowQ can only claim production-candidate status for the exact scope backed by l
 - **TLS/backend**: OpenSSL-backed packet protection where enabled
 - **Cipher suite**: AES-128-GCM-SHA256
 - **Roles**: Client and server surfaces
-- **Scenarios**: handshake path, stream echo, loss recovery, path validation primitives
+- **Scenarios**: handshake path, stream echo, loss recovery, path validation, migrated-peer validation
 
 **Explicitly Outside Scope**
 
-- Full path migration workflow
+- Connection-ID migration policy hardening
 - Stateless reset
 - 0-RTT deployment policy
 - HTTP/3 deployment

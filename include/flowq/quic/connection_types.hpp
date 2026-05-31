@@ -8,6 +8,7 @@
 #include <flowq/quic/tls_handshake.hpp>
 #include <flowq/quic/transport_parameters.hpp>
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -37,6 +38,9 @@ enum class connection_lifecycle_timer_kind {
     closing,
     draining
 };
+
+using path_challenge_token = std::array<std::byte, 8>;
+using path_challenge_generator = std::function<path_challenge_token()>;
 
 struct packet_protector_update {
     flowq::error error{};
@@ -77,6 +81,7 @@ struct connection_loop_config {
     key_lifecycle_state key_lifecycle{};
     std::chrono::milliseconds closing_draining_timeout{std::chrono::seconds{3}};
     bool peer_address_validated{};
+    path_challenge_generator path_challenge;
     /// @pre The protector must outlive this connection loop.
     const packet_protector* initial_tx_protector{};
     /// @pre The protector must outlive this connection loop.

@@ -43,7 +43,7 @@ ctest --preset windows-msvc-vcpkg --timeout 10
 - **Packet Protection**: Crypto provider boundaries, TLS handshake adapter, key lifecycle, and OpenSSL-gated AES-128-GCM packet protection
 - **Recovery**: ACK/loss detection, congestion control, recovery timers
 - **Diagnostics**: Event sink, qlog-style observability
-- **Path Validation Primitives**: PATH_CHALLENGE/PATH_RESPONSE codec and Application-space response scheduling
+- **Path Validation**: PATH_CHALLENGE/PATH_RESPONSE codec, Application-space response scheduling, and migrated-peer validation before lifting server anti-amplification limits
 - **Excluded Modules**: HTTP/3/QPACK, WebTransport, and 0-RTT deployment modules are not installed by the production package
 
 ## Project Structure

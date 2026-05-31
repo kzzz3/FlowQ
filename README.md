@@ -146,7 +146,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - **Transport core**: QUIC varints, frames, packet headers, packet pipeline, packet-number helpers, transport parameters, ACK/loss, stream state, and flow-control frames.
 - **Connection behavior**: deterministic packet-space handling, connection lifecycle, recovery timers, congestion accounting, connection ID routing, version negotiation, retry helpers, and endpoint-driver lifecycle.
 - **Packet protection**: OpenSSL-backed AES-128-GCM packet protection with header protection when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled; unsupported cipher suites are rejected; creation fails closed when the OpenSSL crypto backend is not compiled in; plaintext packet protection is kept in test support only.
-- **Path validation primitives**: PATH_CHALLENGE/PATH_RESPONSE codec support and Application-space same-value response scheduling.
+- **Path validation**: PATH_CHALLENGE/PATH_RESPONSE codec support, Application-space same-value response scheduling, and migrated-peer validation before lifting server anti-amplification limits.
 - **Public surfaces**: session facade, UDP/ASIO adapter, timer schedulers, diagnostics, CMake package export, package-consumer check, fuzz targets, and sanitizer CI.
 - **Source-only surfaces**: HTTP/3/QPACK, WebTransport, 0-RTT, BBR, and CUBIC are not part of the production-candidate scope; HTTP/3, QPACK, and 0-RTT headers are not installed by the package, and QPACK examples require `FLOWQ_BUILD_SOURCE_ONLY_EXAMPLES=ON`.
 
