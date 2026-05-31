@@ -103,8 +103,8 @@ struct connection_loop_config {
     // Congestion control configuration
     congestion_algorithm congestion_algo{congestion_algorithm::new_reno};
     
-    // Pacing configuration
-    bool enable_pacing{true};
+    // Pacing configuration (disabled by default for backward compatibility)
+    bool enable_pacing{false};
     
     // Key update configuration
     bool enable_key_update{true};
