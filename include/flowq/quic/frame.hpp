@@ -8,6 +8,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <string>
@@ -46,11 +47,18 @@ struct ack_range {
     std::uint64_t length{};
 };
 
+struct ack_ecn_counts {
+    std::uint64_t ect0{};
+    std::uint64_t ect1{};
+    std::uint64_t ce{};
+};
+
 struct ack_frame {
     std::uint64_t largest_acknowledged{};
     std::uint64_t ack_delay{};
     std::uint64_t first_ack_range{};
     std::vector<ack_range> ranges;
+    std::optional<ack_ecn_counts> ecn_counts;
 };
 
 struct crypto_frame {
@@ -213,7 +221,8 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
 
 [[nodiscard]] inline frame_encode_result encode_ack(const ack_frame& frame) {
     std::vector<std::byte> output;
-    if (!append_varint(output, 0x02) || !append_varint(output, frame.largest_acknowledged) || !append_varint(output, frame.ack_delay) ||
+    const auto type = frame.ecn_counts.has_value() ? 0x03 : 0x02;
+    if (!append_varint(output, type) || !append_varint(output, frame.largest_acknowledged) || !append_varint(output, frame.ack_delay) ||
         !append_varint(output, frame.ranges.size()) || !append_varint(output, frame.first_ack_range)) {
         return {{}, codec_error("failed to encode ACK frame")};
     }
@@ -221,6 +230,13 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
     for (const auto& range : frame.ranges) {
         if (!append_varint(output, range.gap) || !append_varint(output, range.length)) {
             return {{}, codec_error("failed to encode ACK range")};
+        }
+    }
+
+    if (frame.ecn_counts.has_value()) {
+        const auto& counts = *frame.ecn_counts;
+        if (!append_varint(output, counts.ect0) || !append_varint(output, counts.ect1) || !append_varint(output, counts.ce)) {
+            return {{}, codec_error("failed to encode ACK ECN counts")};
         }
     }
 
@@ -456,7 +472,7 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
             continue;
         }
 
-        if (type == 0x02) {
+        if (type == 0x02 || type == 0x03) {
             std::uint64_t largest_acknowledged = 0;
             std::uint64_t ack_delay = 0;
             std::uint64_t range_count = 0;
@@ -482,12 +498,18 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
                 ranges.push_back(ack_range{gap, length});
             }
 
-            frames.emplace_back(ack_frame{largest_acknowledged, ack_delay, first_ack_range, std::move(ranges)});
-            continue;
-        }
+            std::optional<ack_ecn_counts> ecn_counts;
+            if (type == 0x03) {
+                ack_ecn_counts counts{};
+                if (!detail::read_varint_at(input, offset, counts.ect0) || !detail::read_varint_at(input, offset, counts.ect1) ||
+                    !detail::read_varint_at(input, offset, counts.ce)) {
+                    return {{}, codec_error("truncated ACK ECN counts")};
+                }
+                ecn_counts = counts;
+            }
 
-        if (type == 0x03) {
-            return {{}, codec_error("ACK ECN frame is unsupported")};
+            frames.emplace_back(ack_frame{largest_acknowledged, ack_delay, first_ack_range, std::move(ranges), std::move(ecn_counts)});
+            continue;
         }
 
         if (type == 0x04) {
