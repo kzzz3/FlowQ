@@ -28,7 +28,7 @@ Current Windows evidence: `ctest --test-dir build/windows-msvc-vcpkg -C Debug --
 
 Linux GCC and sanitizer gates are defined but not checked off until they are executed on a Linux host: `linux-gcc-vcpkg`, `linux-gcc-vcpkg-strict`, and `linux-asan-ubsan` presets are available, `scripts/validate-build.sh --preset linux-gcc-vcpkg` validates CMake configure, build, CTest, install, package-consumer build, and package-consumer execution, and `scripts/validate-sanitizers.sh` validates ASan/UBSan. The current local Windows host cannot produce this evidence because no WSL distribution, Docker daemon, GCC, or Clang is available.
 
-Code-quality evidence: `scripts/validate-checklist.ps1` and `scripts/validate-checklist.sh` check production public QUIC headers for TODO/FIXME comments, placeholder wording, type-safety suppressions, empty catch blocks, hardcoded credentials, documentation comments, and public API snake_case naming. `scripts/check-release-readiness.ps1 -RequireCompleteReleaseChecklist` and `scripts/check-release-readiness.sh --require-complete-release-checklist` fail while any required checklist item remains unchecked. CI runs the non-build readiness smoke gate after Windows, Linux, macOS, and sanitizer validation so release-gate regressions fail before checklist sign-off.
+Code-quality evidence: `scripts/validate-checklist.ps1` and `scripts/validate-checklist.sh` check production public QUIC headers for TODO/FIXME comments, placeholder wording, type-safety suppressions, empty catch blocks, hardcoded credentials, weak random generator usage, documentation comments, and public API snake_case naming. `scripts/check-release-readiness.ps1 -RequireCompleteReleaseChecklist` and `scripts/check-release-readiness.sh --require-complete-release-checklist` fail while any required checklist item remains unchecked. CI runs the non-build readiness smoke gate after Windows, Linux, macOS, and sanitizer validation so release-gate regressions fail before checklist sign-off.
 
 ## Code Quality Gates
 
@@ -36,6 +36,7 @@ Code-quality evidence: `scripts/validate-checklist.ps1` and `scripts/validate-ch
 - [x] No `as any` or type safety suppressions
 - [x] No empty catch blocks
 - [x] No TODO/FIXME comments in production code paths
+- [x] No weak random generators in production QUIC headers
 - [x] Consistent naming conventions across all modules
 
 ## Security Gates
