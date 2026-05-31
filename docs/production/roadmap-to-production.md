@@ -365,4 +365,7 @@ ctest --preset macos-clang-vcpkg --timeout 10
 | 2026-05-31 | 初始版本，基于深度评估创建 |
 | 2026-05-31 | 实现 secure_zero() — traffic secrets 安全擦除 |
 | 2026-05-31 | 添加 ChaCha20-Poly1305 + AES-256-GCM AEAD 支持 |
-| 2026-05-31 | 506 个测试全部通过，生产就绪度提升至 ~70% |
+| 2026-05-31 | 修复 Header Protection bug - 支持 AES-256/ChaCha20 HP keys |
+| 2026-05-31 | 为 initial_packet_protector 添加析构函数密钥擦除 |
+| 2026-05-31 | 统一 buffer::secure_zero() 使用 secure.hpp |
+| 2026-05-31 | 506 个测试全部通过，生产就绪度提升至 ~75% |
