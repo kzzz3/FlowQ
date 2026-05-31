@@ -93,7 +93,7 @@ All code is in headers for easy integration. No separate compilation units.
 
 ### Deterministic Testing
 
-Unit tests use deterministic timers and local packet-protection seams. OpenSSL-enabled tests cover AES-128-GCM packet protection; plaintext packet protection lives only in test support, and production-required policy rejects test-only protectors.
+Unit tests use deterministic timers and local packet-protection test support. OpenSSL-enabled tests cover AES-128-GCM packet protection; plaintext packet protection is excluded from installed public headers, and production-required policy rejects non-provider-backed protectors.
 
 ### Virtual Seams
 
@@ -104,7 +104,7 @@ External dependencies (TLS, crypto, diagnostics) use virtual interfaces:
 
 ### Fail-Closed Security
 
-Production protection policy rejects test-only protectors. Crypto provider boundaries fail when backend is absent, OpenSSL AEAD creation fails when the crypto backend is not compiled in, and OpenSSL QUIC TLS server construction fails when the certificate chain or private key is absent, unreadable, or mismatched.
+Production protection policy rejects non-provider-backed protectors. Crypto provider boundaries fail when backend is absent, OpenSSL AEAD creation fails when the crypto backend is not compiled in, and OpenSSL QUIC TLS server construction fails when the certificate chain or private key is absent, unreadable, or mismatched.
 
 ## Build System
 
