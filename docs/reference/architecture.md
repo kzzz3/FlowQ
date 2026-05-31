@@ -2,7 +2,7 @@
 
 ## Design Overview
 
-FlowQ is a C++20 QUIC transport library under production hardening. The current architecture combines deterministic protocol primitives, connection-loop behavior, packet-protection seams, OpenSSL-gated AES-128-GCM packet protection, local endpoint surfaces, diagnostics, release-gate tooling, and recorded aioquic handshake, stream, and loss-recovery interop evidence. Production-candidate status is gated on the remaining release evidence and human review.
+FlowQ is a C++20 QUIC transport library under production hardening. The current architecture combines deterministic protocol primitives, connection-loop behavior, packet-protection seams, OpenSSL-gated AES-128-GCM packet protection, endpoint routing with stateless reset handling, diagnostics, release-gate tooling, and recorded aioquic handshake, stream, and loss-recovery interop evidence. Production-candidate status is gated on the remaining release evidence and human review.
 
 ## Architecture Layers
 
@@ -45,6 +45,7 @@ FlowQ is a C++20 QUIC transport library under production hardening. The current 
 
 - **connection.hpp**: Deterministic connection loop with packet space management
 - **session.hpp**: Public session façade over connection loop
+- **endpoint_driver.hpp / connection_routing.hpp**: Endpoint lifecycle, CID routing, version negotiation, Retry token helpers, and stateless reset packet construction for retired locally issued CIDs.
 - **stream.hpp**: Stream receive/send state with flow control
 - **recovery_scheduler.hpp**: ASIO sender for deterministic recovery timers
 - **lifecycle_scheduler.hpp**: ASIO sender for idle, closing, and draining lifecycle timers
@@ -156,6 +157,6 @@ Robustness testing with random inputs.
 - Human security review is not recorded.
 - ChaCha20-Poly1305 and AES-256-GCM packet protection are rejected by `openssl_aead_protector`.
 - Live AEAD key update installation is outside current evidence.
-- Stateless reset, HTTP/3 deployment, WebTransport deployment, and 0-RTT deployment policy have no release evidence.
+- Stateless reset receive handling and retired-local-CID reset generation have local release evidence. HTTP/3 deployment, WebTransport deployment, and 0-RTT deployment policy have no release evidence.
 - HTTP/3, QPACK, and 0-RTT headers are not installed by the production package; the install validation gate fails if they reappear in `build/install-flowq/include`.
 - Experimental examples are not part of the default build; they require `FLOWQ_BUILD_EXPERIMENTAL_EXAMPLES=ON`.

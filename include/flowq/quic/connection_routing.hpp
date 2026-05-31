@@ -5,6 +5,7 @@
 #include <flowq/quic/packet_header.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -16,27 +17,155 @@
 #include <utility>
 #include <vector>
 
+#if defined(FLOWQ_ENABLE_OPENSSL_CRYPTO)
+#include <openssl/rand.h>
+#endif
+
 namespace flowq::quic {
+
+inline constexpr std::size_t stateless_reset_token_size = 16;
+inline constexpr std::size_t minimum_stateless_reset_datagram_size = 21;
+inline constexpr std::size_t default_stateless_reset_datagram_size = 41;
+
+using stateless_reset_token = std::array<std::byte, stateless_reset_token_size>;
+
+struct random_bytes_result {
+    flowq::buffer bytes;
+    flowq::error error{};
+
+    [[nodiscard]] bool ok() const noexcept {
+        return error.ok();
+    }
+};
+
+using random_bytes_generator = std::function<random_bytes_result(std::size_t)>;
+
+struct stateless_reset_packet_config {
+    std::size_t preferred_datagram_size{default_stateless_reset_datagram_size};
+    random_bytes_generator random{};
+};
+
+struct stateless_reset_packet_result {
+    flowq::buffer payload;
+    flowq::error error{};
+
+    [[nodiscard]] bool ok() const noexcept {
+        return error.ok();
+    }
+};
+
+namespace detail {
+
+struct buffer_hash {
+    std::size_t operator()(const std::vector<std::byte>& bytes) const noexcept {
+        std::size_t hash = 0;
+        for (auto byte : bytes) {
+            hash ^= std::hash<std::uint8_t>{}(static_cast<std::uint8_t>(byte)) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        }
+        return hash;
+    }
+};
+
+[[nodiscard]] inline std::vector<std::byte> connection_id_key(const connection_id& cid) {
+    std::vector<std::byte> key;
+    key.reserve(cid.bytes.size());
+    for (std::size_t i = 0; i < cid.bytes.size(); ++i) {
+        key.push_back(cid.bytes.data()[i]);
+    }
+    return key;
+}
+
+[[nodiscard]] inline flowq::error stateless_reset_error(std::string message) {
+    return flowq::error{flowq::error_code::protocol_error, std::move(message)};
+}
+
+[[nodiscard]] inline random_bytes_result secure_random_bytes(std::size_t size) {
+#if defined(FLOWQ_ENABLE_OPENSSL_CRYPTO)
+    if (size > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+        return {{}, flowq::error{flowq::error_code::internal_error, "secure random request is too large"}};
+    }
+    std::vector<std::byte> bytes(size);
+    if (size == 0) {
+        return {flowq::buffer{std::move(bytes)}, {}};
+    }
+    if (RAND_bytes(reinterpret_cast<unsigned char*>(bytes.data()), static_cast<int>(bytes.size())) != 1) {
+        return {{}, flowq::error{flowq::error_code::internal_error, "openssl random generation failed"}};
+    }
+    return {flowq::buffer{std::move(bytes)}, {}};
+#else
+    (void)size;
+    return {{}, flowq::error{flowq::error_code::internal_error, "secure random provider is not configured"}};
+#endif
+}
+
+} // namespace detail
+
+[[nodiscard]] inline stateless_reset_packet_result build_stateless_reset_packet(
+    const stateless_reset_token& token,
+    std::size_t triggering_datagram_size,
+    const stateless_reset_packet_config& config = {}) {
+    if (triggering_datagram_size <= minimum_stateless_reset_datagram_size) {
+        return {{}, detail::stateless_reset_error("triggering datagram is too small for stateless reset")};
+    }
+    if (config.preferred_datagram_size < minimum_stateless_reset_datagram_size) {
+        return {{}, detail::stateless_reset_error("stateless reset datagram size is too small")};
+    }
+
+    const auto reset_size = std::min(config.preferred_datagram_size, triggering_datagram_size - 1);
+    if (reset_size < minimum_stateless_reset_datagram_size) {
+        return {{}, detail::stateless_reset_error("stateless reset cannot be smaller than triggering datagram")};
+    }
+
+    const auto random_size = reset_size - stateless_reset_token_size;
+    const auto random = config.random ? config.random(random_size) : detail::secure_random_bytes(random_size);
+    if (!random.ok()) {
+        return {{}, random.error};
+    }
+    if (random.bytes.size() != random_size) {
+        return {{}, flowq::error{flowq::error_code::internal_error, "stateless reset random provider returned wrong size"}};
+    }
+
+    std::vector<std::byte> payload;
+    payload.reserve(reset_size);
+    for (std::size_t i = 0; i < random.bytes.size(); ++i) {
+        payload.push_back(random.bytes.data()[i]);
+    }
+    payload[0] = static_cast<std::byte>((static_cast<std::uint8_t>(payload[0]) & 0x3FU) | 0x40U);
+    payload.insert(payload.end(), token.begin(), token.end());
+    return {flowq::buffer{std::move(payload)}, {}};
+}
 
 class routing_table {
 public:
     void add(const connection_id& cid, std::uint64_t connection_handle) {
-        entries_[to_key(cid)] = connection_handle;
+        entries_[detail::connection_id_key(cid)] = connection_handle;
+    }
+
+    void add_stateless_reset_token(const connection_id& cid, stateless_reset_token token) {
+        reset_tokens_[detail::connection_id_key(cid)] = token;
     }
 
     /// Look up a connection handle by destination connection ID.
     /// Returns nullopt if the CID is not registered.
-    [[nodiscard]] std::optional<std::uint64_t> lookup(const connection_id& cid) const noexcept {
-        auto it = entries_.find(to_key(cid));
+    [[nodiscard]] std::optional<std::uint64_t> lookup(const connection_id& cid) const {
+        auto it = entries_.find(detail::connection_id_key(cid));
         if (it == entries_.end()) {
             return std::nullopt;
         }
         return it->second;
     }
 
+    [[nodiscard]] std::optional<stateless_reset_token> lookup_stateless_reset_token(const connection_id& cid) const {
+        auto it = reset_tokens_.find(detail::connection_id_key(cid));
+        if (it == reset_tokens_.end()) {
+            return std::nullopt;
+        }
+        return it->second;
+    }
+
     /// Retire a connection ID, removing it from the routing table.
-    void retire(const connection_id& cid) noexcept {
-        entries_.erase(to_key(cid));
+    void retire(const connection_id& cid) {
+        entries_.erase(detail::connection_id_key(cid));
     }
 
     /// Return the number of active connection ID mappings.
@@ -45,26 +174,8 @@ public:
     }
 
 private:
-    struct buffer_hash {
-        std::size_t operator()(const std::vector<std::byte>& bytes) const noexcept {
-            std::size_t hash = 0;
-            for (auto byte : bytes) {
-                hash ^= std::hash<std::uint8_t>{}(static_cast<std::uint8_t>(byte)) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-            }
-            return hash;
-        }
-    };
-
-    std::unordered_map<std::vector<std::byte>, std::uint64_t, buffer_hash> entries_{};
-
-    [[nodiscard]] static std::vector<std::byte> to_key(const connection_id& cid) {
-        std::vector<std::byte> key;
-        key.reserve(cid.bytes.size());
-        for (std::size_t i = 0; i < cid.bytes.size(); ++i) {
-            key.push_back(cid.bytes.data()[i]);
-        }
-        return key;
-    }
+    std::unordered_map<std::vector<std::byte>, std::uint64_t, detail::buffer_hash> entries_{};
+    std::unordered_map<std::vector<std::byte>, stateless_reset_token, detail::buffer_hash> reset_tokens_{};
 };
 
 [[nodiscard]] inline bool version_supported(std::uint32_t version, const std::vector<std::uint32_t>& supported) {
