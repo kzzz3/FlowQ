@@ -942,6 +942,39 @@ TEST_CASE("connection loop rejects application data frames outside Application p
     CHECK(close_server.state() == flowq::quic::connection_loop_state::closing);
 }
 
+TEST_CASE("connection loop rejects HANDSHAKE_DONE frames from clients") {
+    flowq::quic::test::plaintext_packet_protector_set protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+
+    flowq::quic::connection_loop_config server_config{};
+    server_config.role = flowq::quic::connection_role::server;
+    server_config.local_connection_id = cid({0x02});
+    server_config.remote_connection_id = cid({0x01});
+    server_config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
+    server_config.pipeline = flowq::quic::packet_pipeline_config{1200};
+    server_config.initial_tx_protector = &protector.initial;
+    server_config.initial_rx_protector = &protector.initial;
+    server_config.handshake_tx_protector = &protector.handshake;
+    server_config.handshake_rx_protector = &protector.handshake;
+    server_config.application_tx_protector = &protector.application;
+    server_config.application_rx_protector = &protector.application;
+    server_config.tls_adapter = &application_ready_tls_adapter();
+    server_config.peer_address_validated = true;
+    auto server = flowq::quic::connection_loop{std::move(server_config)};
+
+    client.queue_application({flowq::quic::frame{flowq::quic::handshake_done_frame{}}});
+    client.flush(at(0ms));
+    auto outbound = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(outbound.payload), outbound.peer}, at(1ms));
+    auto actions = server.drain_actions();
+
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(actions[0]));
+    CHECK(std::get<flowq::quic::close_action>(actions[0]).error.code() == flowq::error_code::protocol_error);
+    CHECK(server.state() == flowq::quic::connection_loop_state::closing);
+}
+
 TEST_CASE("connection loop closes when peer exceeds advertised stream count") {
     flowq::quic::test::plaintext_packet_protector_set protector{};
     auto peer = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);

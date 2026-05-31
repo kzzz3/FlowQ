@@ -610,6 +610,20 @@ private:
         return {};
     }
 
+    [[nodiscard]] static flowq::error validate_inbound_frame_role(connection_role local_role, const std::vector<frame>& frames) {
+        if (local_role != connection_role::server) {
+            return {};
+        }
+        for (const auto& item : frames) {
+            if (std::holds_alternative<handshake_done_frame>(item)) {
+                return flowq::error{
+                    flowq::error_code::protocol_error,
+                    "HANDSHAKE_DONE frames are only sent by servers"};
+            }
+        }
+        return {};
+    }
+
     [[nodiscard]] static bool same_endpoint(const flowq::endpoint& lhs, const flowq::endpoint& rhs) noexcept {
         return lhs.host == rhs.host && lhs.port == rhs.port && lhs.alpn == rhs.alpn;
     }
@@ -1116,6 +1130,10 @@ private:
         record_peer_bytes_received(received_size);
         mark_activity(received_at);
         if (auto error = validate_inbound_frame_packet_space(parsed.number.space, parsed.frames); !error.ok()) {
+            enter_closing(error, received_at);
+            return;
+        }
+        if (auto error = validate_inbound_frame_role(config_.role, parsed.frames); !error.ok()) {
             enter_closing(error, received_at);
             return;
         }
