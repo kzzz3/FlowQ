@@ -24,10 +24,11 @@ Checked on 2026-05-30:
 
 ## Open External Interop Results
 
-- [x] `basic_handshake` against aioquic 1.3.0
-- [x] FlowQ client STREAM delivery to aioquic 1.3.0
-- [x] bidirectional stream echo against aioquic 1.3.0
-- [x] `loss_recovery` against aioquic 1.3.0 with one intentionally dropped short-header datagram
+- [x] aioquic 1.3.0 observed QUIC `HandshakeCompleted` from FlowQ
+- [x] Python `bidirectional_stream` scenario passed against aioquic 1.3.0
+- [x] Python `loss_recovery` scenario passed against aioquic 1.3.0 with one intentionally dropped short-header datagram
+
+The C++ interop wrapper scenario names remain `basic_handshake`, `stream_echo`, and `loss_recovery`. The direct Python aioquic harness exposes `bidirectional_stream` and `loss_recovery`; handshake completion is asserted inside both Python scenarios rather than exposed as a separate Python scenario value.
 
 ## Next Steps
 

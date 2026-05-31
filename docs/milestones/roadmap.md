@@ -43,7 +43,7 @@ Primary files:
 
 Current evidence:
 
-- `basic_handshake`, `stream_echo`, and `loss_recovery` scenarios pass against aioquic from the `expr` conda environment.
+- aioquic from the `expr` conda environment observes FlowQ handshake completion, and the direct Python `bidirectional_stream` and `loss_recovery` scenarios pass.
 - External interop wrapper scripts fail when a requested scenario is skipped.
 - The interop harness records peer name, peer version, FlowQ TLS backend version, negotiated cipher suite, and scenario result.
 
