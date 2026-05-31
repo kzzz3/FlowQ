@@ -759,6 +759,51 @@ TEST_CASE("connection loop applies inbound ACK frames to sent packet trackers") 
     CHECK(packets[0].state == flowq::quic::sent_packet_state::acknowledged);
 }
 
+TEST_CASE("connection loop rejects malformed ACK ranges") {
+    flowq::quic::test::plaintext_packet_protector_set protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    (void)client.drain_actions();
+
+    server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{0, 0, 1, {}}}});
+    server.flush(at(1ms));
+    auto ack_datagram = require_single_outbound(server.drain_actions());
+
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_datagram.payload), ack_datagram.peer}, at(2ms));
+    auto actions = client.drain_actions();
+
+    REQUIRE(actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(actions[0]));
+    CHECK(std::get<flowq::quic::close_action>(actions[0]).error.code() == flowq::error_code::protocol_error);
+    CHECK(client.state() == flowq::quic::connection_loop_state::closing);
+
+    auto range_client = make_loop(cid({0x03}), cid({0x04}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto range_server = make_loop(cid({0x04}), cid({0x03}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    range_client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    range_client.flush(at(3ms));
+    (void)range_client.drain_actions();
+
+    range_server.queue_initial({flowq::quic::frame{flowq::quic::ack_frame{
+        3,
+        0,
+        0,
+        {flowq::quic::ack_range{2, 0}}}}});
+    range_server.flush(at(4ms));
+    auto range_ack_datagram = require_single_outbound(range_server.drain_actions());
+
+    range_client.on_datagram(flowq::quic::inbound_datagram{std::move(range_ack_datagram.payload), range_ack_datagram.peer}, at(5ms));
+    auto range_actions = range_client.drain_actions();
+
+    REQUIRE(range_actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(range_actions[0]));
+    CHECK(std::get<flowq::quic::close_action>(range_actions[0]).error.code() == flowq::error_code::protocol_error);
+    CHECK(range_client.state() == flowq::quic::connection_loop_state::closing);
+}
+
 TEST_CASE("connection loop exposes recovery timer for outstanding ack eliciting packets") {
     flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
