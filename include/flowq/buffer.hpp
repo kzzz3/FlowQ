@@ -1,5 +1,7 @@
 #pragma once
 
+#include <flowq/secure.hpp>
+
 #include <algorithm>
 #include <cstddef>
 #include <ranges>
@@ -84,15 +86,12 @@ public:
     }
 
     /// Securely zero the buffer contents before clearing.
-    /// Uses platform-specific functions that are guaranteed not to be optimized away.
+    /// Uses platform-specific functions from secure.hpp (SecureZeroMemory, memset_s, explicit_bzero).
     void secure_zero() noexcept {
         if (!bytes_.empty()) {
-            // Use volatile write barrier to prevent compiler optimization
-            volatile unsigned char* p = reinterpret_cast<volatile unsigned char*>(bytes_.data());
-            std::size_t size = bytes_.size();
-            while (size--) {
-                *p++ = 0;
-            }
+            // Delegate to secure.hpp implementation for platform-specific secure zeroing
+            // This uses SecureZeroMemory on Windows, memset_s on macOS, explicit_bzero on Linux
+            flowq::secure_zero(bytes_.data(), bytes_.size());
             bytes_.clear();
         }
     }

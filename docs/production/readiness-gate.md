@@ -6,7 +6,7 @@ This document records the current evidence required before FlowQ can claim produ
 
 - **Level**: Production-readiness gate
 - **Date**: 2026-05-31
-- **Status**: Non-production. The codebase has local build/test evidence, OpenSSL-gated AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection, deterministic transport behavior, fail-closed client TLS peer verification, secure key material zeroing, and recorded aioquic handshake, bidirectional STREAM echo, and application loss-recovery passes. Multi-peer interop, Linux sanitizer evidence, and human security review are not recorded.
+- **Status**: Non-production. The codebase has local build/test evidence, OpenSSL-gated AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, deterministic transport behavior, fail-closed client TLS peer verification, secure key material zeroing across all protectors, and recorded aioquic handshake, bidirectional STREAM echo, and application loss-recovery passes. Multi-peer interop, Linux sanitizer evidence, and human security review are not recorded.
 
 ## Evidence In Place
 
@@ -26,11 +26,12 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ AES-128-GCM packet protection is implemented when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled.
 - ✅ AES-256-GCM packet protection is now supported.
 - ✅ ChaCha20-Poly1305 packet protection is now supported (for mobile/no hardware AES).
-- ✅ Header protection uses the RFC 9001 initial header-protection path.
+- ✅ Cipher-suite-aware header protection: AES-ECB for AES-128/256-GCM, ChaCha20 for ChaCha20-Poly1305.
 - ✅ AEAD creation fails closed when the OpenSSL crypto backend is not compiled in.
 - ✅ Plaintext packet protection is isolated to test support and is not part of installed public headers.
 - ✅ Test-only protectors are rejected when production protection is required.
-- ✅ Key material is securely zeroed on destruction using platform-specific functions.
+- ✅ Key material is securely zeroed on destruction using platform-specific functions (secure.hpp).
+- ✅ All packet protector types (openssl_aead, initial_packet) securely erase keys on destruction.
 
 ### Transport Behavior
 
@@ -77,6 +78,9 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ Release checklist validation rejects weak random generator usage in production QUIC headers.
 - ✅ Traffic secrets and key material are securely zeroed on destruction (Windows SecureZeroMemory, macOS memset_s, Linux explicit_bzero).
 - ✅ Multiple cipher suites supported: AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305.
+- ✅ Cipher-suite-aware header protection: AES-ECB (16/32 byte keys) and ChaCha20 (32 byte key).
+- ✅ All packet protector types securely erase keys on destruction (initial_packet_protector, openssl_aead_protector, traffic_key_material).
+- ✅ buffer::secure_zero() delegates to platform-specific secure.hpp implementation.
 
 ## Production-Candidate Scope
 

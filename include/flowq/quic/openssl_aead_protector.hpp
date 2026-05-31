@@ -108,7 +108,8 @@ public:
         if (!ready_) {
             return {{}, not_ready_error()};
         }
-        return initial_header_protection_mask(
+        return flowq::quic::header_protection_mask(
+            material_.suite,
             std::span<const std::byte>{material_.header_protection_key.data(), material_.header_protection_key.size()},
             sample);
 #else

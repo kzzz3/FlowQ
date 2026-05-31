@@ -3,6 +3,7 @@
 #include <flowq/error.hpp>
 #include <flowq/quic/initial_keys.hpp>
 #include <flowq/quic/packet_pipeline.hpp>
+#include <flowq/secure.hpp>
 
 #include <cstddef>
 #include <span>
@@ -17,6 +18,46 @@ enum class initial_packet_protection_direction {
 
 class initial_packet_protector final : public packet_protector {
 public:
+    /// Destructor securely zeroes all key material.
+    ~initial_packet_protector() override {
+        secure_zero_buffer(key_);
+        secure_zero_buffer(iv_);
+        secure_zero_buffer(header_protection_key_);
+    }
+
+    // Move semantics
+    initial_packet_protector(initial_packet_protector&& other) noexcept
+        : status_{other.status_},
+          key_{std::move(other.key_)},
+          iv_{std::move(other.iv_)},
+          header_protection_key_{std::move(other.header_protection_key_)},
+          initialization_error_{std::move(other.initialization_error_)},
+          ready_{other.ready_} {
+        other.ready_ = false;
+    }
+
+    initial_packet_protector& operator=(initial_packet_protector&& other) noexcept {
+        if (this != &other) {
+            // Securely zero current key material before moving
+            secure_zero_buffer(key_);
+            secure_zero_buffer(iv_);
+            secure_zero_buffer(header_protection_key_);
+
+            status_ = other.status_;
+            key_ = std::move(other.key_);
+            iv_ = std::move(other.iv_);
+            header_protection_key_ = std::move(other.header_protection_key_);
+            initialization_error_ = std::move(other.initialization_error_);
+            ready_ = other.ready_;
+            other.ready_ = false;
+        }
+        return *this;
+    }
+
+    // Delete copy semantics for security
+    initial_packet_protector(const initial_packet_protector&) = delete;
+    initial_packet_protector& operator=(const initial_packet_protector&) = delete;
+
     [[nodiscard]] static initial_packet_protector client(const connection_id& destination_connection_id) {
         return client(std::span<const std::byte>{destination_connection_id.bytes.data(), destination_connection_id.bytes.size()});
     }

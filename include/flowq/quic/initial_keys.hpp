@@ -268,22 +268,33 @@ struct evp_cipher_context {
     return derive_initial_key_material(std::span<const std::byte>{initial_secret.data(), initial_secret.size()});
 }
 
-[[nodiscard]] inline header_protection_mask_result initial_header_protection_mask(
+/// Header protection mask using AES-ECB (for AES-128-GCM and AES-256-GCM).
+/// RFC 9001 Section 5.4.1: AES-ECB(sample[0..15], hp_key)
+[[nodiscard]] inline header_protection_mask_result aes_header_protection_mask(
     std::span<const std::byte> header_protection_key,
     std::span<const std::byte> sample) {
 #if defined(FLOWQ_ENABLE_OPENSSL_CRYPTO)
-    if (header_protection_key.size() != 16 || sample.size() != 16) {
-        return {{}, initial_key_error("AES-128 header protection requires 16-byte key and sample")};
+    // Select AES cipher based on key size
+    const EVP_CIPHER* cipher = nullptr;
+    if (header_protection_key.size() == 16) {
+        cipher = EVP_aes_128_ecb();
+    } else if (header_protection_key.size() == 32) {
+        cipher = EVP_aes_256_ecb();
+    } else {
+        return {{}, initial_key_error("AES header protection requires 16 or 32 byte key")};
+    }
+    if (sample.size() < 16) {
+        return {{}, initial_key_error("AES header protection requires at least 16-byte sample")};
     }
     detail::evp_cipher_context context{};
     if (context.value == nullptr ||
-        EVP_EncryptInit_ex(context.value, EVP_aes_128_ecb(), nullptr, reinterpret_cast<const unsigned char*>(header_protection_key.data()), nullptr) <= 0 ||
+        EVP_EncryptInit_ex(context.value, cipher, nullptr, reinterpret_cast<const unsigned char*>(header_protection_key.data()), nullptr) <= 0 ||
         EVP_CIPHER_CTX_set_padding(context.value, 0) <= 0) {
         return {{}, initial_key_error("OpenSSL AES-ECB header protection setup failed")};
     }
     std::array<std::byte, 16> encrypted{};
     int written = 0;
-    if (EVP_EncryptUpdate(context.value, reinterpret_cast<unsigned char*>(encrypted.data()), &written, reinterpret_cast<const unsigned char*>(sample.data()), static_cast<int>(sample.size())) <= 0 || written != 16) {
+    if (EVP_EncryptUpdate(context.value, reinterpret_cast<unsigned char*>(encrypted.data()), &written, reinterpret_cast<const unsigned char*>(sample.data()), 16) <= 0 || written != 16) {
         return {{}, initial_key_error("OpenSSL AES-ECB header protection failed")};
     }
     int final_written = 0;
@@ -296,6 +307,63 @@ struct evp_cipher_context {
     (void)sample;
     return {{}, initial_key_error("OpenSSL crypto backend is disabled")};
 #endif
+}
+
+/// Generic header protection mask supporting multiple cipher suites.
+/// Dispatches based on header_protection_key size:
+/// - 16 bytes: AES-128-ECB (for AES-128-GCM)
+/// - 32 bytes: AES-256-ECB (for AES-256-GCM) or ChaCha20 (for ChaCha20-Poly1305)
+[[nodiscard]] inline header_protection_mask_result header_protection_mask(
+    cipher_suite suite,
+    std::span<const std::byte> header_protection_key,
+    std::span<const std::byte> sample) {
+#if defined(FLOWQ_ENABLE_OPENSSL_CRYPTO)
+    // For ChaCha20-Poly1305, use ChaCha20 for header protection
+    if (suite == cipher_suite::chacha20_poly1305_sha256) {
+#if defined(EVP_CHACHA20)
+        if (header_protection_key.size() != 32 || sample.size() < 16) {
+            return {{}, initial_key_error("ChaCha20 header protection requires 32-byte key and 16-byte sample")};
+        }
+        // ChaCha20 uses the first 12 bytes of sample as nonce, rest as counter
+        // RFC 9001 Section 5.4.3: HP = ChaCha20(hp_key, sample[4..15], sample[0..3])
+        // But OpenSSL ChaCha20 expects 16-byte nonce (12 nonce + 4 counter)
+        // We need to construct: nonce = sample[4..15], initial_counter = sample[0..3]
+        detail::evp_cipher_context context{};
+        if (context.value == nullptr ||
+            EVP_EncryptInit_ex(context.value, EVP_chacha20(), nullptr,
+                reinterpret_cast<const unsigned char*>(header_protection_key.data()),
+                reinterpret_cast<const unsigned char*>(sample.data() + 4)) <= 0) {
+            return {{}, initial_key_error("OpenSSL ChaCha20 header protection setup failed")};
+        }
+        std::array<std::byte, 5> mask{};
+        int written = 0;
+        // Encrypt 5 zero bytes to get the mask
+        std::array<std::byte, 5> zeros{};
+        if (EVP_EncryptUpdate(context.value, reinterpret_cast<unsigned char*>(mask.data()), &written,
+                reinterpret_cast<const unsigned char*>(zeros.data()), 5) <= 0) {
+            return {{}, initial_key_error("OpenSSL ChaCha20 header protection failed")};
+        }
+        return {mask, {}};
+#else
+        return {{}, initial_key_error("ChaCha20 header protection not available (EVP_CHACHA20 not defined)")};
+#endif
+    }
+    // For AES-based suites, use AES-ECB
+    return aes_header_protection_mask(header_protection_key, sample);
+#else
+    (void)suite;
+    (void)header_protection_key;
+    (void)sample;
+    return {{}, initial_key_error("OpenSSL crypto backend is disabled")};
+#endif
+}
+
+/// Legacy initial header protection mask (AES-128-ECB only).
+/// Kept for backward compatibility with Initial packet protection.
+[[nodiscard]] inline header_protection_mask_result initial_header_protection_mask(
+    std::span<const std::byte> header_protection_key,
+    std::span<const std::byte> sample) {
+    return aes_header_protection_mask(header_protection_key, sample);
 }
 
 [[nodiscard]] inline crypto_bytes_result initial_aead_seal(
