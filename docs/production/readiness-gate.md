@@ -41,6 +41,7 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ PATH_CHALLENGE/PATH_RESPONSE outside Application packet space closes with protocol error.
 - ✅ Peer address migration queues PATH_CHALLENGE after 1-RTT send keys are available and keeps the server anti-amplification limit in force.
 - ✅ Matching PATH_RESPONSE validates the migrated peer path and lifts the server anti-amplification limit for that path.
+- ✅ PATH_CHALLENGE token generation uses OpenSSL `RAND_bytes` by default and fails closed when neither OpenSSL crypto nor an explicit `path_challenge` callback is configured.
 - ✅ Peer-issued NEW_CONNECTION_ID handling enforces active_connection_id_limit, rejects conflicting duplicate sequence numbers, switches away from retired destination CIDs, and emits RETIRE_CONNECTION_ID for retired peer CIDs.
 - ✅ Inbound stateless reset detection matches learned peer NEW_CONNECTION_ID tokens, enters draining without sending a close packet, rejects undersized reset-shaped datagrams, and ignores retired peer CID tokens.
 - ✅ Endpoint stateless reset generation is available for locally issued CIDs after retirement, keeps reset datagrams smaller than the triggering datagram, uses a short-header-shaped first byte, and fails closed for unknown or still-active CIDs.
@@ -69,6 +70,7 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ Public pointer ownership and thread-safety contracts are documented.
 - ✅ Plaintext packet-protection helpers are kept out of the installed public API surface.
 - ✅ Source-only HTTP/3, QPACK, 0-RTT, and test-support interop headers are kept out of the installed production package, with install validation rejecting regressions.
+- ✅ Release checklist validation rejects weak random generator usage in production QUIC headers.
 
 ## Production-Candidate Scope
 

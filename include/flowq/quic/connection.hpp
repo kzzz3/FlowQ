@@ -13,7 +13,6 @@
 
 #include <algorithm>
 #include <exception>
-#include <random>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -1011,18 +1010,15 @@ private:
         if (config_.path_challenge) {
             return config_.path_challenge();
         }
-        path_challenge_token token{};
 #ifdef FLOWQ_ENABLE_OPENSSL_CRYPTO
+        path_challenge_token token{};
         if (RAND_bytes(reinterpret_cast<unsigned char*>(token.data()), static_cast<int>(token.size())) != 1) {
             throw std::runtime_error{"OpenSSL RAND_bytes failed"};
         }
-#else
-        std::random_device random;
-        for (auto& byte : token) {
-            byte = static_cast<std::byte>(random() & 0xffU);
-        }
-#endif
         return token;
+#else
+        throw std::runtime_error{"secure random provider is not configured"};
+#endif
     }
 
     void remove_queued_path_challenge() {

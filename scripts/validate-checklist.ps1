@@ -238,7 +238,39 @@ if ($credCount -gt 0) {
     Write-Host ""
 }
 
-# 7. Check for public API documentation comments on selected production QUIC headers
+# 7. Check for weak random generators in production QUIC headers
+Write-Host ""
+Write-Host "Checking for weak random generators in production headers..." -ForegroundColor Yellow
+
+$weakRandomCount = 0
+$WeakRandomPatterns = @(
+    "std::random_device",
+    "std::mt19937",
+    "std::default_random_engine",
+    "std::rand\s*\("
+)
+
+Get-ChildItem -Path include/flowq/quic -Filter "*.hpp" -Recurse | ForEach-Object {
+    $file = $_.FullName
+    foreach ($pattern in $WeakRandomPatterns) {
+        $matches = Select-String -Path $file -Pattern $pattern -CaseSensitive -AllMatches
+        if ($matches) {
+            $weakRandomCount += $matches.Count
+            $relative = Get-RepoRelativePath $file
+            Write-Host "VIOLATION: Weak random generator pattern '$pattern' in ${relative}" -ForegroundColor Red
+            $matches | Select-Object -First 5 | ForEach-Object {
+                Write-Host "  $($_.LineNumber): $($_.Line.Trim())"
+            }
+        }
+    }
+}
+
+if ($weakRandomCount -gt 0) {
+    $Violations += $weakRandomCount
+    Write-Host ""
+}
+
+# 8. Check for public API documentation comments on selected production QUIC headers
 Write-Host ""
 Write-Host "Checking public QUIC API documentation comments..." -ForegroundColor Yellow
 
@@ -278,7 +310,7 @@ if ($publicApiDocGapCount -gt 0) {
     Write-Host ""
 }
 
-# 8. Check public QUIC API naming conventions
+# 9. Check public QUIC API naming conventions
 Write-Host ""
 Write-Host "Checking public QUIC API naming conventions..." -ForegroundColor Yellow
 
@@ -341,6 +373,7 @@ Write-Host "Potential hardcoded credentials: $credCount"
 Write-Host "TODO/FIXME comments: $todoCount"
 Write-Host "Forbidden production claims: $forbiddenClaimCount"
 Write-Host "Placeholder implementation wording: $placeholderCount"
+Write-Host "Weak random generator patterns: $weakRandomCount"
 Write-Host "Public API documentation gaps: $publicApiDocGapCount"
 Write-Host "Public API naming violations: $namingViolationCount"
 

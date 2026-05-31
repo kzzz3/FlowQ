@@ -234,7 +234,28 @@ if [[ $CRED_COUNT -gt 0 ]]; then
     echo ""
 fi
 
-# 7. Check for public API documentation comments on selected production QUIC headers
+# 7. Check for weak random generators in production QUIC headers
+echo ""
+echo "Checking for weak random generators in production headers..."
+
+WEAK_RANDOM_COUNT=0
+WEAK_RANDOM_PATTERN='std::random_device|std::mt19937|std::default_random_engine|std::rand[[:space:]]*\('
+while IFS= read -r file; do
+    matches=$(grep -nE "$WEAK_RANDOM_PATTERN" "$file" 2>/dev/null || true)
+    if [[ -n "$matches" ]]; then
+        count=$(printf "%s\n" "$matches" | wc -l)
+        WEAK_RANDOM_COUNT=$((WEAK_RANDOM_COUNT + count))
+        echo -e "${RED}VIOLATION${NC}: Weak random generator pattern in ${file}"
+        printf "%s\n" "$matches" | head -5
+    fi
+done < <(find include/flowq/quic -name "*.hpp")
+
+if [[ $WEAK_RANDOM_COUNT -gt 0 ]]; then
+    VIOLATIONS=$((VIOLATIONS + WEAK_RANDOM_COUNT))
+    echo ""
+fi
+
+# 8. Check for public API documentation comments on selected production QUIC headers
 echo ""
 echo "Checking public QUIC API documentation comments..."
 
@@ -257,7 +278,7 @@ if [[ $PUBLIC_API_DOC_GAP_COUNT -gt 0 ]]; then
     echo ""
 fi
 
-# 8. Check public QUIC API naming conventions
+# 9. Check public QUIC API naming conventions
 echo ""
 echo "Checking public QUIC API naming conventions..."
 
@@ -307,6 +328,7 @@ echo "Potential hardcoded credentials: ${CRED_COUNT}"
 echo "TODO/FIXME comments: ${TODO_COUNT}"
 echo "Forbidden production claims: ${FORBIDDEN_CLAIM_COUNT}"
 echo "Placeholder implementation wording: ${PLACEHOLDER_COUNT}"
+echo "Weak random generator patterns: ${WEAK_RANDOM_COUNT}"
 echo "Public API documentation gaps: ${PUBLIC_API_DOC_GAP_COUNT}"
 echo "Public API naming violations: ${NAMING_VIOLATION_COUNT}"
 
