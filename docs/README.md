@@ -36,5 +36,5 @@ docs/
 
 - **Status**: Non-production; production-candidate wording remains blocked until all release gates and human review are recorded.
 - **Installed API**: Production-scope QUIC transport headers only. HTTP/3, QPACK, 0-RTT, and test-support interop headers are excluded from installation.
-- **Default build**: Tests and production-scope examples are enabled; source-only examples outside the production-candidate API require `FLOWQ_BUILD_SOURCE_ONLY_EXAMPLES=ON`.
+- **Default build**: Tests are enabled; source-only examples outside the production-candidate API require `FLOWQ_BUILD_SOURCE_ONLY_EXAMPLES=ON`.
 - **Interop evidence**: aioquic handshake, bidirectional stream echo, and loss-recovery scenarios are recorded in the production gate.
