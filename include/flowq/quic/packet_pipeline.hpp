@@ -31,8 +31,10 @@ enum class packet_security_level {
 };
 
 enum class packet_protection_policy {
-    test_allowed,       // ONLY for unit testing - NEVER use in production
-    production_required // Production policy - requires AEAD
+    production_required,
+#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
+    test_allowed,
+#endif
 };
 
 enum class long_packet_type {
@@ -224,8 +226,14 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
 }
 
 [[nodiscard]] inline bool production_protection_satisfied(const packet_protector& protector, packet_protection_policy policy) noexcept {
-    return policy == packet_protection_policy::test_allowed ||
-        (protector.security_level() == packet_security_level::authenticated_encrypted && protector.provider_status().packet_protection_ready());
+#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
+    if (policy == packet_protection_policy::test_allowed) {
+        return true;
+    }
+#else
+    (void)policy;
+#endif
+    return protector.security_level() == packet_security_level::authenticated_encrypted && protector.provider_status().packet_protection_ready();
 }
 
 [[nodiscard]] inline flowq::error validate_protection_policy(const packet_protector& protector, packet_protection_policy policy) {

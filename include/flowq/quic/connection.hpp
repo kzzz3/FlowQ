@@ -653,9 +653,13 @@ private:
     }
 
     [[nodiscard]] bool application_send_allowed() const noexcept {
-        return config_.protection_policy == packet_protection_policy::test_allowed ||
-            (config_.tls_adapter != nullptr && application_data_ready(*config_.tls_adapter) &&
-             config_.key_lifecycle.available(encryption_level::one_rtt, key_direction::send));
+#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
+        if (config_.protection_policy == packet_protection_policy::test_allowed) {
+            return true;
+        }
+#endif
+        return config_.tls_adapter != nullptr && application_data_ready(*config_.tls_adapter) &&
+               config_.key_lifecycle.available(encryption_level::one_rtt, key_direction::send);
     }
 
     [[nodiscard]] bool anti_amplification_limited() const noexcept {
