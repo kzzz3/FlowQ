@@ -50,13 +50,6 @@ function Test-NegatedForbiddenClaim {
            $normalized -match "\bno\s+.*\bguarantees\b"
 }
 
-$ExperimentalPublicHeaders = @(
-    "include/flowq/quic/http3.hpp",
-    "include/flowq/quic/http3_request.hpp",
-    "include/flowq/quic/qpack.hpp",
-    "include/flowq/quic/zero_rtt.hpp"
-)
-
 $DocumentedPublicApiHeaders = @(
     "include/flowq/quic/recovery_scheduler.hpp",
     "include/flowq/quic/lifecycle_scheduler.hpp",
@@ -68,12 +61,6 @@ function Test-SnakeCaseIdentifier {
     return $Name -cmatch "^[a-z][a-z0-9_]*$" -and
            $Name -cnotmatch "__" -and
            $Name -cnotmatch "_$"
-}
-
-function Test-ExperimentalPublicHeader {
-    param([string]$Path)
-    $relative = Get-RepoRelativePath $Path
-    return $ExperimentalPublicHeaders -contains $relative
 }
 
 function Test-DocumentedPublicApiDeclaration {
@@ -176,10 +163,6 @@ $PlaceholderPatterns = @(
 
 $placeholderCount = 0
 Get-ChildItem -Path include -Filter "*.hpp" -Recurse | ForEach-Object {
-    if (Test-ExperimentalPublicHeader $_.FullName) {
-        return
-    }
-
     foreach ($pattern in $PlaceholderPatterns) {
         $matches = Select-String -Path $_.FullName -Pattern $pattern -AllMatches
         if ($matches) {
@@ -302,10 +285,6 @@ Write-Host "Checking public QUIC API naming conventions..." -ForegroundColor Yel
 $namingViolationCount = 0
 Get-ChildItem -Path include/flowq/quic -Filter "*.hpp" -Recurse | ForEach-Object {
     $file = $_.FullName
-    if (Test-ExperimentalPublicHeader $file) {
-        return
-    }
-
     $lines = Get-Content $file
     $inDetailNamespace = $false
     for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex += 1) {

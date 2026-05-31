@@ -47,3 +47,5 @@ docs/
 - ✅ WebTransport (structural module)
 - ✅ 0-RTT (experimental: early data support, replay protection)
 - ✅ Congestion control (NewReno, BBR, CUBIC)
+
+HTTP/3, QPACK, and 0-RTT headers are source/test modules only in the current production-candidate boundary and are excluded from the installed package.
