@@ -29,6 +29,5 @@
             "expect": "data_delivered"
         }
     ],
-    "timeout_ms": 15000,
-    "skip_if_missing": ["peer_binary", "tls_backend"]
+    "timeout_ms": 15000
 }

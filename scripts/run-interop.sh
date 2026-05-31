@@ -4,7 +4,9 @@
 #
 # This script runs interop scenarios against a specified peer QUIC implementation.
 # It records results in JSON format with peer version, FlowQ commit, TLS backend version.
-# Exit code 0 if all scenarios pass, 1 if any scenario fails.
+# Exit code 0 only if every selected scenario passes.
+# Failures and skips both exit 1 so external interop gates cannot pass without
+# executing the requested peer scenario.
 
 set -e
 
@@ -273,7 +275,7 @@ echo "Skipped: $SKIPPED_SCENARIOS"
 echo ""
 echo "Results written to: $RESULTS_FILE"
 
-# Exit with failure if any scenarios failed
-if [[ $FAILED_SCENARIOS -gt 0 ]]; then
+# Exit with failure if any scenarios failed or skipped.
+if [[ $FAILED_SCENARIOS -gt 0 || $SKIPPED_SCENARIOS -gt 0 ]]; then
     exit 1
 fi

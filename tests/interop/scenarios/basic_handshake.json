@@ -19,6 +19,5 @@
             "expect": "handshake_confirmed"
         }
     ],
-    "timeout_ms": 5000,
-    "skip_if_missing": ["peer_binary", "tls_backend"]
+    "timeout_ms": 5000
 }
