@@ -1,4 +1,4 @@
-#include <flowq/quic/interop_runner.hpp>
+#include "interop_runner.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 

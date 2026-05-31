@@ -5,7 +5,7 @@ This document records the current evidence required before FlowQ can claim produ
 ## Current Status
 
 - **Level**: Production-readiness gate
-- **Date**: 2026-05-30
+- **Date**: 2026-05-31
 - **Status**: Non-production. The codebase has local build/test evidence, OpenSSL-gated AES-128-GCM packet protection, deterministic transport behavior, and recorded aioquic handshake, bidirectional STREAM echo, and application loss-recovery passes. Multi-peer interop and human security review are not recorded.
 
 ## Evidence In Place
@@ -14,6 +14,7 @@ This document records the current evidence required before FlowQ can claim produ
 
 - ✅ **CMake/CTest suite** on Windows MSVC/vcpkg preset (`ctest --preset windows-msvc-vcpkg --timeout 10`)
 - ✅ **Install + package-consumer** build path
+- ✅ **Clean install prefix** validation before package-consumer checks, preventing removed public headers from surviving as stale installed artifacts.
 - ✅ **Release-readiness script** (`scripts/check-release-readiness.ps1 -SkipBuild`)
 - ✅ **Checklist validator** (`scripts/validate-checklist.ps1`)
 - ⚠️ **Linux GCC preset** (`linux-gcc-vcpkg`) and **ASan/UBSan preset** (`linux-asan-ubsan`) exist, but Linux execution evidence is not recorded in this local environment.
@@ -40,7 +41,7 @@ This document records the current evidence required before FlowQ can claim produ
 
 ### Interop Harness
 
-- ✅ `interop_runner` executes configured scenarios through an injected executor.
+- ✅ Test-support `interop_runner` executes configured scenarios through an injected executor without being installed as public API.
 - ✅ Available peers no longer produce synthetic skip results; executor exit code, timeout, and exceptions map to pass/fail/error.
 - ✅ `scripts/run-interop.ps1` and `scripts/run-interop.sh` call the built harness binary and write per-scenario JSON results.
 - ✅ Harness wiring was verified locally with `FLOWQ_INTEROP_SCENARIO=basic_handshake` and a local executable peer.
@@ -89,7 +90,7 @@ FlowQ can only claim production-candidate status for the exact scope backed by l
 
 ## Open Gate Items
 
-- [x] Real interop runner replaces synthetic skip behavior in `include/flowq/quic/interop_runner.hpp`.
+- [x] Real interop runner replaces synthetic skip behavior in `tests/support/interop_runner.hpp`.
 - [x] Basic handshake passes against aioquic 1.3.0.
 - [x] Client STREAM delivery passes against aioquic 1.3.0.
 - [x] Bidirectional stream echo passes against aioquic 1.3.0.

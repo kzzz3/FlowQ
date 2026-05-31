@@ -103,6 +103,17 @@ echo ""
 # Step 4: Install
 echo "Step 4/5: Installing..."
 INSTALL_DIR="build/install-flowq"
+INSTALL_DIR_ABS="$(cd "$(dirname "$INSTALL_DIR")" && pwd)/$(basename "$INSTALL_DIR")"
+BUILD_ROOT_ABS="$(cd build && pwd)"
+case "$INSTALL_DIR_ABS" in
+    "$BUILD_ROOT_ABS"/*)
+        rm -rf "$INSTALL_DIR_ABS"
+        ;;
+    *)
+        echo -e "${RED}FAILED${NC}: Refusing to clean install directory outside build/: $INSTALL_DIR_ABS"
+        exit 1
+        ;;
+esac
 cmake --install "build/$PRESET" --config "$BUILD_TYPE" --prefix "$INSTALL_DIR"
 echo -e "${GREEN}OK${NC}: Install succeeded"
 echo ""

@@ -149,6 +149,7 @@ if(FLOWQ_BUILD_INTEROP)
 
     add_executable(flowq_interop_tests tests/interop/flowq_endpoint_driver.cpp)
     target_link_libraries(flowq_interop_tests PRIVATE FlowQ::flowq Catch2::Catch2WithMain)
+    target_include_directories(flowq_interop_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
     flowq_enable_project_warnings(flowq_interop_tests)
     target_compile_definitions(flowq_interop_tests PRIVATE
         INTEROP_SCENARIOS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/interop/scenarios"

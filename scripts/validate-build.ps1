@@ -74,6 +74,15 @@ Write-Host ""
 # Step 4: Install
 Write-Host "Step 4/5: Installing..." -ForegroundColor Yellow
 $InstallDir = "build/install-flowq"
+$ResolvedInstallParent = Resolve-Path -Path "build" -ErrorAction SilentlyContinue
+if ($ResolvedInstallParent -and (Test-Path $InstallDir)) {
+    $ResolvedInstallDir = Resolve-Path -Path $InstallDir
+    if (-not $ResolvedInstallDir.Path.StartsWith($ResolvedInstallParent.Path, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Write-Host "FAILED: Refusing to clean install directory outside build/: $ResolvedInstallDir" -ForegroundColor Red
+        exit 1
+    }
+    Remove-Item -LiteralPath $ResolvedInstallDir.Path -Recurse -Force
+}
 cmake --install "build/$Preset" --config $BuildType --prefix $InstallDir
 if ($LASTEXITCODE -ne 0) {
     Write-Host "FAILED: Install failed" -ForegroundColor Red
