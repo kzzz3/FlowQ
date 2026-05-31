@@ -74,9 +74,42 @@ TEST_CASE("QUIC frame codec round trips ACK frames structurally") {
     CHECK(ack.largest_acknowledged == 100);
     CHECK(ack.ack_delay == 25);
     CHECK(ack.first_ack_range == 4);
+    CHECK_FALSE(ack.ecn_counts.has_value());
     REQUIRE(ack.ranges.size() == 1);
     CHECK(ack.ranges[0].gap == 1);
     CHECK(ack.ranges[0].length == 2);
+}
+
+TEST_CASE("QUIC frame codec round trips ACK ECN counts") {
+    flowq::quic::ack_frame frame{
+        200,
+        3,
+        8,
+        {flowq::quic::ack_range{0, 1}},
+        flowq::quic::ack_ecn_counts{10, 11, 2}
+    };
+
+    auto encoded = flowq::quic::encode_frame(frame);
+    REQUIRE(encoded.ok());
+    REQUIRE(encoded.payload.size() >= 1);
+    CHECK(encoded.payload.data()[0] == std::byte{0x03});
+
+    auto decoded = flowq::quic::decode_frames(encoded.payload);
+    REQUIRE(decoded.ok());
+    REQUIRE(decoded.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::ack_frame>(decoded.frames[0]));
+
+    const auto& ack = std::get<flowq::quic::ack_frame>(decoded.frames[0]);
+    CHECK(ack.largest_acknowledged == 200);
+    CHECK(ack.ack_delay == 3);
+    CHECK(ack.first_ack_range == 8);
+    REQUIRE(ack.ranges.size() == 1);
+    CHECK(ack.ranges[0].gap == 0);
+    CHECK(ack.ranges[0].length == 1);
+    REQUIRE(ack.ecn_counts.has_value());
+    CHECK(ack.ecn_counts->ect0 == 10);
+    CHECK(ack.ecn_counts->ect1 == 11);
+    CHECK(ack.ecn_counts->ce == 2);
 }
 
 TEST_CASE("QUIC frame codec round trips CRYPTO frames as opaque data") {
@@ -403,6 +436,7 @@ TEST_CASE("QUIC frame codec reports empty unknown and truncated frames") {
 
 TEST_CASE("QUIC frame codec rejects malformed ACK CRYPTO and STREAM frames") {
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x03, 0x00, 0x00, 0x00, 0x00})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x03, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02})).ok());
 
     // ACK range count is 1 but the Gap/Range pair is missing.
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x02, 0x64, 0x00, 0x01, 0x04})).ok());
