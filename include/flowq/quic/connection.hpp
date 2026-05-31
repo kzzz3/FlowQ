@@ -547,6 +547,69 @@ private:
         return std::nullopt;
     }
 
+    [[nodiscard]] static const char* application_packet_space_only_frame_name(const frame& item) noexcept {
+        if (std::holds_alternative<application_close_frame>(item)) {
+            return "APPLICATION_CLOSE";
+        }
+        if (std::holds_alternative<reset_stream_frame>(item)) {
+            return "RESET_STREAM";
+        }
+        if (std::holds_alternative<stop_sending_frame>(item)) {
+            return "STOP_SENDING";
+        }
+        if (std::holds_alternative<stream_frame>(item)) {
+            return "STREAM";
+        }
+        if (std::holds_alternative<max_data_frame>(item)) {
+            return "MAX_DATA";
+        }
+        if (std::holds_alternative<max_stream_data_frame>(item)) {
+            return "MAX_STREAM_DATA";
+        }
+        if (std::holds_alternative<data_blocked_frame>(item)) {
+            return "DATA_BLOCKED";
+        }
+        if (std::holds_alternative<stream_data_blocked_frame>(item)) {
+            return "STREAM_DATA_BLOCKED";
+        }
+        if (std::holds_alternative<max_streams_frame>(item)) {
+            return "MAX_STREAMS";
+        }
+        if (std::holds_alternative<streams_blocked_frame>(item)) {
+            return "STREAMS_BLOCKED";
+        }
+        if (std::holds_alternative<new_connection_id_frame>(item)) {
+            return "NEW_CONNECTION_ID";
+        }
+        if (std::holds_alternative<retire_connection_id_frame>(item)) {
+            return "RETIRE_CONNECTION_ID";
+        }
+        if (std::holds_alternative<handshake_done_frame>(item)) {
+            return "HANDSHAKE_DONE";
+        }
+        if (std::holds_alternative<path_challenge_frame>(item)) {
+            return "PATH_CHALLENGE";
+        }
+        if (std::holds_alternative<path_response_frame>(item)) {
+            return "PATH_RESPONSE";
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] static flowq::error validate_inbound_frame_packet_space(packet_number_space space, const std::vector<frame>& frames) {
+        if (space == packet_number_space::application) {
+            return {};
+        }
+        for (const auto& item : frames) {
+            if (const auto* name = application_packet_space_only_frame_name(item)) {
+                return flowq::error{
+                    flowq::error_code::protocol_error,
+                    std::string{name} + " is only valid in Application packet space"};
+            }
+        }
+        return {};
+    }
+
     [[nodiscard]] static bool same_endpoint(const flowq::endpoint& lhs, const flowq::endpoint& rhs) noexcept {
         return lhs.host == rhs.host && lhs.port == rhs.port && lhs.alpn == rhs.alpn;
     }
@@ -1034,18 +1097,12 @@ private:
         return {};
     }
 
-    [[nodiscard]] flowq::error apply_path_validation_frames(packet_number_space space, const std::vector<frame>& frames) {
+    void apply_path_validation_frames(const std::vector<frame>& frames) {
         for (const auto& item : frames) {
             if (const auto* challenge = std::get_if<path_challenge_frame>(&item)) {
-                if (space != packet_number_space::application) {
-                    return flowq::error{flowq::error_code::protocol_error, "PATH_CHALLENGE is only valid in Application packet space"};
-                }
                 packet_spaces_.get(packet_number_space::application).queue.push_back(frame{path_response_frame{challenge->data}});
-            } else if (std::holds_alternative<path_response_frame>(item) && space != packet_number_space::application) {
-                return flowq::error{flowq::error_code::protocol_error, "PATH_RESPONSE is only valid in Application packet space"};
             }
         }
-        return {};
     }
 
     void process_parsed_packet(parsed_packet parsed, flowq::endpoint peer, std::size_t received_size, std::chrono::steady_clock::time_point received_at) {
@@ -1058,14 +1115,15 @@ private:
         }
         record_peer_bytes_received(received_size);
         mark_activity(received_at);
+        if (auto error = validate_inbound_frame_packet_space(parsed.number.space, parsed.frames); !error.ok()) {
+            enter_closing(error, received_at);
+            return;
+        }
         if (auto error = peer_close_error(parsed.frames); error.has_value()) {
             enter_draining(std::move(*error), received_at);
             return;
         }
-        if (auto error = apply_path_validation_frames(parsed.number.space, parsed.frames); !error.ok()) {
-            enter_closing(error, received_at);
-            return;
-        }
+        apply_path_validation_frames(parsed.frames);
         apply_ack_frames(parsed.number.space, parsed.frames);
         apply_flow_control_frames(parsed.frames);
         if (auto error = apply_stream_control_frames(parsed.frames); !error.ok()) {
