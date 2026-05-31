@@ -73,6 +73,15 @@
         "FLOWQ_BUILD_TESTS": "OFF",
         "FLOWQ_BUILD_EXAMPLES": "OFF"
       }
+    },
+    {
+      "name": "windows-msvc-vcpkg-interop",
+      "displayName": "Windows MSVC with OpenSSL QUIC TLS (interop)",
+      "inherits": "windows-msvc-vcpkg",
+      "binaryDir": "${sourceDir}/build/windows-msvc-vcpkg-interop-openssl",
+      "cacheVariables": {
+        "FLOWQ_ENABLE_OPENSSL_QUIC_TLS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -95,6 +104,10 @@
     {
       "name": "linux-fuzz-libfuzzer",
       "configurePreset": "linux-fuzz-libfuzzer"
+    },
+    {
+      "name": "windows-msvc-vcpkg-interop",
+      "configurePreset": "windows-msvc-vcpkg-interop"
     }
   ],
   "testPresets": [
