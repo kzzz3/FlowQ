@@ -322,7 +322,7 @@ public:
                 config_.local_connection_id.bytes.size(),
                 detail::rx_protector_for(packet_number_space::application, config_));
             if (!parsed.ok()) {
-                enter_closing(parsed.error, received_at);
+                handle_short_packet_parse_error(datagram.payload, parsed.error, received_at);
                 return;
             }
             process_parsed_packet(std::move(parsed), std::move(datagram.peer), datagram.payload.size(), received_at);
@@ -492,6 +492,8 @@ private:
     std::vector<remote_connection_id_entry> remote_connection_ids_{};
     bool remote_connection_ids_initialized_{};
     std::uint64_t active_remote_connection_id_sequence_{};
+    static constexpr std::size_t stateless_reset_token_size = 16;
+    static constexpr std::size_t minimum_stateless_reset_datagram_size = 21;
 
     [[nodiscard]] bool active() const noexcept {
         return state_ == connection_loop_state::active;
@@ -713,6 +715,34 @@ private:
 
     [[nodiscard]] static bool same_connection_id(const connection_id& lhs, const connection_id& rhs) noexcept {
         return same_bytes(lhs.bytes, rhs.bytes);
+    }
+
+    [[nodiscard]] static bool ends_with_token(std::span<const std::byte> datagram, const flowq::buffer& token) noexcept {
+        if (token.size() != stateless_reset_token_size || datagram.size() < token.size()) {
+            return false;
+        }
+        const auto* suffix = datagram.data() + datagram.size() - token.size();
+        return std::equal(token.data(), token.data() + token.size(), suffix);
+    }
+
+    [[nodiscard]] bool matches_peer_stateless_reset(std::span<const std::byte> datagram) const noexcept {
+        if (datagram.size() < minimum_stateless_reset_datagram_size) {
+            return false;
+        }
+        return std::any_of(remote_connection_ids_.begin(), remote_connection_ids_.end(), [datagram](const auto& item) {
+            return !item.retired && ends_with_token(datagram, item.stateless_reset_token);
+        });
+    }
+
+    void handle_short_packet_parse_error(
+        std::span<const std::byte> datagram,
+        flowq::error error,
+        std::chrono::steady_clock::time_point received_at) {
+        if (matches_peer_stateless_reset(datagram)) {
+            enter_draining(flowq::error{flowq::error_code::connection_closed, "stateless reset received"}, received_at);
+            return;
+        }
+        enter_closing(std::move(error), received_at);
     }
 
     void reset_remote_connection_id_state() noexcept {
