@@ -1,6 +1,6 @@
 # FlowQ Interop Results
 
-## Latest Results (2026-05-31)
+## Latest Results (2026-06-01)
 
 ### Summary
 
@@ -27,11 +27,38 @@
 
 ## Supported Peers
 
-| Peer | Language | Install | Status |
-|------|----------|---------|--------|
-| aioquic | Python | `pip install aioquic` | ✅ Verified |
-| ngtcp2 | C | vcpkg | ✅ Verified |
-| quiche | Rust | `cargo install quiche` | ⏳ Pending |
+| Peer | Language | Install | Status | Notes |
+|------|----------|---------|--------|-------|
+| aioquic | Python | `pip install aioquic` | ✅ Verified | Full handshake + stream + loss recovery |
+| ngtcp2 | C | vcpkg | ✅ Verified | Initial packet generation |
+| quic-go | Go | `go build` | ⚠️ Built | Binary built, needs separate terminal for server |
+| quiche | Rust | `cargo build` | ❌ Blocked | Requires NASM for BoringSSL on Windows |
+
+## Building quic-go
+
+```powershell
+# Clone and build
+git clone --depth 1 https://github.com/quic-go/quic-go.git tools/quic-go
+cd tools/quic-go
+go build -o ..\quic-go-client.exe .\example\client\main.go
+go build -o ..\quic-go-server.exe .\example\main.go
+
+# Run server (in separate terminal)
+.\quic-go-server.exe --cert build\certs\cert.pem --key build\certs\key.pem --bind :4434
+
+# Run client
+.\quic-go-client.exe --cert build\certs\cert.pem https://localhost:4434/
+```
+
+## Building quiche
+
+```powershell
+# Requires NASM (https://www.nasm.us/)
+# Install NASM first, then:
+git clone --depth 1 https://github.com/cloudflare/quiche.git tools/quiche
+cd tools/quiche
+cargo build --examples --release
+```
 
 ## Running Interop Tests
 
@@ -51,4 +78,5 @@ conda run -n expr python tests/interop/test_interop.py
 
 | Date | Peers | Passed | Failed |
 |------|-------|--------|--------|
+| 2026-06-01 | aioquic + ngtcp2 | 5/5 | 0 |
 | 2026-05-31 | aioquic + ngtcp2 | 5/5 | 0 |
