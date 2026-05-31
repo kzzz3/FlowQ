@@ -260,9 +260,8 @@ public:
         return !const_cast<openssl_tls_handshake_adapter*>(this)->secret_for(level, is_tx ? 1 : 0).empty();
     }
 
-#if defined(FLOWQ_ENABLE_INSPECTION)
     /// Get traffic secret for a specific encryption level and direction.
-    /// @warning This exposes raw key material. Only available when FLOWQ_ENABLE_INSPECTION is defined.
+    /// @note Used internally by tls_protector_factory to derive AEAD key material.
     /// @param level The encryption level (initial, handshake, application)
     /// @param is_tx true for transmit secret, false for receive secret
     /// @return Reference to the secret bytes, empty if not yet available
@@ -270,7 +269,6 @@ public:
         tls_encryption_level level, bool is_tx) const noexcept {
         return const_cast<openssl_tls_handshake_adapter*>(this)->secret_for(level, is_tx ? 1 : 0);
     }
-#endif
 
     /// Get negotiated cipher suite.
     [[nodiscard]] cipher_suite negotiated_cipher() const noexcept {
@@ -634,6 +632,12 @@ public:
         static const std::vector<std::byte> empty;
         return empty;
     }
+    [[nodiscard]] bool has_traffic_secret(tls_encryption_level, bool) const noexcept { return false; }
+    [[nodiscard]] const std::vector<std::byte>& traffic_secret(tls_encryption_level, bool) const noexcept {
+        static const std::vector<std::byte> empty;
+        return empty;
+    }
+    [[nodiscard]] cipher_suite negotiated_cipher() const noexcept { return cipher_suite::unknown; }
 };
 
 #endif  // FLOWQ_ENABLE_OPENSSL_QUIC_TLS

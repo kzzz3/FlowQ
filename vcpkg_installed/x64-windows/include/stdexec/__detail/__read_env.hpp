@@ -1,0 +1,187 @@
+/*
+ * Copyright (c) 2021-2024 NVIDIA Corporation
+ *
+ * Licensed under the Apache License Version 2.0 with LLVM Exceptions
+ * (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ *   https://llvm.org/LICENSE.txt
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#pragma once
+
+#include "__execution_fwd.hpp"
+
+// include these after __execution_fwd.hpp
+#include "../stop_token.hpp"
+#include "__basic_sender.hpp"
+#include "__completion_behavior.hpp"
+#include "__completion_signatures.hpp"
+#include "__concepts.hpp"
+#include "__diagnostics.hpp"
+#include "__env.hpp"
+#include "__meta.hpp"
+#include "__optional.hpp"
+#include "__queries.hpp"
+#include "__receivers.hpp"
+#include "__schedulers.hpp"
+#include "__submit.hpp" // IWYU pragma: keep
+
+#include <exception>
+
+namespace STDEXEC {
+  namespace __read {
+    template <class _Tag, class _ReceiverId>
+    using __result_t = __call_result_t<_Tag, env_of_t<STDEXEC::__t<_ReceiverId>>>;
+
+    template <class _Tag, class _ReceiverId>
+    concept __nothrow_t = __nothrow_callable<_Tag, env_of_t<STDEXEC::__t<_ReceiverId>>>;
+
+    inline constexpr __mstring __query_failed_diag =
+      "The current execution environment doesn't have a value for the given query."_mstr;
+
+    template <class _Receiver, class _Tag, class _Ty>
+    struct __state {
+      using __receiver_t = _Receiver;
+      using __query_t = _Tag;
+      using __result_t = _Ty;
+      STDEXEC_IMMOVABLE_NO_UNIQUE_ADDRESS
+      _Receiver __rcvr_;
+      __optional<_Ty> __result_;
+    };
+
+    template <class _Receiver, class _Tag, class _Ty>
+      requires __same_as<_Ty, _Ty&&>
+    struct __state<_Receiver, _Tag, _Ty> {
+      using __receiver_t = _Receiver;
+      using __query_t = _Tag;
+      using __result_t = _Ty;
+      STDEXEC_IMMOVABLE_NO_UNIQUE_ADDRESS
+      _Receiver __rcvr_;
+    };
+
+    template <class _Tag>
+    struct __attrs {
+      template <class _Env>
+        requires __callable<_Tag, _Env>
+      STDEXEC_ATTRIBUTE(nodiscard)
+      constexpr auto query(get_completion_behavior_t<set_value_t>, const _Env&) const noexcept {
+        return completion_behavior::inline_completion;
+      }
+
+      template <class _Env>
+        requires __callable<_Tag, _Env> && (!__nothrow_callable<_Tag, _Env>)
+      STDEXEC_ATTRIBUTE(nodiscard)
+      constexpr auto query(get_completion_behavior_t<set_error_t>, const _Env&) const noexcept {
+        return completion_behavior::inline_completion;
+      }
+    };
+
+    struct read_env_t {
+      template <class _Tag>
+      constexpr auto operator()(_Tag) const noexcept {
+        return __make_sexpr<read_env_t>(_Tag());
+      }
+    };
+
+    struct __read_env_impl : __sexpr_defaults {
+      static constexpr auto get_attrs = []<class _Tag>(_Tag) noexcept {
+        return __attrs<_Tag>{};
+      };
+
+      template <class _Self, class _Env>
+      static consteval auto get_completion_signatures() {
+        using __query_t = __data_of<_Self>;
+        if constexpr (__callable<__query_t, _Env>) {
+          using __result_t = __call_result_t<__query_t, _Env>;
+          if constexpr (__nothrow_callable<__query_t, _Env>) {
+            return completion_signatures<set_value_t(__result_t)>();
+          } else {
+            return completion_signatures<set_value_t(__result_t), set_error_t(std::exception_ptr)>();
+          }
+        } else {
+          return STDEXEC::__throw_compile_time_error<
+            _NOT_CALLABLE_<"In STDEXEC::read_env()..."_mstr, __query_failed_diag>,
+            _WITH_QUERY_(__query_t),
+            _WITH_ENVIRONMENT_(_Env)
+          >();
+        }
+      };
+
+      static constexpr auto get_state =
+        []<class _Self, class _Receiver>(const _Self&, _Receiver&& __rcvr) noexcept {
+          using __query_t = __data_of<_Self>;
+          using __result_t = __call_result_t<__query_t, env_of_t<_Receiver>>;
+          return __state<_Receiver, __query_t, __result_t>{static_cast<_Receiver&&>(__rcvr)};
+        };
+
+      static constexpr auto start = []<class _State>(_State& __state) noexcept -> void {
+        using __query_t = _State::__query_t;
+        using __result_t = _State::__result_t;
+        using __receiver_t = _State::__receiver_t;
+        if constexpr (__same_as<__result_t, __result_t&&>) {
+          // The query returns a reference type; pass it straight through to the receiver.
+          STDEXEC::__set_value_invoke(
+            static_cast<_State&&>(__state).__rcvr_, __query_t(), STDEXEC::get_env(__state.__rcvr_));
+        } else {
+          constexpr bool _Nothrow = __nothrow_callable<__query_t, env_of_t<__receiver_t>>;
+          auto __query_fn = [&]() noexcept(_Nothrow) -> __result_t&& {
+            __state.__result_.__emplace_from(
+              [&]() noexcept(_Nothrow) { return __query_t()(STDEXEC::get_env(__state.__rcvr_)); });
+            return static_cast<__result_t&&>(*__state.__result_);
+          };
+          STDEXEC::__set_value_invoke(static_cast<_State&&>(__state).__rcvr_, __query_fn);
+        }
+      };
+
+      static constexpr auto submit =
+        []<class _Sender, class _Receiver>(const _Sender&, _Receiver&& __rcvr) noexcept
+        requires std::is_reference_v<__call_result_t<__data_of<_Sender>, env_of_t<_Receiver>>>
+      {
+        static_assert(sender_expr_for<_Sender, read_env_t>);
+        using __query_t = __data_of<_Sender>;
+        STDEXEC::__set_value_invoke(
+          static_cast<_Receiver&&>(__rcvr), __query_t(), STDEXEC::get_env(__rcvr));
+      };
+    };
+  } // namespace __read
+
+  using __read::read_env_t;
+  [[deprecated("read has been renamed to read_env")]]
+  inline constexpr read_env_t read{};
+  inline constexpr read_env_t read_env{};
+
+  template <>
+  struct __sexpr_impl<__read::read_env_t> : __read::__read_env_impl { };
+
+  namespace __queries {
+    template <class _Tag>
+    STDEXEC_ATTRIBUTE(nodiscard, always_inline, host, device)
+    constexpr auto get_scheduler_t::operator()() const noexcept {
+      return read_env(get_scheduler);
+    }
+
+    template <class _Tag>
+    STDEXEC_ATTRIBUTE(nodiscard, always_inline, host, device)
+    constexpr auto get_delegation_scheduler_t::operator()() const noexcept {
+      return read_env(get_delegation_scheduler);
+    }
+
+    template <class _Tag>
+    STDEXEC_ATTRIBUTE(nodiscard, always_inline, host, device)
+    constexpr auto get_allocator_t::operator()() const noexcept {
+      return read_env(get_allocator);
+    }
+
+    template <class _Tag>
+    STDEXEC_ATTRIBUTE(nodiscard, always_inline, host, device)
+    constexpr auto get_stop_token_t::operator()() const noexcept {
+      return read_env(get_stop_token);
+    }
+  } // namespace __queries
+} // namespace STDEXEC

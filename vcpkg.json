@@ -24,9 +24,7 @@
     "interop": {
       "description": "Build interop tests against external QUIC implementations.",
       "dependencies": [
-        "msquic",
-        "ngtcp2",
-        "liblsquic"
+        "ngtcp2"
       ]
     }
   }

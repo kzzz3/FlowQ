@@ -50,9 +50,9 @@ public:
                 return {};
             }
 
-            const auto& secret = adapter.traffic_secret(level, is_tx);
+            const auto secret_data = adapter.traffic_secret(level, is_tx);
             auto material = derive_traffic_key_material(
-                std::span<const std::byte>{secret.data(), secret.size()}, suite);
+                std::span<const std::byte>{secret_data.data(), secret_data.size()}, suite);
 
             if (!material.ok()) {
                 return material.error;
