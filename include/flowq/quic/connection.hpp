@@ -7,7 +7,14 @@
 #include <flowq/quic/connection_types.hpp>
 #include <flowq/quic/congestion.hpp>
 
+#ifdef FLOWQ_ENABLE_OPENSSL_CRYPTO
+#include <openssl/rand.h>
+#endif
+
 #include <algorithm>
+#include <exception>
+#include <random>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -469,6 +476,9 @@ private:
     std::optional<std::uint64_t> largest_initial_acknowledged_{};
     std::optional<std::uint64_t> largest_handshake_acknowledged_{};
     std::optional<std::uint64_t> largest_application_acknowledged_{};
+    std::optional<path_challenge_token> pending_path_challenge_{};
+    bool pending_path_challenge_queued_{};
+    bool peer_path_migrated_{};
     std::vector<sent_packet_stream_ranges> sent_stream_ranges_{};
 
     [[nodiscard]] bool active() const noexcept {
@@ -721,7 +731,9 @@ private:
             return false;
         }
         config_.peer = std::move(peer);
-        reset_peer_path_validation();
+        if (!reset_peer_path_validation(received_at)) {
+            return false;
+        }
         return true;
     }
 
@@ -800,16 +812,91 @@ private:
         if (!anti_amplification_limited() || config_.tls_adapter == nullptr) {
             return;
         }
+        if (peer_path_migrated_ || pending_path_challenge_.has_value()) {
+            return;
+        }
         if (config_.tls_adapter->state() == handshake_state::handshake_confirmed) {
             peer_address_validated_ = true;
         }
     }
 
-    void reset_peer_path_validation() noexcept {
+    [[nodiscard]] bool reset_peer_path_validation(std::chrono::steady_clock::time_point received_at) {
         if (config_.role != connection_role::server) {
-            return;
+            return true;
         }
         peer_address_validated_ = false;
+        peer_bytes_received_ = 0;
+        peer_bytes_sent_ = 0;
+        peer_path_migrated_ = true;
+        return start_peer_path_validation(received_at);
+    }
+
+    [[nodiscard]] path_challenge_token make_path_challenge_token() {
+        if (config_.path_challenge) {
+            return config_.path_challenge();
+        }
+        path_challenge_token token{};
+#ifdef FLOWQ_ENABLE_OPENSSL_CRYPTO
+        if (RAND_bytes(reinterpret_cast<unsigned char*>(token.data()), static_cast<int>(token.size())) != 1) {
+            throw std::runtime_error{"OpenSSL RAND_bytes failed"};
+        }
+#else
+        std::random_device random;
+        for (auto& byte : token) {
+            byte = static_cast<std::byte>(random() & 0xffU);
+        }
+#endif
+        return token;
+    }
+
+    void remove_queued_path_challenge() {
+        if (!pending_path_challenge_.has_value() || !pending_path_challenge_queued_) {
+            return;
+        }
+        auto& queue = packet_spaces_.get(packet_number_space::application).queue;
+        queue.erase(
+            std::remove_if(
+                queue.begin(),
+                queue.end(),
+                [this](const frame& item) {
+                    const auto* challenge = std::get_if<path_challenge_frame>(&item);
+                    return challenge != nullptr && challenge->data == *pending_path_challenge_;
+                }),
+            queue.end());
+        pending_path_challenge_queued_ = false;
+    }
+
+    [[nodiscard]] bool start_peer_path_validation(std::chrono::steady_clock::time_point received_at) {
+        remove_queued_path_challenge();
+        try {
+            pending_path_challenge_ = make_path_challenge_token();
+            pending_path_challenge_queued_ = false;
+        } catch (const std::exception& exception) {
+            enter_closing(
+                flowq::error{flowq::error_code::internal_error, std::string{"path challenge generation failed: "} + exception.what()},
+                received_at);
+            return false;
+        } catch (...) {
+            enter_closing(flowq::error{flowq::error_code::internal_error, "path challenge generation failed"}, received_at);
+            return false;
+        }
+        queue_pending_path_challenge_if_ready();
+        return true;
+    }
+
+    void queue_pending_path_challenge_if_ready() {
+        if (!pending_path_challenge_.has_value() || pending_path_challenge_queued_ || !application_send_allowed()) {
+            return;
+        }
+        packet_spaces_.get(packet_number_space::application).queue.push_back(frame{path_challenge_frame{*pending_path_challenge_}});
+        pending_path_challenge_queued_ = true;
+    }
+
+    void validate_migrated_peer_path() noexcept {
+        peer_address_validated_ = true;
+        peer_path_migrated_ = false;
+        pending_path_challenge_.reset();
+        pending_path_challenge_queued_ = false;
         peer_bytes_received_ = 0;
         peer_bytes_sent_ = 0;
     }
@@ -837,6 +924,7 @@ private:
             lifecycle_dirty_ = false;
         }
         refresh_peer_address_validation();
+        queue_pending_path_challenge_if_ready();
     }
 
     void mark_lifecycle_dirty() noexcept {
@@ -1193,6 +1281,9 @@ private:
         for (const auto& item : frames) {
             if (const auto* challenge = std::get_if<path_challenge_frame>(&item)) {
                 packet_spaces_.get(packet_number_space::application).queue.push_back(frame{path_response_frame{challenge->data}});
+            } else if (const auto* response = std::get_if<path_response_frame>(&item);
+                       pending_path_challenge_.has_value() && response != nullptr && response->data == *pending_path_challenge_) {
+                validate_migrated_peer_path();
             }
         }
     }

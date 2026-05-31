@@ -2173,6 +2173,139 @@ TEST_CASE("connection loop resets server anti-amplification budget after peer ad
     CHECK(server.sent_packets(flowq::quic::packet_number_space::initial).packets().empty());
 }
 
+TEST_CASE("connection loop challenges migrated peer path before treating it as validated") {
+    flowq::quic::test::plaintext_packet_protector_set protector{};
+    const auto token = std::array<std::byte, 8>{
+        std::byte{0x10},
+        std::byte{0x11},
+        std::byte{0x12},
+        std::byte{0x13},
+        std::byte{0x14},
+        std::byte{0x15},
+        std::byte{0x16},
+        std::byte{0x17}};
+    flowq::endpoint client_peer{"client", 1111, "hq-interop"};
+    flowq::endpoint migrated_peer{"client-alt", 2222, "hq-interop"};
+    flowq::endpoint server_peer{"server", 4433, "hq-interop"};
+    auto client = make_loop(cid({0x01}), cid({0x02}), server_peer, protector);
+
+    flowq::quic::connection_loop_config server_config{};
+    server_config.role = flowq::quic::connection_role::server;
+    server_config.local_connection_id = cid({0x02});
+    server_config.remote_connection_id = cid({0x01});
+    server_config.peer = client_peer;
+    server_config.initial_tx_protector = &protector.initial;
+    server_config.initial_rx_protector = &protector.initial;
+    server_config.handshake_tx_protector = &protector.handshake;
+    server_config.handshake_rx_protector = &protector.handshake;
+    server_config.application_tx_protector = &protector.application;
+    server_config.application_rx_protector = &protector.application;
+    server_config.pipeline = flowq::quic::packet_pipeline_config{8192};
+    server_config.tls_adapter = &application_ready_tls_adapter();
+    server_config.peer_address_validated = true;
+    server_config.path_challenge = [token] { return token; };
+    auto server = flowq::quic::connection_loop{std::move(server_config)};
+
+    client.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto migrated_datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(
+        flowq::quic::inbound_datagram{std::move(migrated_datagram.payload), migrated_peer},
+        at(1ms));
+    auto received = server.drain_actions();
+    REQUIRE(received.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(received[0]));
+
+    server.flush(at(2ms));
+    auto challenge_datagram = require_single_outbound(server.drain_actions());
+    CHECK(challenge_datagram.peer.host == "client-alt");
+    CHECK(challenge_datagram.peer.port == 2222);
+
+    auto parsed_challenge = flowq::quic::parse_short_packet(
+        challenge_datagram.payload,
+        1,
+        protector.application);
+    REQUIRE(parsed_challenge.ok());
+    REQUIRE(parsed_challenge.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::path_challenge_frame>(parsed_challenge.frames[0]));
+    CHECK(std::get<flowq::quic::path_challenge_frame>(parsed_challenge.frames[0]).data == token);
+}
+
+TEST_CASE("connection loop validates migrated peer path with matching PATH_RESPONSE") {
+    flowq::quic::test::plaintext_packet_protector_set protector{};
+    const auto token = std::array<std::byte, 8>{
+        std::byte{0x20},
+        std::byte{0x21},
+        std::byte{0x22},
+        std::byte{0x23},
+        std::byte{0x24},
+        std::byte{0x25},
+        std::byte{0x26},
+        std::byte{0x27}};
+    flowq::endpoint client_peer{"client", 1111, "hq-interop"};
+    flowq::endpoint migrated_peer{"client-alt", 2222, "hq-interop"};
+    flowq::endpoint server_peer{"server", 4433, "hq-interop"};
+    auto client = make_loop(cid({0x01}), cid({0x02}), server_peer, protector);
+
+    flowq::quic::connection_loop_config server_config{};
+    server_config.role = flowq::quic::connection_role::server;
+    server_config.local_connection_id = cid({0x02});
+    server_config.remote_connection_id = cid({0x01});
+    server_config.peer = client_peer;
+    server_config.initial_tx_protector = &protector.initial;
+    server_config.initial_rx_protector = &protector.initial;
+    server_config.handshake_tx_protector = &protector.handshake;
+    server_config.handshake_rx_protector = &protector.handshake;
+    server_config.application_tx_protector = &protector.application;
+    server_config.application_rx_protector = &protector.application;
+    server_config.pipeline = flowq::quic::packet_pipeline_config{8192};
+    server_config.tls_adapter = &application_ready_tls_adapter();
+    server_config.peer_address_validated = true;
+    server_config.path_challenge = [token] { return token; };
+    auto server = flowq::quic::connection_loop{std::move(server_config)};
+
+    client.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto migrated_datagram = require_single_outbound(client.drain_actions());
+    const auto migrated_datagram_size = migrated_datagram.payload.size();
+
+    server.on_datagram(
+        flowq::quic::inbound_datagram{std::move(migrated_datagram.payload), migrated_peer},
+        at(1ms));
+    auto migrated_received = server.drain_actions();
+    REQUIRE(migrated_received.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(migrated_received[0]));
+    server.flush(at(2ms));
+    auto challenge_datagram = require_single_outbound(server.drain_actions());
+
+    client.on_datagram(
+        flowq::quic::inbound_datagram{std::move(challenge_datagram.payload), server_peer},
+        at(3ms));
+    auto client_received = client.drain_actions();
+    REQUIRE(client_received.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(client_received[0]));
+    client.flush(at(4ms));
+    auto response_datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(
+        flowq::quic::inbound_datagram{std::move(response_datagram.payload), migrated_peer},
+        at(5ms));
+    auto response_received = server.drain_actions();
+    REQUIRE(response_received.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::received_packet_event>(response_received[0]));
+
+    const auto oversized_response_bytes = (migrated_datagram_size * 3U) + 128U;
+    server.queue_application({
+        flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text(std::string(oversized_response_bytes, 'v'))}}
+    });
+    server.flush(at(6ms));
+
+    auto oversized = require_single_outbound(server.drain_actions());
+    CHECK(oversized.peer.host == "client-alt");
+    CHECK(oversized.peer.port == 2222);
+}
+
 TEST_CASE("connection loop exposes idle lifecycle timer after outbound activity") {
     flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::quic::connection_loop_config config{};
