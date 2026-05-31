@@ -50,7 +50,7 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ Test-support `interop_runner` executes configured scenarios through an injected executor without being installed as public API.
 - ✅ Available peers no longer produce synthetic skip results; executor exit code, timeout, and exceptions map to pass/fail/error.
 - ✅ `scripts/run-interop.ps1` and `scripts/run-interop.sh` call the built harness binary and write per-scenario JSON results.
-- ✅ External interop wrapper scripts fail when any selected scenario is skipped, so missing peers or TLS setup cannot satisfy the gate.
+- ✅ External interop wrapper scripts have no skip path; missing peers, missing TLS setup, harness errors, and non-zero executor exits fail the gate.
 - ✅ Harness wiring was verified locally with `FLOWQ_INTEROP_SCENARIO=basic_handshake` and a local executable peer.
 - ✅ FlowQ client handshake and bidirectional stream 0 echo pass against Python `aioquic` 1.3.0 in conda environment `expr`.
 - ✅ The aioquic validation run recorded FlowQ TLS backend OpenSSL QUIC TLS (`OpenSSL 3.6.1 27 Jan 2026`) and negotiated cipher suite `TLS_AES_128_GCM_SHA256`.

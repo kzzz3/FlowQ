@@ -4,8 +4,8 @@
 # This script runs interop scenarios against a specified peer QUIC implementation.
 # It records results in JSON format with peer version, FlowQ commit, TLS backend version.
 # Exit code 0 only if every selected scenario passes.
-# Failures and skips both exit 1 so external interop gates cannot pass without
-# executing the requested peer scenario.
+# Failures and harness errors both exit 1 so external interop gates cannot pass
+# without executing the requested peer scenario.
 
 param(
     [Parameter(Mandatory=$true)]
@@ -141,7 +141,6 @@ $Results = @{
 $TotalScenarios = 0
 $PassedScenarios = 0
 $FailedScenarios = 0
-$SkippedScenarios = 0
 
 foreach ($scenarioFile in $Scenarios) {
     $scenarioName = [System.IO.Path]::GetFileNameWithoutExtension($scenarioFile)
@@ -190,16 +189,11 @@ foreach ($scenarioFile in $Scenarios) {
     $Stopwatch.Stop()
 
     $HarnessText = ($HarnessOutput | Out-String).Trim()
-    $WasSkipped = $HarnessText -match "SKIPPED:"
 
-    if ($HarnessExitCode -eq 0 -and -not $WasSkipped) {
+    if ($HarnessExitCode -eq 0) {
         Write-Host "  PASSED" -ForegroundColor Green
         $PassedScenarios++
         $Status = "passed"
-    } elseif ($HarnessExitCode -eq 0 -and $WasSkipped) {
-        Write-Host "  SKIPPED: Harness reported scenario skip" -ForegroundColor Yellow
-        $SkippedScenarios++
-        $Status = "skipped"
     } else {
         Write-Host "  FAILED: Harness exit code $HarnessExitCode" -ForegroundColor Red
         $FailedScenarios++
@@ -223,11 +217,10 @@ Write-Host "=== Summary ===" -ForegroundColor Cyan
 Write-Host "Total scenarios: $TotalScenarios"
 Write-Host "Passed: $PassedScenarios"
 Write-Host "Failed: $FailedScenarios"
-Write-Host "Skipped: $SkippedScenarios"
 Write-Host ""
 Write-Host "Results written to: $ResultsFile"
 
-# Exit with failure if any scenarios failed or skipped.
-if ($FailedScenarios -gt 0 -or $SkippedScenarios -gt 0) {
+# Exit with failure if any scenarios failed.
+if ($FailedScenarios -gt 0) {
     exit 1
 }

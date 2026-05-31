@@ -15,14 +15,13 @@ namespace flowq::quic::interop {
 enum class test_status {
     pass,
     fail,
-    skip,
     error
 };
 
 /// Interop test result.
 struct test_result {
     std::string test_name;
-    test_status status{test_status::skip};
+    test_status status{test_status::error};
     std::string message;
     std::uint64_t duration_ms{};
 };
@@ -34,7 +33,6 @@ struct suite_result {
     std::uint64_t total_tests{};
     std::uint64_t passed{};
     std::uint64_t failed{};
-    std::uint64_t skipped{};
     std::uint64_t errors{};
 };
 
@@ -101,9 +99,6 @@ public:
             case test_status::fail:
                 result.failed++;
                 break;
-            case test_status::skip:
-                result.skipped++;
-                break;
             case test_status::error:
                 result.errors++;
                 break;
@@ -119,7 +114,7 @@ public:
         result.test_name = test_name;
 
         if (!config_.peer.available) {
-            result.status = test_status::skip;
+            result.status = test_status::error;
             result.message = "Peer not available: " + config_.peer.name;
             return result;
         }
@@ -176,8 +171,6 @@ private:
         return "PASS";
     case test_status::fail:
         return "FAIL";
-    case test_status::skip:
-        return "SKIP";
     case test_status::error:
         return "ERROR";
     }
@@ -192,7 +185,6 @@ private:
     output += "Total: " + std::to_string(result.total_tests) + "\n";
     output += "Passed: " + std::to_string(result.passed) + "\n";
     output += "Failed: " + std::to_string(result.failed) + "\n";
-    output += "Skipped: " + std::to_string(result.skipped) + "\n";
     output += "Errors: " + std::to_string(result.errors) + "\n\n";
 
     for (const auto& test : result.results) {

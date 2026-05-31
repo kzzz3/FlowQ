@@ -5,8 +5,8 @@
 # This script runs interop scenarios against a specified peer QUIC implementation.
 # It records results in JSON format with peer version, FlowQ commit, TLS backend version.
 # Exit code 0 only if every selected scenario passes.
-# Failures and skips both exit 1 so external interop gates cannot pass without
-# executing the requested peer scenario.
+# Failures and harness errors both exit 1 so external interop gates cannot pass
+# without executing the requested peer scenario.
 
 set -e
 
@@ -187,7 +187,6 @@ EOF
 TOTAL_SCENARIOS=0
 PASSED_SCENARIOS=0
 FAILED_SCENARIOS=0
-SKIPPED_SCENARIOS=0
 
 for scenario_file in "${SCENARIOS[@]}"; do
     scenario_name=$(basename "$scenario_file" .json)
@@ -243,14 +242,10 @@ for scenario_file in "${SCENARIOS[@]}"; do
     end_ms=$(date +%s%3N)
     duration_ms=$((end_ms - start_ms))
 
-    if [[ $harness_exit -eq 0 && "$harness_output" != *"SKIPPED:"* ]]; then
+    if [[ $harness_exit -eq 0 ]]; then
         echo -e "  ${GREEN}PASSED${NC}"
         PASSED_SCENARIOS=$((PASSED_SCENARIOS + 1))
         status="passed"
-    elif [[ $harness_exit -eq 0 && "$harness_output" == *"SKIPPED:"* ]]; then
-        echo -e "  ${YELLOW}SKIPPED: Harness reported scenario skip${NC}"
-        SKIPPED_SCENARIOS=$((SKIPPED_SCENARIOS + 1))
-        status="skipped"
     else
         echo -e "${RED}  FAILED: Harness exit code ${harness_exit}${NC}"
         FAILED_SCENARIOS=$((FAILED_SCENARIOS + 1))
@@ -271,11 +266,10 @@ echo -e "${CYAN}=== Summary ===${NC}"
 echo "Total scenarios: $TOTAL_SCENARIOS"
 echo "Passed: $PASSED_SCENARIOS"
 echo "Failed: $FAILED_SCENARIOS"
-echo "Skipped: $SKIPPED_SCENARIOS"
 echo ""
 echo "Results written to: $RESULTS_FILE"
 
-# Exit with failure if any scenarios failed or skipped.
-if [[ $FAILED_SCENARIOS -gt 0 || $SKIPPED_SCENARIOS -gt 0 ]]; then
+# Exit with failure if any scenarios failed.
+if [[ $FAILED_SCENARIOS -gt 0 ]]; then
     exit 1
 fi

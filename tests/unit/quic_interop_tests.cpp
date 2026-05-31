@@ -19,7 +19,7 @@ TEST_CASE("interop_runner constructs with config") {
     CHECK(runner.peer().version == "0.9.0");
 }
 
-TEST_CASE("interop_runner skips tests when peer unavailable") {
+TEST_CASE("interop_runner reports errors when peer unavailable") {
     flowq::quic::interop::interop_config config{};
     config.peer.name = "ngtcp2";
     config.peer.available = false;
@@ -30,9 +30,12 @@ TEST_CASE("interop_runner skips tests when peer unavailable") {
     auto result = runner.run_all();
 
     CHECK(result.total_tests == 2);
-    CHECK(result.skipped == 2);
+    CHECK(result.errors == 2);
     CHECK(result.passed == 0);
     CHECK(result.failed == 0);
+    REQUIRE(result.results.size() == 2);
+    CHECK(result.results[0].status == flowq::quic::interop::test_status::error);
+    CHECK(result.results[0].message.find("Peer not available") != std::string::npos);
 }
 
 TEST_CASE("interop_runner runs available peer through executor") {
@@ -112,7 +115,6 @@ TEST_CASE("interop_runner maps executor outcomes into suite result") {
     CHECK(result.total_tests == 4);
     CHECK(result.passed == 1);
     CHECK(result.failed == 1);
-    CHECK(result.skipped == 0);
     CHECK(result.errors == 2);
     CHECK(result.results[0].status == flowq::quic::interop::test_status::pass);
     CHECK(result.results[1].status == flowq::quic::interop::test_status::fail);
@@ -127,11 +129,11 @@ TEST_CASE("interop_runner format_suite_result") {
     result.total_tests = 3;
     result.passed = 1;
     result.failed = 1;
-    result.skipped = 1;
+    result.errors = 1;
 
     result.results.push_back({"handshake", flowq::quic::interop::test_status::pass, "", 0});
     result.results.push_back({"stream_echo", flowq::quic::interop::test_status::fail, "Connection timeout", 0});
-    result.results.push_back({"loss_recovery", flowq::quic::interop::test_status::skip, "Peer unavailable", 0});
+    result.results.push_back({"loss_recovery", flowq::quic::interop::test_status::error, "Peer unavailable", 0});
 
     auto formatted = flowq::quic::interop::format_suite_result(result);
 
@@ -140,10 +142,10 @@ TEST_CASE("interop_runner format_suite_result") {
     CHECK(formatted.find("Total: 3") != std::string::npos);
     CHECK(formatted.find("Passed: 1") != std::string::npos);
     CHECK(formatted.find("Failed: 1") != std::string::npos);
-    CHECK(formatted.find("Skipped: 1") != std::string::npos);
+    CHECK(formatted.find("Errors: 1") != std::string::npos);
     CHECK(formatted.find("[PASS] handshake") != std::string::npos);
     CHECK(formatted.find("[FAIL] stream_echo") != std::string::npos);
-    CHECK(formatted.find("[SKIP] loss_recovery") != std::string::npos);
+    CHECK(formatted.find("[ERROR] loss_recovery") != std::string::npos);
 }
 
 TEST_CASE("interop_config default values") {
@@ -161,6 +163,5 @@ TEST_CASE("interop_config default values") {
 TEST_CASE("test_status enum values") {
     CHECK(static_cast<int>(flowq::quic::interop::test_status::pass) == 0);
     CHECK(static_cast<int>(flowq::quic::interop::test_status::fail) == 1);
-    CHECK(static_cast<int>(flowq::quic::interop::test_status::skip) == 2);
-    CHECK(static_cast<int>(flowq::quic::interop::test_status::error) == 3);
+    CHECK(static_cast<int>(flowq::quic::interop::test_status::error) == 2);
 }

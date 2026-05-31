@@ -108,7 +108,7 @@ TEST_CASE("interop harness executes selected scenario through runner") {
     const auto peer_binary = read_env("FLOWQ_INTEROP_PEER_BIN");
 
     if (scenario_name.empty() || peer_binary.empty()) {
-        SKIP("FLOWQ_INTEROP_SCENARIO and FLOWQ_INTEROP_PEER_BIN are required for external interop execution");
+        FAIL("FLOWQ_INTEROP_SCENARIO and FLOWQ_INTEROP_PEER_BIN are required for external interop execution");
     }
 
     const auto scenario_path = std::filesystem::path{INTEROP_SCENARIOS_DIR} / (scenario_name + ".json");
@@ -119,7 +119,7 @@ TEST_CASE("interop harness executes selected scenario through runner") {
 
     const auto peer_path = std::filesystem::path{peer_binary};
     if (!std::filesystem::exists(peer_path)) {
-        SKIP("Peer binary is unavailable: " + peer_binary);
+        FAIL("Peer binary is unavailable: " + peer_binary);
     }
 
     flowq::quic::interop::interop_config config{};
