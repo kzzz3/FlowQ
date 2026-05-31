@@ -6,6 +6,7 @@
 #include <asio.hpp>
 #include <array>
 #include <chrono>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <span>
@@ -15,6 +16,16 @@
 #include <vector>
 
 namespace {
+
+constexpr std::string_view default_ca_file{"build/certs/cert.pem"};
+constexpr std::string_view default_server_name{"localhost"};
+
+std::string configured_value(const char* environment_name, std::string_view fallback) {
+    if (const auto* value = std::getenv(environment_name); value != nullptr && value[0] != '\0') {
+        return value;
+    }
+    return std::string{fallback};
+}
 
 bool send_datagrams(
     asio::ip::udp::socket& socket,
@@ -111,7 +122,12 @@ int main() {
             static_cast<std::byte>(0x05), static_cast<std::byte>(0x06),
             static_cast<std::byte>(0x07), static_cast<std::byte>(0x08)}}};
 
+        auto ca_file = configured_value("FLOWQ_QUIC_CA_FILE", default_ca_file);
+        auto server_name = configured_value("FLOWQ_QUIC_SERVER_NAME", default_server_name);
+
         flowq::quic::openssl_tls_config tls_config{.is_client = true};
+        tls_config.ca_file = ca_file.c_str();
+        tls_config.server_name = server_name.c_str();
         tls_config.local_transport_parameters.initial_source_connection_id = flowq::buffer{local_cid.bytes};
         auto tls_adapter = std::make_unique<flowq::quic::openssl_tls_handshake_adapter>(tls_config);
         const auto tls_backend = flowq::quic::openssl_quic_tls_backend_status();
@@ -162,7 +178,7 @@ int main() {
         session_cfg.initial_tx_protector = &initial_tx_protector;
         session_cfg.initial_rx_protector = &initial_rx_protector;
         session_cfg.tls_adapter = tls_adapter.get();
-        session_cfg.pipeline.max_datagram_size = 65535;
+        session_cfg.max_packet_payload_size = session_cfg.pipeline.max_datagram_size;
         session_cfg.packet_protector_refresh = refresh_tls_protectors;
 
         flowq::quic::session session{std::move(session_cfg)};

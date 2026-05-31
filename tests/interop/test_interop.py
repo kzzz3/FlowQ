@@ -1,6 +1,7 @@
 import asyncio
+import datetime as dt
+import ipaddress
 import os
-import ssl
 import sys
 from enum import Enum
 from pathlib import Path
@@ -9,6 +10,10 @@ from aioquic.asyncio.protocol import QuicConnectionProtocol
 from aioquic.asyncio.server import serve
 from aioquic.quic.configuration import QuicConfiguration
 from aioquic.quic.events import ConnectionTerminated, HandshakeCompleted, StreamDataReceived
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -20,8 +25,65 @@ FLOWQ_CLIENT = Path(
 )
 CERT_FILE = REPO_ROOT / "build" / "certs" / "cert.pem"
 KEY_FILE = REPO_ROOT / "build" / "certs" / "key.pem"
+SERVER_NAME = "localhost"
 EXPECTED_STREAM_DATA = b"hello from FlowQ"
 EXPECTED_ECHO_DATA = b"echo from aioquic"
+
+
+def ensure_test_certificate():
+    CERT_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, SERVER_NAME)])
+    now = dt.datetime.now(dt.UTC)
+
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - dt.timedelta(minutes=5))
+        .not_valid_after(now + dt.timedelta(days=30))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=True,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=True,
+                crl_sign=False,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .add_extension(
+            x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]),
+            critical=False,
+        )
+        .add_extension(
+            x509.SubjectAlternativeName(
+                [
+                    x509.DNSName(SERVER_NAME),
+                    x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
+                ]
+            ),
+            critical=False,
+        )
+        .sign(key, hashes.SHA256())
+    )
+
+    CERT_FILE.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    KEY_FILE.write_bytes(
+        key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
 
 
 class Scenario(Enum):
@@ -71,7 +133,6 @@ async def run_aioquic_server():
         alpn_protocols=["hq-interop"],
         is_client=False,
     )
-    config.verify_mode = ssl.CERT_NONE
     config.load_cert_chain(str(CERT_FILE), str(KEY_FILE))
 
     return await serve(
@@ -89,6 +150,11 @@ async def run_flowq_client():
 
     proc = await asyncio.create_subprocess_exec(
         str(FLOWQ_CLIENT),
+        env={
+            **os.environ,
+            "FLOWQ_QUIC_CA_FILE": str(CERT_FILE),
+            "FLOWQ_QUIC_SERVER_NAME": SERVER_NAME,
+        },
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -111,6 +177,7 @@ async def main():
     print("=" * 50)
     print(f"FlowQ Interop Test: FlowQ Client -> aioquic Server ({scenario.value})")
     print("=" * 50)
+    ensure_test_certificate()
 
     RecordingProtocol.handshake_completed = asyncio.Event()
     RecordingProtocol.stream_data_received = asyncio.Event()

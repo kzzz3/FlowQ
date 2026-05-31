@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <exception>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -950,7 +951,8 @@ private:
             packet_number{space, packet_number_value},
             frames,
             detail::tx_protector_for(space, config_),
-            config_.pipeline
+            config_.pipeline,
+            config_.role == connection_role::client && space == packet_number_space::initial
         });
     }
 
@@ -1123,19 +1125,109 @@ private:
             if (packet_space_discarded(space)) {
                 continue;
             }
-            auto frame = flowq::quic::frame{crypto_frame{item.offset, std::move(item.data)}};
-            switch (space) {
-            case packet_number_space::initial:
-                packet_spaces_.get(packet_number_space::initial).queue.push_back(std::move(frame));
-                break;
-            case packet_number_space::handshake:
-                packet_spaces_.get(packet_number_space::handshake).queue.push_back(std::move(frame));
-                break;
-            case packet_number_space::application:
-                packet_spaces_.get(packet_number_space::application).queue.push_back(std::move(frame));
-                break;
+            auto frames = split_crypto_frames(space, item);
+            if (!frames.ok()) {
+                enter_closing(frames.error, std::chrono::steady_clock::now());
+                return;
+            }
+            auto& queue = packet_spaces_.get(space).queue;
+            for (auto& frame : frames.frames) {
+                queue.push_back(std::move(frame));
             }
         }
+    }
+
+    [[nodiscard]] frame_payload_budget_selection split_crypto_frames(packet_number_space space, const crypto_bytes& item) const {
+        frame_payload_budget_selection result{};
+        if (item.data.empty()) {
+            result.next_index = 1;
+            return result;
+        }
+
+        auto chunk_size = crypto_frame_chunk_size(space, item.offset, item.data.size());
+        if (chunk_size == 0) {
+            result.error = flowq::error{flowq::error_code::protocol_error, "CRYPTO frame exceeds packet payload budget"};
+            return result;
+        }
+
+        std::uint64_t offset = item.offset;
+        std::size_t consumed = 0;
+        while (consumed < item.data.size()) {
+            chunk_size = crypto_frame_chunk_size(space, offset, item.data.size() - consumed);
+            if (chunk_size == 0) {
+                result.error = flowq::error{flowq::error_code::protocol_error, "CRYPTO frame exceeds packet payload budget"};
+                return result;
+            }
+            chunk_size = std::min(chunk_size, item.data.size() - consumed);
+            auto chunk = flowq::buffer{
+                std::span<const std::byte>{item.data.data() + static_cast<std::ptrdiff_t>(consumed), chunk_size}};
+            result.encoded_size += chunk.size();
+            result.frames.push_back(frame{crypto_frame{offset, std::move(chunk)}});
+            consumed += chunk_size;
+            if (offset > std::numeric_limits<std::uint64_t>::max() - chunk_size) {
+                result.error = flowq::error{flowq::error_code::protocol_error, "CRYPTO frame offset overflow"};
+                return result;
+            }
+            offset += chunk_size;
+        }
+        result.next_index = 1;
+        return result;
+    }
+
+    [[nodiscard]] std::size_t crypto_frame_chunk_size(packet_number_space space, std::uint64_t offset, std::size_t remaining) const {
+        auto payload_budget = crypto_frame_payload_budget(space);
+        if (payload_budget <= 1) {
+            return 0;
+        }
+
+        const auto offset_size = encoded_size(offset);
+        const auto length_size = encoded_size(remaining);
+        if (!offset_size.ok() || !length_size.ok()) {
+            return 0;
+        }
+        const auto overhead = 1U + offset_size.value + length_size.value;
+        if (payload_budget <= overhead) {
+            return 0;
+        }
+        return payload_budget - overhead;
+    }
+
+    [[nodiscard]] std::size_t crypto_frame_payload_budget(packet_number_space space) const {
+        auto payload_budget = config_.max_packet_payload_size;
+        if (payload_budget == std::numeric_limits<std::size_t>::max()) {
+            payload_budget = config_.pipeline.max_datagram_size;
+        } else {
+            payload_budget = std::min(payload_budget, config_.pipeline.max_datagram_size);
+        }
+
+        if (space == packet_number_space::application) {
+            return payload_budget;
+        }
+
+        const auto* protector = detail::tx_protector_for(space, config_);
+        if (protector == nullptr) {
+            return 0;
+        }
+
+        const auto length_size = encoded_size(config_.pipeline.max_datagram_size);
+        if (!length_size.ok()) {
+            return 0;
+        }
+
+        std::size_t header_prefix_size = 1U + 4U;
+        header_prefix_size += 1U + config_.remote_connection_id.bytes.size();
+        header_prefix_size += 1U + config_.local_connection_id.bytes.size();
+        if (space == packet_number_space::initial) {
+            header_prefix_size += 1U;
+        }
+        header_prefix_size += length_size.value;
+
+        const auto packet_overhead =
+            header_prefix_size + detail::fixed_packet_number_length + protector->protection_overhead();
+        if (payload_budget <= packet_overhead) {
+            return 0;
+        }
+        return payload_budget - packet_overhead;
     }
 
     void flush_space(packet_number_space space, std::chrono::steady_clock::time_point sent_at) {

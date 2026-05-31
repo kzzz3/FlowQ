@@ -6,7 +6,7 @@ This document records the current evidence required before FlowQ can claim produ
 
 - **Level**: Production-readiness gate
 - **Date**: 2026-05-31
-- **Status**: Non-production. The codebase has local build/test evidence, OpenSSL-gated AES-128-GCM packet protection, deterministic transport behavior, and recorded aioquic handshake, bidirectional STREAM echo, and application loss-recovery passes. Multi-peer interop and human security review are not recorded.
+- **Status**: Non-production. The codebase has local build/test evidence, OpenSSL-gated AES-128-GCM packet protection, deterministic transport behavior, fail-closed client TLS peer verification, and recorded aioquic handshake, bidirectional STREAM echo, and application loss-recovery passes. Multi-peer interop, Linux sanitizer evidence, and human security review are not recorded.
 
 ## Evidence In Place
 
@@ -55,6 +55,8 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ Harness wiring was verified locally with `FLOWQ_INTEROP_SCENARIO=basic_handshake` and a local executable peer.
 - ✅ FlowQ client handshake and bidirectional stream 0 echo pass against Python `aioquic` 1.3.0 in conda environment `expr`.
 - ✅ The aioquic validation run recorded FlowQ TLS backend OpenSSL QUIC TLS (`OpenSSL 3.6.1 27 Jan 2026`) and negotiated cipher suite `TLS_AES_128_GCM_SHA256`.
+- ✅ FlowQ OpenSSL QUIC TLS client setup requires an explicit CA file and verification host, configures SNI, and enables OpenSSL hostname verification.
+- ✅ The direct aioquic harness generates a short-lived localhost SAN certificate and passes the generated CA path plus server name to the FlowQ client.
 - ✅ FlowQ client application loss recovery passes against Python `aioquic` 1.3.0 after one intentionally dropped short-header datagram; FlowQ reports Application PTO loss detection and stream retransmission before receiving the echo.
 - ✅ Coalesced long-header datagrams now stay in core connection processing: peer source CID learning, trailing zero padding, and packet-protector refresh are covered by unit tests and the aioquic handshake regression.
 - ⚠️ Named non-aioquic QUIC peers are not available in the current local environment: ngtcp2, quiche, MsQuic, picoquic, and lsquic were not found on PATH.
@@ -93,7 +95,6 @@ FlowQ can only claim production-candidate status for the exact scope backed by l
 - QPACK deployment guarantees
 - Alternative congestion-control algorithms beyond NewReno
 - Cross-platform release evidence
-- Production TLS certificate-validation policy
 - External security audit
 
 ## Open Gate Items

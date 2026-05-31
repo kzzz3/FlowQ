@@ -27,6 +27,7 @@ struct openssl_tls_config {
     const char* cert_file{};    // Server: path to certificate file
     const char* key_file{};     // Server: path to private key file
     const char* ca_file{};      // Client: path to CA certificate for verification
+    const char* server_name{};  // Client: peer DNS name for SNI and certificate hostname verification
     const char* alpn{"hq-interop"};
     const char* tls13_ciphersuite{"TLS_AES_128_GCM_SHA256"};
     transport_parameters local_transport_parameters{
@@ -83,7 +84,15 @@ public:
             }
         }
 
-        if (config.is_client && config.ca_file != nullptr) {
+        if (config.is_client) {
+            if (is_empty(config.ca_file)) {
+                set_failure("client TLS requires CA certificate for peer verification");
+                return;
+            }
+            if (is_empty(config.server_name)) {
+                set_failure("client TLS requires server name for certificate verification");
+                return;
+            }
             if (SSL_CTX_load_verify_locations(ctx_, config.ca_file, nullptr) != 1) {
                 set_failure("failed to load client CA certificate");
                 return;
@@ -101,6 +110,14 @@ public:
         // Set client/server mode
         if (config.is_client) {
             SSL_set_connect_state(ssl_);
+            if (SSL_set_tlsext_host_name(ssl_, config_.server_name) != 1) {
+                set_failure("failed to configure TLS SNI");
+                return;
+            }
+            if (SSL_set1_host(ssl_, config_.server_name) != 1) {
+                set_failure("failed to configure TLS certificate hostname verification");
+                return;
+            }
         } else {
             SSL_set_accept_state(ssl_);
         }
@@ -446,6 +463,10 @@ private:
             return tls_encryption_level::application;
         default: return std::nullopt;
         }
+    }
+
+    [[nodiscard]] static bool is_empty(const char* value) noexcept {
+        return value == nullptr || value[0] == '\0';
     }
 
     // Update current TX level

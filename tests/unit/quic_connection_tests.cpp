@@ -314,9 +314,12 @@ TEST_CASE("connection loop preserves queued frames that exceed payload budget fo
         first_datagram.payload,
         protector.initial);
     REQUIRE(first.ok());
-    REQUIRE(first.frames.size() == 2);
+    REQUIRE(first.frames.size() >= 2);
     CHECK(std::holds_alternative<flowq::quic::ping_frame>(first.frames[0]));
     CHECK(std::holds_alternative<flowq::quic::stream_frame>(first.frames[1]));
+    if (first.frames.size() > 2) {
+        CHECK(std::holds_alternative<flowq::quic::padding_frame>(first.frames[2]));
+    }
 
     loop.flush();
     auto second_datagram = require_single_outbound(loop.drain_actions());
@@ -324,11 +327,67 @@ TEST_CASE("connection loop preserves queued frames that exceed payload budget fo
         second_datagram.payload,
         protector.initial);
     REQUIRE(second.ok());
-    REQUIRE(second.frames.size() == 1);
+    REQUIRE(second.frames.size() >= 1);
     CHECK(std::holds_alternative<flowq::quic::ping_frame>(second.frames[0]));
+    if (second.frames.size() > 1) {
+        CHECK(std::holds_alternative<flowq::quic::padding_frame>(second.frames[1]));
+    }
     CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets().size() == 2);
     CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets()[0].packet_number == 0);
     CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets()[1].packet_number == 1);
+}
+
+TEST_CASE("connection loop splits outbound TLS crypto to fit the packet payload budget") {
+    flowq::quic::test::plaintext_packet_protector_set protector{};
+    recording_tls_adapter tls{};
+    tls.outbound.push_back(flowq::quic::crypto_bytes{
+        flowq::quic::tls_encryption_level::initial,
+        0,
+        text(std::string(2000, 'c'))});
+
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = cid({0x01});
+    config.remote_connection_id = cid({0x02});
+    config.peer = flowq::endpoint{"127.0.0.1", 4433, "hq-interop"};
+    config.pipeline = flowq::quic::packet_pipeline_config{1200};
+    config.max_packet_payload_size = config.pipeline.max_datagram_size;
+    config.initial_tx_protector = &protector.initial;
+    config.initial_rx_protector = &protector.initial;
+    config.handshake_tx_protector = &protector.handshake;
+    config.handshake_rx_protector = &protector.handshake;
+    config.application_tx_protector = &protector.application;
+    config.application_rx_protector = &protector.application;
+    config.tls_adapter = &tls;
+    config.key_lifecycle.observe_tls(
+        flowq::quic::handshake_state::handshaking,
+        flowq::quic::tls_key_availability{true, false, false});
+    flowq::quic::connection_loop loop{std::move(config)};
+
+    std::uint64_t expected_offset = 0;
+    std::size_t total_crypto = 0;
+    std::size_t sent_packets = 0;
+    while (total_crypto < 2000) {
+        loop.flush();
+        auto datagram = require_only_outbound_datagram(loop.drain_actions());
+        CHECK(datagram.payload.size() == 1200);
+        auto parsed = flowq::quic::parse_long_packet(datagram.payload, protector.initial);
+        REQUIRE(parsed.ok());
+        REQUIRE(parsed.frames.size() >= 1);
+        const auto& crypto = std::get<flowq::quic::crypto_frame>(parsed.frames[0]);
+        CHECK(crypto.offset == expected_offset);
+        CHECK(crypto.data.size() < config.pipeline.max_datagram_size);
+        if (parsed.frames.size() > 1) {
+            CHECK(std::holds_alternative<flowq::quic::padding_frame>(parsed.frames[1]));
+        }
+        REQUIRE_FALSE(crypto.data.empty());
+        expected_offset += crypto.data.size();
+        total_crypto += crypto.data.size();
+        ++sent_packets;
+        REQUIRE(sent_packets <= 4);
+    }
+    CHECK(total_crypto == 2000);
+    CHECK(loop.sent_packets(flowq::quic::packet_number_space::initial).packets().size() == sent_packets);
 }
 
 TEST_CASE("connection loop parses inbound Initial packets and generates ACK packets") {
@@ -349,8 +408,11 @@ TEST_CASE("connection loop parses inbound Initial packets and generates ACK pack
     const auto& received = std::get<flowq::quic::received_packet_event>(received_actions[0]);
     CHECK(received.number.space == flowq::quic::packet_number_space::initial);
     CHECK(received.number.value == 0);
-    REQUIRE(received.frames.size() == 1);
+    REQUIRE(received.frames.size() >= 1);
     CHECK(std::holds_alternative<flowq::quic::ping_frame>(received.frames[0]));
+    if (received.frames.size() > 1) {
+        CHECK(std::holds_alternative<flowq::quic::padding_frame>(received.frames[1]));
+    }
 
     server.acknowledge(flowq::quic::packet_number_space::initial);
     auto ack_datagram = require_single_outbound(server.drain_actions());
@@ -358,9 +420,12 @@ TEST_CASE("connection loop parses inbound Initial packets and generates ACK pack
         ack_datagram.payload,
         protector.initial);
     REQUIRE(parsed_ack.ok());
-    REQUIRE(parsed_ack.frames.size() == 1);
+    REQUIRE(parsed_ack.frames.size() >= 1);
     REQUIRE(std::holds_alternative<flowq::quic::ack_frame>(parsed_ack.frames[0]));
     CHECK(std::get<flowq::quic::ack_frame>(parsed_ack.frames[0]).largest_acknowledged == 0);
+    if (parsed_ack.frames.size() > 1) {
+        CHECK(std::holds_alternative<flowq::quic::padding_frame>(parsed_ack.frames[1]));
+    }
 }
 
 TEST_CASE("connection loop learns peer source connection ID from long headers") {

@@ -7,9 +7,9 @@
 - **Harness**: `tests/interop/test_interop.py`
 - **TLS backend**: OpenSSL QUIC TLS (`OpenSSL 3.6.1 27 Jan 2026`)
 - **Negotiated cipher suite**: `TLS_AES_128_GCM_SHA256`
-- **Scope**: client Initial through TLS handshake confirmation, 1-RTT short-header packet protection, FlowQ STREAM data delivery, aioquic echo delivery back to FlowQ on stream 0, and application-space recovery after one intentionally dropped short-header datagram.
+- **Scope**: client Initial through TLS handshake confirmation, OpenSSL peer certificate and hostname verification against the generated localhost SAN certificate, 1-RTT short-header packet protection, FlowQ STREAM data delivery, aioquic echo delivery back to FlowQ on stream 0, and application-space recovery after one intentionally dropped short-header datagram.
 - **Result**: pass. `aioquic` observed `HandshakeCompleted` and stream 0 payload `hello from FlowQ`; FlowQ reported `Handshake confirmed`, `Recovery timer fired for packet number space 2; newly lost packets: 1`, `Retransmitting stream 0`, and received stream 0 payload `echo from aioquic`.
-- **Validation run**: rebuilt `flowq_quic_client.exe` from the OpenSSL interop tree on branch `codex-production-quic-hardening` in the local Visual Studio 18/MSVC 19.50 environment and ran in conda environment `expr`; `bidirectional_stream` and `loss_recovery` both passed against aioquic 1.3.0.
+- **Validation run**: rebuilt `flowq_quic_client.exe` from the OpenSSL interop tree on branch `codex-production-quic-hardening` in the local Visual Studio 18/MSVC 19.50 environment and ran in conda environment `expr`; the Python harness generated a short-lived localhost SAN certificate and passed the generated CA path plus server name to FlowQ; `bidirectional_stream` and `loss_recovery` both passed against aioquic 1.3.0.
 
 ## External QUIC Peer Availability
 

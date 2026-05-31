@@ -277,6 +277,32 @@ TEST_CASE("packet pipeline round trips Initial frames through plaintext protecto
     CHECK(std::holds_alternative<flowq::quic::padding_frame>(parsed.frames[3]));
 }
 
+TEST_CASE("packet pipeline pads client Initial packets to the QUIC datagram minimum") {
+    flowq::quic::test::plaintext_packet_protector protector{flowq::quic::protection_level::initial};
+    flowq::quic::packet_build_request request{
+        flowq::quic::long_packet_type::initial,
+        1,
+        cid({0xaa}),
+        cid({0xbb}),
+        {},
+        flowq::quic::packet_number{flowq::quic::packet_number_space::initial, 0},
+        {flowq::quic::frame{flowq::quic::crypto_frame{0, flowq::buffer{bytes({0x01, 0x02})}}}},
+        &protector,
+        flowq::quic::packet_pipeline_config{1200},
+        true
+    };
+
+    auto assembled = flowq::quic::assemble_long_packet(request);
+    REQUIRE(assembled.ok());
+    CHECK(assembled.datagram.size() == 1200);
+
+    auto parsed = flowq::quic::parse_long_packet(assembled.datagram, protector);
+    REQUIRE(parsed.ok());
+    REQUIRE(parsed.frames.size() == 2);
+    REQUIRE(std::holds_alternative<flowq::quic::crypto_frame>(parsed.frames[0]));
+    CHECK(std::holds_alternative<flowq::quic::padding_frame>(parsed.frames[1]));
+}
+
 TEST_CASE("packet pipeline applies long header protection to packet number bytes") {
     deterministic_header_protector protector{};
     flowq::quic::packet_build_request request{
