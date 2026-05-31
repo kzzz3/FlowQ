@@ -35,18 +35,18 @@ TEST_CASE("benchmark session lifecycle") {
     flowq::benchmark::benchmark_suite suite;
 
     suite.add("session_create_destroy", []() {
-        flowq::quic::test::plaintext_packet_protector protector{};
+        flowq::quic::test::plaintext_packet_protector_set protector{};
         flowq::quic::session_config config{
             .role = flowq::quic::connection_role::client,
             .local_connection_id = make_cid({0x01}),
             .remote_connection_id = make_cid({0x02}),
             .peer = flowq::endpoint{"server", 4433, "hq-interop"},
-            .initial_tx_protector = &protector,
-            .initial_rx_protector = &protector,
-            .handshake_tx_protector = &protector,
-            .handshake_rx_protector = &protector,
-            .application_tx_protector = &protector,
-            .application_rx_protector = &protector,
+            .initial_tx_protector = &protector.initial,
+            .initial_rx_protector = &protector.initial,
+            .handshake_tx_protector = &protector.handshake,
+            .handshake_rx_protector = &protector.handshake,
+            .application_tx_protector = &protector.application,
+            .application_rx_protector = &protector.application,
         };
         flowq::quic::session session{std::move(config)};
     });

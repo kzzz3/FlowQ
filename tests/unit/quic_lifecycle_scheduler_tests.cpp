@@ -76,18 +76,18 @@ flowq::quic::session_config make_config(
     flowq::quic::connection_id local,
     flowq::quic::connection_id remote,
     flowq::endpoint peer,
-    const flowq::quic::packet_protector& protector) {
+    const flowq::quic::test::plaintext_packet_protector_set& protector) {
     flowq::quic::session_config config{};
     config.role = flowq::quic::connection_role::client;
     config.local_connection_id = std::move(local);
     config.remote_connection_id = std::move(remote);
     config.peer = std::move(peer);
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
+    config.initial_tx_protector = &protector.initial;
+    config.initial_rx_protector = &protector.initial;
+    config.handshake_tx_protector = &protector.handshake;
+    config.handshake_rx_protector = &protector.handshake;
+    config.application_tx_protector = &protector.application;
+    config.application_rx_protector = &protector.application;
     return config;
 }
 
@@ -197,7 +197,7 @@ TEST_CASE("lifecycle scheduler cancellation maps to stopped") {
 
 TEST_CASE("lifecycle scheduler drives real session idle timeout close") {
     flowq::context context{};
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     ready_tls_adapter tls{};
     auto config = make_config(
         cid({0x01}),

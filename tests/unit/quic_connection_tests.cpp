@@ -191,6 +191,35 @@ flowq::quic::connection_loop make_loop(
     return flowq::quic::connection_loop{std::move(config)};
 }
 
+flowq::quic::connection_loop make_loop(
+    flowq::quic::connection_id local,
+    flowq::quic::connection_id remote,
+    flowq::endpoint peer,
+    const flowq::quic::test::plaintext_packet_protector_set& protectors,
+    std::uint64_t initial_stream_send_max_data = UINT64_MAX,
+    std::uint64_t initial_connection_send_max_data = UINT64_MAX,
+    std::size_t max_packet_payload_size = SIZE_MAX,
+    bool disable_active_migration = false) {
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = std::move(local);
+    config.remote_connection_id = std::move(remote);
+    config.peer = std::move(peer);
+    config.pipeline = flowq::quic::packet_pipeline_config{1200};
+    config.initial_stream_send_max_data = initial_stream_send_max_data;
+    config.initial_connection_send_max_data = initial_connection_send_max_data;
+    config.max_packet_payload_size = max_packet_payload_size;
+    config.initial_tx_protector = &protectors.initial;
+    config.initial_rx_protector = &protectors.initial;
+    config.handshake_tx_protector = &protectors.handshake;
+    config.handshake_rx_protector = &protectors.handshake;
+    config.application_tx_protector = &protectors.application;
+    config.application_rx_protector = &protectors.application;
+    config.tls_adapter = &application_ready_tls_adapter();
+    config.disable_active_migration = disable_active_migration;
+    return flowq::quic::connection_loop{std::move(config)};
+}
+
 flowq::quic::outbound_datagram require_single_outbound(std::vector<flowq::quic::connection_loop_action> actions) {
     REQUIRE(actions.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::outbound_datagram>(actions[0]));
@@ -200,7 +229,7 @@ flowq::quic::outbound_datagram require_single_outbound(std::vector<flowq::quic::
 } // namespace
 
 TEST_CASE("connection loop flushes queued Initial frames as an outbound datagram") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::endpoint peer{"127.0.0.1", 4433, "hq-interop"};
     auto loop = make_loop(cid({0x01}), cid({0x02}), peer, protector);
 
@@ -216,7 +245,7 @@ TEST_CASE("connection loop flushes queued Initial frames as an outbound datagram
 }
 
 TEST_CASE("connection loop preserves queued frames that exceed payload budget for a later flush") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::endpoint peer{"127.0.0.1", 4433, "hq-interop"};
     auto loop = make_loop(cid({0x01}), cid({0x02}), peer, protector, UINT64_MAX, UINT64_MAX, 7);
     loop.queue_initial({
@@ -229,7 +258,7 @@ TEST_CASE("connection loop preserves queued frames that exceed payload budget fo
     auto first_datagram = require_single_outbound(loop.drain_actions());
     auto first = flowq::quic::parse_long_packet(
         first_datagram.payload,
-        protector);
+        protector.initial);
     REQUIRE(first.ok());
     REQUIRE(first.frames.size() == 2);
     CHECK(std::holds_alternative<flowq::quic::ping_frame>(first.frames[0]));
@@ -239,7 +268,7 @@ TEST_CASE("connection loop preserves queued frames that exceed payload budget fo
     auto second_datagram = require_single_outbound(loop.drain_actions());
     auto second = flowq::quic::parse_long_packet(
         second_datagram.payload,
-        protector);
+        protector.initial);
     REQUIRE(second.ok());
     REQUIRE(second.frames.size() == 1);
     CHECK(std::holds_alternative<flowq::quic::ping_frame>(second.frames[0]));
@@ -249,7 +278,7 @@ TEST_CASE("connection loop preserves queued frames that exceed payload budget fo
 }
 
 TEST_CASE("connection loop parses inbound Initial packets and generates ACK packets") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::endpoint client_peer{"client", 1111, "hq-interop"};
     flowq::endpoint server_peer{"server", 4433, "hq-interop"};
     auto client = make_loop(cid({0x01}), cid({0x02}), server_peer, protector);
@@ -273,7 +302,7 @@ TEST_CASE("connection loop parses inbound Initial packets and generates ACK pack
     auto ack_datagram = require_single_outbound(server.drain_actions());
     auto parsed_ack = flowq::quic::parse_long_packet(
         ack_datagram.payload,
-        protector);
+        protector.initial);
     REQUIRE(parsed_ack.ok());
     REQUIRE(parsed_ack.frames.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::ack_frame>(parsed_ack.frames[0]));
@@ -281,7 +310,7 @@ TEST_CASE("connection loop parses inbound Initial packets and generates ACK pack
 }
 
 TEST_CASE("connection loop learns peer source connection ID from long headers") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::endpoint server_peer{"server", 4433, "hq-interop"};
     flowq::endpoint client_peer{"client", 1111, "hq-interop"};
     auto client = make_loop(cid({0x01}), cid({0x02}), server_peer, protector);
@@ -307,7 +336,7 @@ TEST_CASE("connection loop learns peer source connection ID from long headers") 
 }
 
 TEST_CASE("connection loop accepts coalesced long datagrams with trailing zero padding") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::endpoint client_peer{"client", 1111, "hq-interop"};
     flowq::endpoint server_peer{"server", 4433, "hq-interop"};
     auto client = make_loop(cid({0x01}), cid({0x02}), server_peer, protector);
@@ -333,7 +362,7 @@ TEST_CASE("connection loop accepts coalesced long datagrams with trailing zero p
 }
 
 TEST_CASE("connection loop enforces server anti-amplification limit before peer address validation") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::endpoint client_peer{"client", 1111, "hq-interop"};
     flowq::endpoint server_peer{"server", 4433, "hq-interop"};
     auto client = make_loop(cid({0x01}), cid({0x02}), server_peer, protector);
@@ -343,12 +372,12 @@ TEST_CASE("connection loop enforces server anti-amplification limit before peer 
     server_config.local_connection_id = cid({0x02});
     server_config.remote_connection_id = cid({0x01});
     server_config.peer = client_peer;
-    server_config.initial_tx_protector = &protector;
-    server_config.initial_rx_protector = &protector;
-    server_config.handshake_tx_protector = &protector;
-    server_config.handshake_rx_protector = &protector;
-    server_config.application_tx_protector = &protector;
-    server_config.application_rx_protector = &protector;
+    server_config.initial_tx_protector = &protector.initial;
+    server_config.initial_rx_protector = &protector.initial;
+    server_config.handshake_tx_protector = &protector.handshake;
+    server_config.handshake_rx_protector = &protector.handshake;
+    server_config.application_tx_protector = &protector.application;
+    server_config.application_rx_protector = &protector.application;
     server_config.pipeline = flowq::quic::packet_pipeline_config{8192};
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -389,19 +418,19 @@ TEST_CASE("connection loop enforces server anti-amplification limit before peer 
 }
 
 TEST_CASE("connection loop lets prevalidated server peer send before receiving packets") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
 
     flowq::quic::connection_loop_config server_config{};
     server_config.role = flowq::quic::connection_role::server;
     server_config.local_connection_id = cid({0x02});
     server_config.remote_connection_id = cid({0x01});
     server_config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
-    server_config.initial_tx_protector = &protector;
-    server_config.initial_rx_protector = &protector;
-    server_config.handshake_tx_protector = &protector;
-    server_config.handshake_rx_protector = &protector;
-    server_config.application_tx_protector = &protector;
-    server_config.application_rx_protector = &protector;
+    server_config.initial_tx_protector = &protector.initial;
+    server_config.initial_rx_protector = &protector.initial;
+    server_config.handshake_tx_protector = &protector.handshake;
+    server_config.handshake_rx_protector = &protector.handshake;
+    server_config.application_tx_protector = &protector.application;
+    server_config.application_rx_protector = &protector.application;
     server_config.peer_address_validated = true;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -414,7 +443,7 @@ TEST_CASE("connection loop lets prevalidated server peer send before receiving p
 }
 
 TEST_CASE("connection loop ignores discarded Initial packet space") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::endpoint server_peer{"server", 4433, "hq-interop"};
     flowq::endpoint client_peer{"client", 1111, "hq-interop"};
     auto client = make_loop(cid({0x01}), cid({0x02}), server_peer, protector);
@@ -426,12 +455,12 @@ TEST_CASE("connection loop ignores discarded Initial packet space") {
     server_config.local_connection_id = cid({0x02});
     server_config.remote_connection_id = cid({0x01});
     server_config.peer = client_peer;
-    server_config.initial_tx_protector = &protector;
-    server_config.initial_rx_protector = &protector;
-    server_config.handshake_tx_protector = &protector;
-    server_config.handshake_rx_protector = &protector;
-    server_config.application_tx_protector = &protector;
-    server_config.application_rx_protector = &protector;
+    server_config.initial_tx_protector = &protector.initial;
+    server_config.initial_rx_protector = &protector.initial;
+    server_config.handshake_tx_protector = &protector.handshake;
+    server_config.handshake_rx_protector = &protector.handshake;
+    server_config.application_tx_protector = &protector.application;
+    server_config.application_rx_protector = &protector.application;
     server_config.key_lifecycle = lifecycle;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -447,7 +476,7 @@ TEST_CASE("connection loop ignores discarded Initial packet space") {
 }
 
 TEST_CASE("connection loop does not flush or recover discarded packet spaces") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::quic::key_lifecycle_state lifecycle{};
     lifecycle.discard(flowq::quic::packet_number_space::initial);
 
@@ -456,12 +485,12 @@ TEST_CASE("connection loop does not flush or recover discarded packet spaces") {
     config.local_connection_id = cid({0x01});
     config.remote_connection_id = cid({0x02});
     config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
+    config.initial_tx_protector = &protector.initial;
+    config.initial_rx_protector = &protector.initial;
+    config.handshake_tx_protector = &protector.handshake;
+    config.handshake_rx_protector = &protector.handshake;
+    config.application_tx_protector = &protector.application;
+    config.application_rx_protector = &protector.application;
     config.key_lifecycle = lifecycle;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -474,7 +503,7 @@ TEST_CASE("connection loop does not flush or recover discarded packet spaces") {
 }
 
 TEST_CASE("connection loop applies TLS key lifecycle discard decisions") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     recording_tls_adapter adapter{};
     adapter.state_value = flowq::quic::handshake_state::handshaking;
     adapter.keys.handshake = true;
@@ -484,12 +513,12 @@ TEST_CASE("connection loop applies TLS key lifecycle discard decisions") {
     config.local_connection_id = cid({0x01});
     config.remote_connection_id = cid({0x02});
     config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
+    config.initial_tx_protector = &protector.initial;
+    config.initial_rx_protector = &protector.initial;
+    config.handshake_tx_protector = &protector.handshake;
+    config.handshake_rx_protector = &protector.handshake;
+    config.application_tx_protector = &protector.application;
+    config.application_rx_protector = &protector.application;
     config.tls_adapter = &adapter;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -511,12 +540,12 @@ TEST_CASE("connection loop applies TLS key lifecycle discard decisions") {
     confirmed_config.local_connection_id = cid({0x01});
     confirmed_config.remote_connection_id = cid({0x02});
     confirmed_config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
-    confirmed_config.initial_tx_protector = &protector;
-    confirmed_config.initial_rx_protector = &protector;
-    confirmed_config.handshake_tx_protector = &protector;
-    confirmed_config.handshake_rx_protector = &protector;
-    confirmed_config.application_tx_protector = &protector;
-    confirmed_config.application_rx_protector = &protector;
+    confirmed_config.initial_tx_protector = &protector.initial;
+    confirmed_config.initial_rx_protector = &protector.initial;
+    confirmed_config.handshake_tx_protector = &protector.handshake;
+    confirmed_config.handshake_rx_protector = &protector.handshake;
+    confirmed_config.application_tx_protector = &protector.application;
+    confirmed_config.application_rx_protector = &protector.application;
     confirmed_config.tls_adapter = &confirmed_adapter;
     auto confirmed_loop = flowq::quic::connection_loop{std::move(confirmed_config)};
 
@@ -530,7 +559,7 @@ TEST_CASE("connection loop applies TLS key lifecycle discard decisions") {
 }
 
 TEST_CASE("connection loop refreshes key lifecycle after inbound TLS CRYPTO changes") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     recording_tls_adapter adapter{};
     adapter.install_handshake_keys_on_receive = true;
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
@@ -540,12 +569,12 @@ TEST_CASE("connection loop refreshes key lifecycle after inbound TLS CRYPTO chan
     server_config.local_connection_id = cid({0x02});
     server_config.remote_connection_id = cid({0x01});
     server_config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
-    server_config.initial_tx_protector = &protector;
-    server_config.initial_rx_protector = &protector;
-    server_config.handshake_tx_protector = &protector;
-    server_config.handshake_rx_protector = &protector;
-    server_config.application_tx_protector = &protector;
-    server_config.application_rx_protector = &protector;
+    server_config.initial_tx_protector = &protector.initial;
+    server_config.initial_rx_protector = &protector.initial;
+    server_config.handshake_tx_protector = &protector.handshake;
+    server_config.handshake_rx_protector = &protector.handshake;
+    server_config.application_tx_protector = &protector.application;
+    server_config.application_rx_protector = &protector.application;
     server_config.tls_adapter = &adapter;
     server_config.peer_address_validated = true;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
@@ -572,7 +601,7 @@ TEST_CASE("connection loop refreshes key lifecycle after inbound TLS CRYPTO chan
 }
 
 TEST_CASE("connection loop refreshes key lifecycle after draining TLS CRYPTO") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     recording_tls_adapter adapter{};
     adapter.state_value = flowq::quic::handshake_state::handshaking;
     adapter.keys.handshake = true;
@@ -584,12 +613,12 @@ TEST_CASE("connection loop refreshes key lifecycle after draining TLS CRYPTO") {
     config.local_connection_id = cid({0x02});
     config.remote_connection_id = cid({0x01});
     config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
+    config.initial_tx_protector = &protector.initial;
+    config.initial_rx_protector = &protector.initial;
+    config.handshake_tx_protector = &protector.handshake;
+    config.handshake_rx_protector = &protector.handshake;
+    config.application_tx_protector = &protector.application;
+    config.application_rx_protector = &protector.application;
     config.tls_adapter = &adapter;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -604,7 +633,7 @@ TEST_CASE("connection loop refreshes key lifecycle after draining TLS CRYPTO") {
 }
 
 TEST_CASE("connection loop discards Initial space after draining TLS handshake keys") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     recording_tls_adapter adapter{};
     adapter.outbound.push_back(flowq::quic::crypto_bytes{flowq::quic::tls_encryption_level::initial, 0, text("late initial flight")});
     adapter.install_handshake_keys_on_drain = true;
@@ -614,12 +643,12 @@ TEST_CASE("connection loop discards Initial space after draining TLS handshake k
     config.local_connection_id = cid({0x02});
     config.remote_connection_id = cid({0x01});
     config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
+    config.initial_tx_protector = &protector.initial;
+    config.initial_rx_protector = &protector.initial;
+    config.handshake_tx_protector = &protector.handshake;
+    config.handshake_rx_protector = &protector.handshake;
+    config.application_tx_protector = &protector.application;
+    config.application_rx_protector = &protector.application;
     config.tls_adapter = &adapter;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -632,7 +661,7 @@ TEST_CASE("connection loop discards Initial space after draining TLS handshake k
 }
 
 TEST_CASE("connection loop explicit packet-space discard clears recovery state") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
 
     loop.queue_handshake({flowq::quic::frame{flowq::quic::ping_frame{}}});
@@ -647,7 +676,7 @@ TEST_CASE("connection loop explicit packet-space discard clears recovery state")
 }
 
 TEST_CASE("connection loop feeds inbound CRYPTO frames to TLS adapter by packet space") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     recording_tls_adapter adapter{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     flowq::quic::connection_loop_config server_config{};
@@ -655,12 +684,12 @@ TEST_CASE("connection loop feeds inbound CRYPTO frames to TLS adapter by packet 
     server_config.local_connection_id = cid({0x02});
     server_config.remote_connection_id = cid({0x01});
     server_config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
-    server_config.initial_tx_protector = &protector;
-    server_config.initial_rx_protector = &protector;
-    server_config.handshake_tx_protector = &protector;
-    server_config.handshake_rx_protector = &protector;
-    server_config.application_tx_protector = &protector;
-    server_config.application_rx_protector = &protector;
+    server_config.initial_tx_protector = &protector.initial;
+    server_config.initial_rx_protector = &protector.initial;
+    server_config.handshake_tx_protector = &protector.handshake;
+    server_config.handshake_rx_protector = &protector.handshake;
+    server_config.application_tx_protector = &protector.application;
+    server_config.application_rx_protector = &protector.application;
     server_config.tls_adapter = &adapter;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -677,7 +706,7 @@ TEST_CASE("connection loop feeds inbound CRYPTO frames to TLS adapter by packet 
 }
 
 TEST_CASE("connection loop pumps TLS adapter CRYPTO bytes into packet-space frames") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     recording_tls_adapter adapter{};
     adapter.outbound.push_back(flowq::quic::crypto_bytes{flowq::quic::tls_encryption_level::handshake, 5, text("server flight")});
     flowq::quic::connection_loop_config config{};
@@ -685,12 +714,12 @@ TEST_CASE("connection loop pumps TLS adapter CRYPTO bytes into packet-space fram
     config.local_connection_id = cid({0x02});
     config.remote_connection_id = cid({0x01});
     config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
+    config.initial_tx_protector = &protector.initial;
+    config.initial_rx_protector = &protector.initial;
+    config.handshake_tx_protector = &protector.handshake;
+    config.handshake_rx_protector = &protector.handshake;
+    config.application_tx_protector = &protector.application;
+    config.application_rx_protector = &protector.application;
     config.tls_adapter = &adapter;
     config.peer_address_validated = true;
     auto loop = flowq::quic::connection_loop{std::move(config)};
@@ -700,7 +729,7 @@ TEST_CASE("connection loop pumps TLS adapter CRYPTO bytes into packet-space fram
     auto datagram = require_single_outbound(loop.drain_actions());
     auto parsed = flowq::quic::parse_long_packet(
         datagram.payload,
-        protector);
+        protector.handshake);
     REQUIRE(parsed.ok());
     CHECK(parsed.number.space == flowq::quic::packet_number_space::handshake);
     REQUIRE(parsed.frames.size() == 1);
@@ -711,7 +740,7 @@ TEST_CASE("connection loop pumps TLS adapter CRYPTO bytes into packet-space fram
 }
 
 TEST_CASE("connection loop applies inbound ACK frames to sent packet trackers") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
 
@@ -731,7 +760,7 @@ TEST_CASE("connection loop applies inbound ACK frames to sent packet trackers") 
 }
 
 TEST_CASE("connection loop exposes recovery timer for outstanding ack eliciting packets") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
 
@@ -745,7 +774,7 @@ TEST_CASE("connection loop exposes recovery timer for outstanding ack eliciting 
 }
 
 TEST_CASE("connection loop clears recovery timer after packet acknowledgment") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
@@ -763,7 +792,7 @@ TEST_CASE("connection loop clears recovery timer after packet acknowledgment") {
 }
 
 TEST_CASE("connection loop recovery timer polling does not move PTO deadline") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
     loop.flush(at(0ms));
@@ -777,7 +806,7 @@ TEST_CASE("connection loop recovery timer polling does not move PTO deadline") {
 }
 
 TEST_CASE("connection loop ACK only packets do not arm recovery timers") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
@@ -792,7 +821,7 @@ TEST_CASE("connection loop ACK only packets do not arm recovery timers") {
 }
 
 TEST_CASE("connection loop recovery timer expiry reports time threshold losses") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     client.update_rtt(flowq::quic::rtt_sample{80ms, 0ms, 25ms, true});
@@ -818,7 +847,7 @@ TEST_CASE("connection loop recovery timer expiry reports time threshold losses")
 }
 
 TEST_CASE("connection loop does not arm loss timer without largest acknowledged packet") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     loop.update_rtt(flowq::quic::rtt_sample{80ms, 0ms, 25ms, true});
     loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
@@ -833,7 +862,7 @@ TEST_CASE("connection loop does not arm loss timer without largest acknowledged 
 }
 
 TEST_CASE("connection loop does not arm loss timer for packets above largest acknowledged") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     client.update_rtt(flowq::quic::rtt_sample{80ms, 0ms, 25ms, true});
@@ -860,7 +889,7 @@ TEST_CASE("connection loop does not arm loss timer for packets above largest ack
 }
 
 TEST_CASE("connection loop routes inbound STREAM frames to receive streams") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
 
@@ -881,7 +910,7 @@ TEST_CASE("connection loop routes inbound STREAM frames to receive streams") {
 }
 
 TEST_CASE("connection loop closes when peer exceeds advertised stream count") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto peer = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     flowq::quic::connection_loop_config config{};
     config.role = flowq::quic::connection_role::server;
@@ -889,12 +918,12 @@ TEST_CASE("connection loop closes when peer exceeds advertised stream count") {
     config.remote_connection_id = cid({0x01});
     config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
     config.pipeline = flowq::quic::packet_pipeline_config{1200};
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
+    config.initial_tx_protector = &protector.initial;
+    config.initial_rx_protector = &protector.initial;
+    config.handshake_tx_protector = &protector.handshake;
+    config.handshake_rx_protector = &protector.handshake;
+    config.application_tx_protector = &protector.application;
+    config.application_rx_protector = &protector.application;
     config.initial_max_streams_bidi = 1;
     auto server = flowq::quic::connection_loop{std::move(config)};
 
@@ -912,7 +941,7 @@ TEST_CASE("connection loop closes when peer exceeds advertised stream count") {
 }
 
 TEST_CASE("connection loop schedules outbound STREAM frames from connection stream state") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
 
@@ -928,19 +957,19 @@ TEST_CASE("connection loop schedules outbound STREAM frames from connection stre
 }
 
 TEST_CASE("connection loop enforces peer stream count limits and resumes after MAX_STREAMS") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::quic::connection_loop_config config{};
     config.role = flowq::quic::connection_role::client;
     config.local_connection_id = cid({0x01});
     config.remote_connection_id = cid({0x02});
     config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
     config.pipeline = flowq::quic::packet_pipeline_config{1200};
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
+    config.initial_tx_protector = &protector.initial;
+    config.initial_rx_protector = &protector.initial;
+    config.handshake_tx_protector = &protector.handshake;
+    config.handshake_rx_protector = &protector.handshake;
+    config.application_tx_protector = &protector.application;
+    config.application_rx_protector = &protector.application;
     config.initial_max_streams_bidi = 1;
     auto loop = flowq::quic::connection_loop{std::move(config)};
     const std::vector<std::uint64_t> second_stream{4};
@@ -973,7 +1002,7 @@ TEST_CASE("connection loop enforces peer stream count limits and resumes after M
 }
 
 TEST_CASE("connection loop records STREAM ranges carried by sent packets") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
     REQUIRE(loop.append_stream_data(0, text("hello")).ok());
@@ -992,7 +1021,7 @@ TEST_CASE("connection loop records STREAM ranges carried by sent packets") {
 }
 
 TEST_CASE("connection loop records multiple STREAM ranges carried by one packet") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0, 4};
     REQUIRE(loop.append_stream_data(0, text("alpha")).ok());
@@ -1014,7 +1043,7 @@ TEST_CASE("connection loop records multiple STREAM ranges carried by one packet"
 }
 
 TEST_CASE("connection loop records only selected STREAM ranges when packet budget splits frames") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, UINT64_MAX, UINT64_MAX, 6);
     loop.queue_initial({
         flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("abc")}},
@@ -1035,7 +1064,7 @@ TEST_CASE("connection loop records only selected STREAM ranges when packet budge
 }
 
 TEST_CASE("connection loop keeps sent STREAM range ledger out of application space") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
     REQUIRE(loop.append_stream_data(0, text("hello")).ok());
@@ -1048,7 +1077,7 @@ TEST_CASE("connection loop keeps sent STREAM range ledger out of application spa
 }
 
 TEST_CASE("connection loop maps packet loss to stream retransmission state") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
@@ -1081,7 +1110,7 @@ TEST_CASE("connection loop maps packet loss to stream retransmission state") {
 }
 
 TEST_CASE("connection loop retransmits lost STREAM data without fresh connection credit") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, UINT64_MAX, 5);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
@@ -1114,7 +1143,7 @@ TEST_CASE("connection loop retransmits lost STREAM data without fresh connection
 }
 
 TEST_CASE("connection loop maps recovery timer loss to stream retransmission state") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
@@ -1147,7 +1176,7 @@ TEST_CASE("connection loop maps recovery timer loss to stream retransmission sta
 }
 
 TEST_CASE("connection loop maps PTO to stream probe retransmission state") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
     REQUIRE(client.append_stream_data(0, text("hello")).ok());
@@ -1174,7 +1203,7 @@ TEST_CASE("connection loop maps PTO to stream probe retransmission state") {
 }
 
 TEST_CASE("connection loop arms Application PTO after TLS confirms handshake") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     recording_tls_adapter adapter{};
     mark_application_ready(adapter);
     adapter.keys.initial = true;
@@ -1185,12 +1214,12 @@ TEST_CASE("connection loop arms Application PTO after TLS confirms handshake") {
     config.local_connection_id = cid({0x01});
     config.remote_connection_id = cid({0x02});
     config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
+    config.initial_tx_protector = &protector.initial;
+    config.initial_rx_protector = &protector.initial;
+    config.handshake_tx_protector = &protector.handshake;
+    config.handshake_rx_protector = &protector.handshake;
+    config.application_tx_protector = &protector.application;
+    config.application_rx_protector = &protector.application;
     config.tls_adapter = &adapter;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -1205,7 +1234,7 @@ TEST_CASE("connection loop arms Application PTO after TLS confirms handshake") {
 }
 
 TEST_CASE("connection loop maps packet ACK to suppress later stream retransmission") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
@@ -1229,7 +1258,7 @@ TEST_CASE("connection loop maps packet ACK to suppress later stream retransmissi
 }
 
 TEST_CASE("connection loop ignores lost manual STREAM frames outside send state") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
@@ -1253,7 +1282,7 @@ TEST_CASE("connection loop ignores lost manual STREAM frames outside send state"
 }
 
 TEST_CASE("connection loop ignores lost manual STREAM frames for existing unsent send state") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, UINT64_MAX, 0);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
@@ -1279,7 +1308,7 @@ TEST_CASE("connection loop ignores lost manual STREAM frames for existing unsent
 }
 
 TEST_CASE("connection loop ignores acknowledged manual STREAM frames for existing unsent send state") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
@@ -1303,7 +1332,7 @@ TEST_CASE("connection loop ignores acknowledged manual STREAM frames for existin
 }
 
 TEST_CASE("connection loop keeps manual STREAM ACK from suppressing later real retransmission") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
@@ -1342,7 +1371,7 @@ TEST_CASE("connection loop keeps manual STREAM ACK from suppressing later real r
 }
 
 TEST_CASE("connection loop applies inbound MAX_STREAM_DATA to stream send state") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, 2);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
@@ -1368,7 +1397,7 @@ TEST_CASE("connection loop applies inbound MAX_STREAM_DATA to stream send state"
 }
 
 TEST_CASE("connection loop applies MAX_DATA to aggregate stream send credit") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, UINT64_MAX, 2);
     const std::vector<std::uint64_t> order{0};
     REQUIRE(loop.append_stream_data(0, text("hello")).ok());
@@ -1398,7 +1427,7 @@ TEST_CASE("connection loop applies MAX_DATA to aggregate stream send credit") {
 }
 
 TEST_CASE("connection loop applies inbound MAX_DATA frames to aggregate stream send credit") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, UINT64_MAX, 2);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
@@ -1421,7 +1450,7 @@ TEST_CASE("connection loop applies inbound MAX_DATA frames to aggregate stream s
 }
 
 TEST_CASE("connection loop emits DATA_BLOCKED when aggregate stream credit is exhausted") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, UINT64_MAX, 2);
     const std::vector<std::uint64_t> order{0, 4};
     REQUIRE(loop.append_stream_data(0, text("hello")).ok());
@@ -1437,7 +1466,7 @@ TEST_CASE("connection loop emits DATA_BLOCKED when aggregate stream credit is ex
 }
 
 TEST_CASE("connection loop preserves STREAM_DATA_BLOCKED when stream credit is exhausted first") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector, 2, 5);
     const std::vector<std::uint64_t> order{0};
     REQUIRE(loop.append_stream_data(0, text("hello")).ok());
@@ -1454,7 +1483,7 @@ TEST_CASE("connection loop preserves STREAM_DATA_BLOCKED when stream credit is e
 }
 
 TEST_CASE("connection loop ignores duplicate received packet frames") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
 
@@ -1471,7 +1500,7 @@ TEST_CASE("connection loop ignores duplicate received packet frames") {
 }
 
 TEST_CASE("connection loop keeps Initial and Handshake packet numbers independent") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
 
     loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
@@ -1485,7 +1514,7 @@ TEST_CASE("connection loop keeps Initial and Handshake packet numbers independen
 }
 
 TEST_CASE("connection loop keeps Initial Handshake and Application packet numbers independent") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
 
     loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
@@ -1501,7 +1530,7 @@ TEST_CASE("connection loop keeps Initial Handshake and Application packet number
 }
 
 TEST_CASE("connection loop parses and acknowledges Handshake packets") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
 
@@ -1524,7 +1553,7 @@ TEST_CASE("connection loop parses and acknowledges Handshake packets") {
     auto ack_datagram = require_single_outbound(server.drain_actions());
     auto parsed_ack = flowq::quic::parse_long_packet(
         ack_datagram.payload,
-        protector);
+        protector.handshake);
     REQUIRE(parsed_ack.ok());
     CHECK(parsed_ack.space == flowq::quic::packet_number_space::handshake);
     REQUIRE(parsed_ack.frames.size() == 1);
@@ -1533,7 +1562,7 @@ TEST_CASE("connection loop parses and acknowledges Handshake packets") {
 }
 
 TEST_CASE("connection loop flushes queued Application frames as a short-header outbound datagram") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
 
     loop.queue_application({flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("app")}}});
@@ -1543,7 +1572,7 @@ TEST_CASE("connection loop flushes queued Application frames as a short-header o
     auto parsed = flowq::quic::parse_short_packet(
         datagram.payload,
         1,
-        protector);
+        protector.application);
     REQUIRE(parsed.ok());
     CHECK(parsed.space == flowq::quic::packet_number_space::application);
     CHECK(parsed.number.value == 0);
@@ -1553,7 +1582,7 @@ TEST_CASE("connection loop flushes queued Application frames as a short-header o
 }
 
 TEST_CASE("connection loop parses and acknowledges short-header Application packets") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
 
@@ -1576,7 +1605,7 @@ TEST_CASE("connection loop parses and acknowledges short-header Application pack
     auto parsed_ack = flowq::quic::parse_short_packet(
         ack_datagram.payload,
         1,
-        protector);
+        protector.application);
     REQUIRE(parsed_ack.ok());
     CHECK(parsed_ack.space == flowq::quic::packet_number_space::application);
     REQUIRE(parsed_ack.frames.size() == 1);
@@ -1585,7 +1614,7 @@ TEST_CASE("connection loop parses and acknowledges short-header Application pack
 }
 
 TEST_CASE("connection loop answers Application PATH_CHALLENGE with matching PATH_RESPONSE") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     const std::array<std::byte, 8> challenge_data{
@@ -1611,7 +1640,7 @@ TEST_CASE("connection loop answers Application PATH_CHALLENGE with matching PATH
     auto parsed_response = flowq::quic::parse_short_packet(
         response_datagram.payload,
         1,
-        protector);
+        protector.application);
     REQUIRE(parsed_response.ok());
     REQUIRE(parsed_response.frames.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::path_response_frame>(parsed_response.frames[0]));
@@ -1619,7 +1648,7 @@ TEST_CASE("connection loop answers Application PATH_CHALLENGE with matching PATH
 }
 
 TEST_CASE("connection loop closes on PATH validation frames outside Application packets") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     const std::array<std::byte, 8> challenge_data{
@@ -1653,7 +1682,7 @@ TEST_CASE("connection loop closes on PATH validation frames outside Application 
 }
 
 TEST_CASE("connection loop scopes Application ACKs to Application sent packets") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
@@ -1679,7 +1708,7 @@ TEST_CASE("connection loop scopes Application ACKs to Application sent packets")
 }
 
 TEST_CASE("connection loop routes inbound RESET_STREAM to receive stream state") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
 
@@ -1703,7 +1732,7 @@ TEST_CASE("connection loop routes inbound RESET_STREAM to receive stream state")
 }
 
 TEST_CASE("connection loop routes inbound STOP_SENDING to send stream state") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
     const std::vector<std::uint64_t> order{0};
@@ -1728,7 +1757,7 @@ TEST_CASE("connection loop routes inbound STOP_SENDING to send stream state") {
 }
 
 TEST_CASE("connection loop converts invalid inbound datagrams to close actions") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
 
     loop.on_datagram(flowq::quic::inbound_datagram{flowq::buffer{bytes({0xc0})}, flowq::endpoint{"peer", 9999, ""}});
@@ -1740,7 +1769,7 @@ TEST_CASE("connection loop converts invalid inbound datagrams to close actions")
 }
 
 TEST_CASE("connection loop suppresses outbound work after a local close") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
 
     loop.on_datagram(flowq::quic::inbound_datagram{flowq::buffer{bytes({0xc0})}, flowq::endpoint{"peer", 9999, ""}});
@@ -1758,7 +1787,7 @@ TEST_CASE("connection loop suppresses outbound work after a local close") {
 }
 
 TEST_CASE("connection loop ignores inbound packets after a local close") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto closed = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto peer = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
 
@@ -1776,7 +1805,7 @@ TEST_CASE("connection loop ignores inbound packets after a local close") {
 }
 
 TEST_CASE("connection loop enters draining after peer connection close and suppresses sends") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
 
@@ -1801,7 +1830,7 @@ TEST_CASE("connection loop enters draining after peer connection close and suppr
 }
 
 TEST_CASE("connection loop closes on peer address change when active migration is disabled") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(
         cid({0x02}),
@@ -1828,7 +1857,7 @@ TEST_CASE("connection loop closes on peer address change when active migration i
 }
 
 TEST_CASE("connection loop updates peer for subsequent sends when active migration is allowed") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
 
@@ -1849,7 +1878,7 @@ TEST_CASE("connection loop updates peer for subsequent sends when active migrati
 }
 
 TEST_CASE("connection loop resets server anti-amplification budget after peer address migration") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::endpoint client_peer{"client", 1111, "hq-interop"};
     flowq::endpoint migrated_peer{"client-alt", 2222, "hq-interop"};
     flowq::endpoint server_peer{"server", 4433, "hq-interop"};
@@ -1860,12 +1889,12 @@ TEST_CASE("connection loop resets server anti-amplification budget after peer ad
     server_config.local_connection_id = cid({0x02});
     server_config.remote_connection_id = cid({0x01});
     server_config.peer = client_peer;
-    server_config.initial_tx_protector = &protector;
-    server_config.initial_rx_protector = &protector;
-    server_config.handshake_tx_protector = &protector;
-    server_config.handshake_rx_protector = &protector;
-    server_config.application_tx_protector = &protector;
-    server_config.application_rx_protector = &protector;
+    server_config.initial_tx_protector = &protector.initial;
+    server_config.initial_rx_protector = &protector.initial;
+    server_config.handshake_tx_protector = &protector.handshake;
+    server_config.handshake_rx_protector = &protector.handshake;
+    server_config.application_tx_protector = &protector.application;
+    server_config.application_rx_protector = &protector.application;
     server_config.pipeline = flowq::quic::packet_pipeline_config{8192};
     server_config.peer_address_validated = true;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
@@ -1894,18 +1923,18 @@ TEST_CASE("connection loop resets server anti-amplification budget after peer ad
 }
 
 TEST_CASE("connection loop exposes idle lifecycle timer after outbound activity") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::quic::connection_loop_config config{};
     config.role = flowq::quic::connection_role::client;
     config.local_connection_id = cid({0x01});
     config.remote_connection_id = cid({0x02});
     config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
+    config.initial_tx_protector = &protector.initial;
+    config.initial_rx_protector = &protector.initial;
+    config.handshake_tx_protector = &protector.handshake;
+    config.handshake_rx_protector = &protector.handshake;
+    config.application_tx_protector = &protector.application;
+    config.application_rx_protector = &protector.application;
     config.max_idle_timeout = 10ms;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -1921,18 +1950,18 @@ TEST_CASE("connection loop exposes idle lifecycle timer after outbound activity"
 }
 
 TEST_CASE("connection loop closes on expired idle lifecycle timer") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::quic::connection_loop_config config{};
     config.role = flowq::quic::connection_role::client;
     config.local_connection_id = cid({0x01});
     config.remote_connection_id = cid({0x02});
     config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
+    config.initial_tx_protector = &protector.initial;
+    config.initial_rx_protector = &protector.initial;
+    config.handshake_tx_protector = &protector.handshake;
+    config.handshake_rx_protector = &protector.handshake;
+    config.application_tx_protector = &protector.application;
+    config.application_rx_protector = &protector.application;
     config.max_idle_timeout = 10ms;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -1954,19 +1983,19 @@ TEST_CASE("connection loop closes on expired idle lifecycle timer") {
 }
 
 TEST_CASE("connection loop refreshes idle lifecycle timer after inbound activity") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     flowq::quic::connection_loop_config server_config{};
     server_config.role = flowq::quic::connection_role::server;
     server_config.local_connection_id = cid({0x02});
     server_config.remote_connection_id = cid({0x01});
     server_config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
-    server_config.initial_tx_protector = &protector;
-    server_config.initial_rx_protector = &protector;
-    server_config.handshake_tx_protector = &protector;
-    server_config.handshake_rx_protector = &protector;
-    server_config.application_tx_protector = &protector;
-    server_config.application_rx_protector = &protector;
+    server_config.initial_tx_protector = &protector.initial;
+    server_config.initial_rx_protector = &protector.initial;
+    server_config.handshake_tx_protector = &protector.handshake;
+    server_config.handshake_rx_protector = &protector.handshake;
+    server_config.application_tx_protector = &protector.application;
+    server_config.application_rx_protector = &protector.application;
     server_config.max_idle_timeout = 10ms;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -1984,19 +2013,19 @@ TEST_CASE("connection loop refreshes idle lifecycle timer after inbound activity
 }
 
 TEST_CASE("connection loop does not refresh idle lifecycle timer for ACK-only packets") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     flowq::quic::connection_loop_config server_config{};
     server_config.role = flowq::quic::connection_role::server;
     server_config.local_connection_id = cid({0x02});
     server_config.remote_connection_id = cid({0x01});
     server_config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
-    server_config.initial_tx_protector = &protector;
-    server_config.initial_rx_protector = &protector;
-    server_config.handshake_tx_protector = &protector;
-    server_config.handshake_rx_protector = &protector;
-    server_config.application_tx_protector = &protector;
-    server_config.application_rx_protector = &protector;
+    server_config.initial_tx_protector = &protector.initial;
+    server_config.initial_rx_protector = &protector.initial;
+    server_config.handshake_tx_protector = &protector.handshake;
+    server_config.handshake_rx_protector = &protector.handshake;
+    server_config.application_tx_protector = &protector.application;
+    server_config.application_rx_protector = &protector.application;
     server_config.max_idle_timeout = 10ms;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -2016,19 +2045,19 @@ TEST_CASE("connection loop does not refresh idle lifecycle timer for ACK-only pa
 }
 
 TEST_CASE("connection loop expires draining lifecycle state to closed") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     flowq::quic::connection_loop_config server_config{};
     server_config.role = flowq::quic::connection_role::server;
     server_config.local_connection_id = cid({0x02});
     server_config.remote_connection_id = cid({0x01});
     server_config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
-    server_config.initial_tx_protector = &protector;
-    server_config.initial_rx_protector = &protector;
-    server_config.handshake_tx_protector = &protector;
-    server_config.handshake_rx_protector = &protector;
-    server_config.application_tx_protector = &protector;
-    server_config.application_rx_protector = &protector;
+    server_config.initial_tx_protector = &protector.initial;
+    server_config.initial_rx_protector = &protector.initial;
+    server_config.handshake_tx_protector = &protector.handshake;
+    server_config.handshake_rx_protector = &protector.handshake;
+    server_config.application_tx_protector = &protector.application;
+    server_config.application_rx_protector = &protector.application;
     server_config.closing_draining_timeout = 25ms;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -2054,18 +2083,18 @@ TEST_CASE("connection loop expires draining lifecycle state to closed") {
 }
 
 TEST_CASE("connection loop expires closing lifecycle state to closed") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::quic::connection_loop_config config{};
     config.role = flowq::quic::connection_role::client;
     config.local_connection_id = cid({0x01});
     config.remote_connection_id = cid({0x02});
     config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
+    config.initial_tx_protector = &protector.initial;
+    config.initial_rx_protector = &protector.initial;
+    config.handshake_tx_protector = &protector.handshake;
+    config.handshake_rx_protector = &protector.handshake;
+    config.application_tx_protector = &protector.application;
+    config.application_rx_protector = &protector.application;
     config.closing_draining_timeout = 25ms;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -2175,7 +2204,7 @@ TEST_CASE("connection loop blocks production Application data when TLS adapter l
 }
 
 TEST_CASE("connection loop tracks bytes-in-flight through congestion controller") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
 
     loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
@@ -2187,7 +2216,7 @@ TEST_CASE("connection loop tracks bytes-in-flight through congestion controller"
 }
 
 TEST_CASE("connection loop congestion controller is path-level across packet spaces") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto loop = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
 
     loop.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
@@ -2202,7 +2231,7 @@ TEST_CASE("connection loop congestion controller is path-level across packet spa
 }
 
 TEST_CASE("connection loop reduces bytes-in-flight on ACK") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
 
@@ -2222,18 +2251,18 @@ TEST_CASE("connection loop reduces bytes-in-flight on ACK") {
 }
 
 TEST_CASE("connection loop congestion window gates flush when exhausted") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::quic::connection_loop_config config{};
     config.role = flowq::quic::connection_role::client;
     config.local_connection_id = cid({0x01});
     config.remote_connection_id = cid({0x02});
     config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
-    config.initial_tx_protector = &protector;
-    config.initial_rx_protector = &protector;
-    config.handshake_tx_protector = &protector;
-    config.handshake_rx_protector = &protector;
-    config.application_tx_protector = &protector;
-    config.application_rx_protector = &protector;
+    config.initial_tx_protector = &protector.initial;
+    config.initial_rx_protector = &protector.initial;
+    config.handshake_tx_protector = &protector.handshake;
+    config.handshake_rx_protector = &protector.handshake;
+    config.application_tx_protector = &protector.application;
+    config.application_rx_protector = &protector.application;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
     // Send first packet to measure actual datagram size
