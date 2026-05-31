@@ -354,6 +354,9 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
     if (frame.stateless_reset_token.size() != 16) {
         return {{}, codec_error("NEW_CONNECTION_ID stateless reset token must be 16 bytes")};
     }
+    if (frame.retire_prior_to > frame.sequence_number) {
+        return {{}, codec_error("NEW_CONNECTION_ID retire_prior_to must not exceed sequence_number")};
+    }
 
     std::vector<std::byte> output;
     if (!append_varint(output, 0x18) ||
@@ -713,6 +716,9 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
                 !detail::read_varint_at(input, offset, retire_prior_to) ||
                 !detail::read_varint_at(input, offset, connection_id_length)) {
                 return {{}, codec_error("truncated NEW_CONNECTION_ID frame")};
+            }
+            if (retire_prior_to > sequence_number) {
+                return {{}, codec_error("NEW_CONNECTION_ID retire_prior_to must not exceed sequence_number")};
             }
             if (connection_id_length == 0 || connection_id_length > 20) {
                 return {{}, codec_error("NEW_CONNECTION_ID connection ID length must be 1 to 20 bytes")};
