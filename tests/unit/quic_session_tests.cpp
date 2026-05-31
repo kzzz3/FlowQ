@@ -160,6 +160,26 @@ flowq::quic::session_config make_config(
     return config;
 }
 
+flowq::quic::session_config make_config(
+    flowq::quic::connection_id local,
+    flowq::quic::connection_id remote,
+    flowq::endpoint peer,
+    const flowq::quic::test::plaintext_packet_protector_set& protectors) {
+    flowq::quic::session_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = std::move(local);
+    config.remote_connection_id = std::move(remote);
+    config.peer = std::move(peer);
+    config.initial_tx_protector = &protectors.initial;
+    config.initial_rx_protector = &protectors.initial;
+    config.handshake_tx_protector = &protectors.handshake;
+    config.handshake_rx_protector = &protectors.handshake;
+    config.application_tx_protector = &protectors.application;
+    config.application_rx_protector = &protectors.application;
+    config.tls_adapter = &application_ready_tls_adapter();
+    return config;
+}
+
 flowq::quic::connection_loop make_loop(
     flowq::quic::connection_id local,
     flowq::quic::connection_id remote,
@@ -177,6 +197,27 @@ flowq::quic::connection_loop make_loop(
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
+    config.tls_adapter = &application_ready_tls_adapter();
+    return flowq::quic::connection_loop{std::move(config)};
+}
+
+flowq::quic::connection_loop make_loop(
+    flowq::quic::connection_id local,
+    flowq::quic::connection_id remote,
+    flowq::endpoint peer,
+    const flowq::quic::test::plaintext_packet_protector_set& protectors) {
+    flowq::quic::connection_loop_config config{};
+    config.role = flowq::quic::connection_role::client;
+    config.local_connection_id = std::move(local);
+    config.remote_connection_id = std::move(remote);
+    config.peer = std::move(peer);
+    config.pipeline = flowq::quic::packet_pipeline_config{1200};
+    config.initial_tx_protector = &protectors.initial;
+    config.initial_rx_protector = &protectors.initial;
+    config.handshake_tx_protector = &protectors.handshake;
+    config.handshake_rx_protector = &protectors.handshake;
+    config.application_tx_protector = &protectors.application;
+    config.application_rx_protector = &protectors.application;
     config.tls_adapter = &application_ready_tls_adapter();
     return flowq::quic::connection_loop{std::move(config)};
 }
@@ -227,7 +268,7 @@ TEST_CASE("QUIC session blocks production Application data before TLS handshake 
 }
 
 TEST_CASE("QUIC session queues stream data before flush returns outbound Application datagrams") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto session = flowq::quic::session{make_config(
         cid({0x01}),
         cid({0x02}),
@@ -250,7 +291,7 @@ TEST_CASE("QUIC session queues stream data before flush returns outbound Applica
 }
 
 TEST_CASE("QUIC session receives Application datagrams as stream deliveries") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = flowq::quic::session{make_config(
         cid({0x01}),
         cid({0x02}),
@@ -281,7 +322,7 @@ TEST_CASE("QUIC session receives Application datagrams as stream deliveries") {
 }
 
 TEST_CASE("QUIC session acknowledges received Application datagrams") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = flowq::quic::session{make_config(
         cid({0x01}),
         cid({0x02}),
@@ -308,7 +349,7 @@ TEST_CASE("QUIC session acknowledges received Application datagrams") {
 }
 
 TEST_CASE("QUIC session forwards packet-space discard gates") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     flowq::quic::key_lifecycle_state lifecycle{};
     lifecycle.discard(flowq::quic::packet_number_space::initial);
 
@@ -328,7 +369,7 @@ TEST_CASE("QUIC session forwards packet-space discard gates") {
 }
 
 TEST_CASE("QUIC session rejects stream work after peer connection close") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto peer = make_loop(
         cid({0x01}),
         cid({0x02}),
@@ -364,7 +405,7 @@ TEST_CASE("QUIC session rejects stream work after peer connection close") {
 }
 
 TEST_CASE("QUIC session exposes lifecycle timer and returns idle timeout close") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     auto config = make_config(
         cid({0x01}),
         cid({0x02}),
@@ -390,7 +431,7 @@ TEST_CASE("QUIC session exposes lifecycle timer and returns idle timeout close")
 }
 
 TEST_CASE("QUIC session rejects Application flush before handshake confirmation without arming recovery timer") {
-    flowq::quic::test::plaintext_packet_protector protector{};
+    flowq::quic::test::plaintext_packet_protector_set protector{};
     recording_tls_adapter adapter{};
     auto config = make_config(
         cid({0x01}),

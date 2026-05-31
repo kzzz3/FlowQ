@@ -208,11 +208,11 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
 }
 
 [[nodiscard]] inline bool protection_level_matches(long_packet_type type, protection_level level) {
-    return level == protection_level::none || level == expected_protection_for(type);
+    return level == expected_protection_for(type);
 }
 
 [[nodiscard]] inline bool application_protection_level_matches(protection_level level) {
-    return level == protection_level::none || level == protection_level::application;
+    return level == protection_level::application;
 }
 
 [[nodiscard]] inline bool production_protection_satisfied(const packet_protector& protector) noexcept {
@@ -235,7 +235,7 @@ inline void append_packet_number(std::vector<std::byte>& output, std::uint64_t v
 }
 
 [[nodiscard]] inline bool protection_level_matches_header(const packet_header& header, protection_level level) {
-    return level == protection_level::none || level == expected_protection_for_header(header);
+    return level == expected_protection_for_header(header);
 }
 
 [[nodiscard]] inline const flowq::buffer* protected_payload_for(const packet_header& header) {
