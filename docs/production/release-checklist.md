@@ -9,7 +9,7 @@ Strict gate:
 
 ## Build and Test
 
-- [x] Windows MSVC/vcpkg: 506 tests passing
+- [x] Windows MSVC/vcpkg: 511 tests passing
 - [ ] Linux GCC/vcpkg: preset `linux-gcc-vcpkg` exists, evidence not recorded
 - [x] Install + package-consumer builds and runs
 - [x] No compiler warnings (`/W4 /WX` on MSVC)
@@ -18,7 +18,7 @@ Strict gate:
 ## Code Quality
 
 - [x] All public APIs have documentation comments
-- [x] No type safety suppressions (`as any`, `@ts-ignore`)
+- [x] No type safety suppressions
 - [x] No empty catch blocks
 - [x] No TODO/FIXME in production code paths
 - [x] No weak random generators in production QUIC headers
@@ -35,6 +35,7 @@ Strict gate:
 - [x] Key material securely zeroed on destruction (secure.hpp)
 - [x] Cipher-suite-aware header protection (AES-128/256-ECB, ChaCha20)
 - [x] All protector types erase keys on destruction
+- [x] traffic_secret() restricted to FLOWQ_ENABLE_INSPECTION
 
 ## Interop
 
@@ -44,12 +45,35 @@ Strict gate:
 - [x] Results recorded with peer name, version, TLS backend, cipher suite
 - [ ] Second external peer interop PASS
 
+## Congestion Control
+
+- [x] NewReno congestion control
+- [x] BBR congestion control
+- [x] CUBIC congestion control (RFC 8312)
+- [x] Pacing controller (RFC 9002 Section 7.7)
+
+## Key Management
+
+- [x] AEAD key rotation (RFC 9000 Section 6)
+- [x] Key update state machine
+- [x] Secure key material erasure on destruction
+
+## Benchmarks
+
+- [x] Benchmark framework established (40 scenarios)
+- [x] Benchmark execution script (run-benchmarks.ps1)
+- [x] Initial benchmark results recorded (9 scenarios PASS)
+- [ ] Soak stability test (24 hours)
+- [ ] Loss/reordering benchmark
+- [ ] Migration benchmark
+
 ## Documentation
 
 - [x] README.md status matches evidence
 - [x] docs/plan.md describes current scope and gates
 - [x] docs/milestones/roadmap.md maps evidence to gates
 - [x] docs/production/readiness-gate.md matches evidence
+- [x] docs/production/roadmap-to-production.md updated
 
 ## Human Review
 

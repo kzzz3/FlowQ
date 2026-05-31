@@ -34,7 +34,14 @@ public:
               stream_limits{config_.initial_max_streams_bidi, config_.initial_max_streams_uni}},
           connection_send_max_data_{config_.initial_connection_send_max_data},
           peer_address_validated_{config_.peer_address_validated},
-          recovery_pto_config_{config_.max_ack_delay} {}
+          recovery_pto_config_{config_.max_ack_delay},
+          pacing_enabled_{config_.enable_pacing},
+          key_update_enabled_{config_.enable_key_update} {
+        // Initialize pacing with default values
+        if (pacing_enabled_) {
+            pacing_.initialize(congestion_.congestion_window(), std::chrono::milliseconds(100));
+        }
+    }
 
     connection_loop(connection_loop&&) noexcept = default;
     connection_loop& operator=(connection_loop&&) noexcept = default;
@@ -451,6 +458,38 @@ public:
     }
 #endif // FLOWQ_ENABLE_INSPECTION
 
+    // Pacing methods
+    [[nodiscard]] bool pacing_enabled() const noexcept {
+        return pacing_enabled_;
+    }
+
+    [[nodiscard]] const pacing_controller& pacing() const noexcept {
+        return pacing_;
+    }
+
+    [[nodiscard]] bool can_send_with_pacing(std::uint64_t packet_size) const noexcept {
+        if (!pacing_enabled_) {
+            return true;
+        }
+        return pacing_.can_send(congestion_.bytes_in_flight(), packet_size);
+    }
+
+    // Key update methods
+    [[nodiscard]] bool key_update_enabled() const noexcept {
+        return key_update_enabled_;
+    }
+
+    [[nodiscard]] const key_update_manager& key_update() const noexcept {
+        return key_update_mgr_;
+    }
+
+    [[nodiscard]] bool can_initiate_key_update() const noexcept {
+        if (!key_update_enabled_) {
+            return false;
+        }
+        return key_update_mgr_.can_update();
+    }
+
     [[nodiscard]] connection_loop_state state() const noexcept {
         return state_;
     }
@@ -481,6 +520,14 @@ private:
     bool pending_path_challenge_queued_{};
     bool peer_path_migrated_{};
     std::vector<sent_packet_stream_ranges> sent_stream_ranges_{};
+    
+    // Pacing controller
+    pacing_controller pacing_;
+    bool pacing_enabled_{false};
+    
+    // Key update manager
+    key_update_manager key_update_mgr_;
+    bool key_update_enabled_{false};
 
     struct remote_connection_id_entry {
         std::uint64_t sequence_number{};

@@ -1,8 +1,11 @@
 #pragma once
 
 #include <flowq/endpoint.hpp>
+#include <flowq/quic/congestion_algorithms.hpp>
 #include <flowq/quic/core.hpp>
 #include <flowq/quic/key_lifecycle.hpp>
+#include <flowq/quic/key_update.hpp>
+#include <flowq/quic/pacing.hpp>
 #include <flowq/quic/packet_pipeline.hpp>
 #include <flowq/quic/stream.hpp>
 #include <flowq/quic/tls_handshake.hpp>
@@ -14,6 +17,7 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <variant>
 #include <vector>
@@ -95,6 +99,15 @@ struct connection_loop_config {
     /// @pre The protector must outlive this connection loop.
     const packet_protector* application_rx_protector{};
     std::function<packet_protector_update()> packet_protector_refresh;
+    
+    // Congestion control configuration
+    congestion_algorithm congestion_algo{congestion_algorithm::new_reno};
+    
+    // Pacing configuration
+    bool enable_pacing{true};
+    
+    // Key update configuration
+    bool enable_key_update{true};
 };
 
 // Apply transport parameters to connection config

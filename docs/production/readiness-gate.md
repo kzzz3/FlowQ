@@ -8,7 +8,7 @@ This document records the current evidence required before FlowQ can claim produ
 - **Date**: 2026-05-31
 - **Status**: Non-production
 
-**Evidence summary**: Windows MSVC/vcpkg build with 506 tests passing, OpenSSL 3.6.1 QUIC TLS, AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, secure key material zeroing, and aioquic 1.3.0 interop (handshake, stream echo, loss recovery).
+**Evidence summary**: Windows MSVC/vcpkg build with 511 tests passing, OpenSSL 3.6.1 QUIC TLS, AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, secure key material zeroing, AEAD key rotation, pacing controller, BBR/CUBIC congestion control, and aioquic 1.3.0 interop (handshake, stream echo, loss recovery).
 
 **Gaps**: Linux GCC/sanitizer evidence, multi-peer interop, human security review.
 
@@ -16,7 +16,7 @@ This document records the current evidence required before FlowQ can claim produ
 
 ### Build And Test
 
-- ✅ Windows MSVC/vcpkg: 506 tests passing (`ctest --preset windows-msvc-vcpkg --timeout 10`)
+- ✅ Windows MSVC/vcpkg: 511 tests passing (`ctest --preset windows-msvc-vcpkg --timeout 10`)
 - ✅ Install + package-consumer build path
 - ✅ Clean install prefix validation
 - ✅ Release-readiness scripts (`scripts/check-release-readiness.ps1`, `scripts/check-release-readiness.sh`)
@@ -38,12 +38,17 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ Plaintext protector isolated to test support
 - ✅ Secure key material zeroing on destruction (Windows SecureZeroMemory, macOS memset_s, Linux explicit_bzero)
 - ✅ All protector types erase keys: `initial_packet_protector`, `openssl_aead_protector`, `traffic_key_material`
+- ✅ AEAD key rotation (RFC 9000 Section 6) with key_update_state and key_update_manager
+- ✅ traffic_secret() restricted to FLOWQ_ENABLE_INSPECTION
 
 ### Transport Behavior
 
 - ✅ QUIC v1 varint, packet number, packet header, frame, transport parameter codecs
 - ✅ ACK/loss recovery, RTT estimation, PTO, bytes-in-flight accounting
 - ✅ NewReno congestion control (slow start, congestion avoidance, persistent congestion)
+- ✅ BBR congestion control (bottleneck bandwidth and RTT estimation)
+- ✅ CUBIC congestion control (RFC 8312)
+- ✅ Pacing controller (RFC 9002 Section 7.7)
 - ✅ Stream receive/send state, flow control (stream-level and connection-level)
 - ✅ Connection ID routing, NEW_CONNECTION_ID, RETIRE_CONNECTION_ID
 - ✅ Stateless reset detection and generation
