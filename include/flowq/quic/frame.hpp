@@ -71,6 +71,10 @@ struct crypto_frame {
     flowq::buffer data;
 };
 
+struct new_token_frame {
+    flowq::buffer token;
+};
+
 struct stream_frame {
     std::uint64_t stream_id{};
     std::uint64_t offset{};
@@ -143,6 +147,7 @@ using frame = std::variant<
     stop_sending_frame,
     ack_frame,
     crypto_frame,
+    new_token_frame,
     stream_frame,
     max_data_frame,
     max_stream_data_frame,
@@ -272,6 +277,19 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
         return {{}, codec_error("failed to encode CRYPTO frame")};
     }
     append_buffer(output, frame.data);
+    return {flowq::buffer{output}, {}};
+}
+
+[[nodiscard]] inline frame_encode_result encode_new_token(const new_token_frame& frame) {
+    if (frame.token.empty()) {
+        return {{}, codec_error("NEW_TOKEN token must not be empty")};
+    }
+
+    std::vector<std::byte> output;
+    if (!append_varint(output, 0x07) || !append_varint(output, frame.token.size())) {
+        return {{}, codec_error("failed to encode NEW_TOKEN frame")};
+    }
+    append_buffer(output, frame.token);
     return {flowq::buffer{output}, {}};
 }
 
@@ -420,6 +438,10 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
 
 [[nodiscard]] inline frame_encode_result encode_frame(const crypto_frame& frame) {
     return detail::encode_crypto(frame);
+}
+
+[[nodiscard]] inline frame_encode_result encode_frame(const new_token_frame& frame) {
+    return detail::encode_new_token(frame);
 }
 
 [[nodiscard]] inline frame_encode_result encode_frame(const stream_frame& frame) {
@@ -575,6 +597,24 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
             auto data = flowq::buffer{input.subspan(offset, static_cast<std::size_t>(length))};
             offset += static_cast<std::size_t>(length);
             frames.emplace_back(crypto_frame{crypto_offset, std::move(data)});
+            continue;
+        }
+
+        if (type == 0x07) {
+            std::uint64_t length = 0;
+            if (!detail::read_varint_at(input, offset, length)) {
+                return {{}, codec_error("truncated NEW_TOKEN frame")};
+            }
+            if (length == 0) {
+                return {{}, codec_error("NEW_TOKEN token must not be empty")};
+            }
+            if (length > input.size() - offset) {
+                return {{}, codec_error("truncated NEW_TOKEN token")};
+            }
+
+            auto token = flowq::buffer{input.subspan(offset, static_cast<std::size_t>(length))};
+            offset += static_cast<std::size_t>(length);
+            frames.emplace_back(new_token_frame{std::move(token)});
             continue;
         }
 

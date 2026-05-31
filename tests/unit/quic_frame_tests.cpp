@@ -268,7 +268,24 @@ TEST_CASE("QUIC frame codec round trips flow-control frame values") {
     }
 }
 
-TEST_CASE("QUIC frame codec round trips connection-id and handshake-done frames") {
+TEST_CASE("QUIC frame codec round trips token connection-id and handshake-done frames") {
+    {
+        flowq::quic::new_token_frame frame{flowq::buffer{bytes({0xde, 0xad, 0xbe, 0xef})}};
+        auto encoded = flowq::quic::encode_frame(frame);
+        REQUIRE(encoded.ok());
+        REQUIRE(encoded.payload.size() == 6);
+        CHECK(encoded.payload.data()[0] == std::byte{0x07});
+
+        auto decoded = flowq::quic::decode_frames(encoded.payload);
+        REQUIRE(decoded.ok());
+        REQUIRE(decoded.frames.size() == 1);
+        REQUIRE(std::holds_alternative<flowq::quic::new_token_frame>(decoded.frames[0]));
+        const auto& token = std::get<flowq::quic::new_token_frame>(decoded.frames[0]);
+        REQUIRE(token.token.size() == 4);
+        CHECK(token.token.data()[0] == std::byte{0xde});
+        CHECK(token.token.data()[3] == std::byte{0xef});
+    }
+
     {
         flowq::quic::new_connection_id_frame frame{
             3,
@@ -483,6 +500,11 @@ TEST_CASE("QUIC frame codec rejects malformed ACK CRYPTO and STREAM frames") {
 
     // CRYPTO declares two bytes but only one byte is present.
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x06, 0x00, 0x02, 0xaa})).ok());
+
+    // NEW_TOKEN has a length-prefixed, non-empty token.
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x07})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x07, 0x00})).ok());
+    CHECK_FALSE(flowq::quic::decode_frames(bytes({0x07, 0x02, 0xaa})).ok());
 
     // STREAM explicit length declares two bytes but only one byte is present.
     CHECK_FALSE(flowq::quic::decode_frames(bytes({0x0a, 0x01, 0x02, 0xaa})).ok());
