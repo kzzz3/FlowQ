@@ -893,7 +893,7 @@ TEST_CASE("connection loop routes inbound STREAM frames to receive streams") {
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
     auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
 
-    client.queue_initial({flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("hello")}}});
+    client.queue_application({flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("hello")}}});
     client.flush();
     auto outbound = require_single_outbound(client.drain_actions());
 
@@ -907,6 +907,39 @@ TEST_CASE("connection loop routes inbound STREAM frames to receive streams") {
     CHECK(event.stream_deliveries[0].stream_id == 0);
     REQUIRE(event.stream_deliveries[0].result.ok());
     CHECK(as_string(event.stream_deliveries[0].result.data) == "hello");
+}
+
+TEST_CASE("connection loop rejects application data frames outside Application packet space") {
+    flowq::quic::test::plaintext_packet_protector_set protector{};
+    auto stream_client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto stream_server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    stream_client.queue_initial({flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, text("hello")}}});
+    stream_client.flush(at(0ms));
+    auto stream_datagram = require_single_outbound(stream_client.drain_actions());
+
+    stream_server.on_datagram(flowq::quic::inbound_datagram{std::move(stream_datagram.payload), stream_datagram.peer});
+    auto stream_actions = stream_server.drain_actions();
+
+    REQUIRE(stream_actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(stream_actions[0]));
+    CHECK(std::get<flowq::quic::close_action>(stream_actions[0]).error.code() == flowq::error_code::protocol_error);
+    CHECK(stream_server.state() == flowq::quic::connection_loop_state::closing);
+
+    auto close_client = make_loop(cid({0x03}), cid({0x04}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto close_server = make_loop(cid({0x04}), cid({0x03}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    close_client.queue_handshake({flowq::quic::frame{flowq::quic::application_close_frame{0x0102, "app closed"}}});
+    close_client.flush(at(0ms));
+    auto close_datagram = require_single_outbound(close_client.drain_actions());
+
+    close_server.on_datagram(flowq::quic::inbound_datagram{std::move(close_datagram.payload), close_datagram.peer});
+    auto close_actions = close_server.drain_actions();
+
+    REQUIRE(close_actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(close_actions[0]));
+    CHECK(std::get<flowq::quic::close_action>(close_actions[0]).error.code() == flowq::error_code::protocol_error);
+    CHECK(close_server.state() == flowq::quic::connection_loop_state::closing);
 }
 
 TEST_CASE("connection loop closes when peer exceeds advertised stream count") {
@@ -970,6 +1003,7 @@ TEST_CASE("connection loop enforces peer stream count limits and resumes after M
     config.handshake_rx_protector = &protector.handshake;
     config.application_tx_protector = &protector.application;
     config.application_rx_protector = &protector.application;
+    config.tls_adapter = &application_ready_tls_adapter();
     config.initial_max_streams_bidi = 1;
     auto loop = flowq::quic::connection_loop{std::move(config)};
     const std::vector<std::uint64_t> second_stream{4};
@@ -977,7 +1011,7 @@ TEST_CASE("connection loop enforces peer stream count limits and resumes after M
     REQUIRE(loop.append_stream_data(0, text("alpha")).ok());
     auto rejected = loop.append_stream_data(4, text("beta"));
     auto blocked = loop.schedule_stream_frames(second_stream, 1, 16);
-    loop.queue_initial({flowq::quic::frame{flowq::quic::max_streams_frame{flowq::quic::stream_direction::bidirectional, 2}}});
+    loop.queue_application({flowq::quic::frame{flowq::quic::max_streams_frame{flowq::quic::stream_direction::bidirectional, 2}}});
     loop.flush();
     auto credit = require_single_outbound(loop.drain_actions());
     loop.on_datagram(flowq::quic::inbound_datagram{std::move(credit.payload), flowq::endpoint{"server", 4433, "hq-interop"}});
@@ -1381,7 +1415,7 @@ TEST_CASE("connection loop applies inbound MAX_STREAM_DATA to stream send state"
     REQUIRE(prefix.frames.size() == 1);
     CHECK(as_string(std::get<flowq::quic::stream_frame>(prefix.frames[0]).data) == "he");
 
-    server.queue_initial({flowq::quic::frame{flowq::quic::max_stream_data_frame{0, 5}}});
+    server.queue_application({flowq::quic::frame{flowq::quic::max_stream_data_frame{0, 5}}});
     server.flush();
     auto credit = require_single_outbound(server.drain_actions());
     client.on_datagram(flowq::quic::inbound_datagram{std::move(credit.payload), credit.peer});
@@ -1434,7 +1468,7 @@ TEST_CASE("connection loop applies inbound MAX_DATA frames to aggregate stream s
     REQUIRE(client.append_stream_data(0, text("hello")).ok());
     REQUIRE(client.schedule_stream_frames(order, 1, 16).frames.size() == 1);
 
-    server.queue_initial({flowq::quic::frame{flowq::quic::max_data_frame{5}}});
+    server.queue_application({flowq::quic::frame{flowq::quic::max_data_frame{5}}});
     server.flush();
     auto credit = require_single_outbound(server.drain_actions());
     client.on_datagram(flowq::quic::inbound_datagram{std::move(credit.payload), credit.peer});
