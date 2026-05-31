@@ -18,7 +18,6 @@
 | aioquic | 1.3.0 | bidirectional_stream | **PASS** | Handshake + stream echo |
 | aioquic | 1.3.0 | loss_recovery | **PASS** | Drop + retransmit + recovery |
 | ngtcp2 | 1.20.0 | initial_packet | **PASS** | Initial packet generation |
-| MsQuic | 2.4.8 | - | **PENDING** | Needs manual install |
 
 ### Environment
 
@@ -28,11 +27,11 @@
 
 ## Supported Peers
 
-| Peer | Language | vcpkg | Status |
-|------|----------|-------|--------|
-| aioquic | Python | N/A | ✅ Verified |
-| ngtcp2 | C | ✅ | ✅ Verified |
-| MsQuic | C/C++ | ✅ | ⏳ Pending (BoringSSL conflict) |
+| Peer | Language | Install | Status |
+|------|----------|---------|--------|
+| aioquic | Python | `pip install aioquic` | ✅ Verified |
+| ngtcp2 | C | vcpkg | ✅ Verified |
+| quiche | Rust | `cargo install quiche` | ⏳ Pending |
 
 ## Running Interop Tests
 
@@ -53,4 +52,3 @@ conda run -n expr python tests/interop/test_interop.py
 | Date | Peers | Passed | Failed |
 |------|-------|--------|--------|
 | 2026-05-31 | aioquic + ngtcp2 | 5/5 | 0 |
-| 2026-05-31 | aioquic | 3/3 | 0 |
