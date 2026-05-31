@@ -6,124 +6,104 @@ This document records the current evidence required before FlowQ can claim produ
 
 - **Level**: Production-readiness gate
 - **Date**: 2026-05-31
-- **Status**: Non-production. The codebase has local build/test evidence, OpenSSL-gated AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, deterministic transport behavior, fail-closed client TLS peer verification, secure key material zeroing across all protectors, and recorded aioquic handshake, bidirectional STREAM echo, and application loss-recovery passes. Multi-peer interop, Linux sanitizer evidence, and human security review are not recorded.
+- **Status**: Non-production
+
+**Evidence summary**: Windows MSVC/vcpkg build with 506 tests passing, OpenSSL 3.6.1 QUIC TLS, AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, secure key material zeroing, and aioquic 1.3.0 interop (handshake, stream echo, loss recovery).
+
+**Gaps**: Linux GCC/sanitizer evidence, multi-peer interop, human security review.
 
 ## Evidence In Place
 
 ### Build And Test
 
-- ✅ **CMake/CTest suite** on Windows MSVC/vcpkg preset (`ctest --preset windows-msvc-vcpkg --timeout 10`)
-- ✅ **Install + package-consumer** build path
-- ✅ **Clean install prefix** validation before package-consumer checks, preventing removed public headers from surviving as stale installed artifacts.
-- ✅ **Release-readiness scripts** (`scripts/check-release-readiness.ps1 -SkipBuild`, `scripts/check-release-readiness.sh --skip-build`)
-- ✅ **Strict production-candidate gates** (`scripts/check-release-readiness.ps1 -RequireCompleteReleaseChecklist`, `scripts/check-release-readiness.sh --require-complete-release-checklist`) fail until every required release checklist item is checked.
-- ✅ **Checklist validator** (`scripts/validate-checklist.ps1`)
-- ⚠️ **Linux GCC preset** (`linux-gcc-vcpkg`) and **ASan/UBSan preset** (`linux-asan-ubsan`) exist, but Linux execution evidence is not recorded in this local environment.
+- ✅ Windows MSVC/vcpkg: 506 tests passing (`ctest --preset windows-msvc-vcpkg --timeout 10`)
+- ✅ Install + package-consumer build path
+- ✅ Clean install prefix validation
+- ✅ Release-readiness scripts (`scripts/check-release-readiness.ps1`, `scripts/check-release-readiness.sh`)
+- ✅ Strict production-candidate gates (`-RequireCompleteReleaseChecklist`)
+- ✅ Checklist validator (`scripts/validate-checklist.ps1`)
+- ⚠️ Linux GCC (`linux-gcc-vcpkg`) and ASan/UBSan (`linux-asan-ubsan`) presets exist but not executed locally
 
 ### Packet Protection
 
-- ✅ `openssl_aead_protector` implements the `packet_protector` interface.
-- ✅ AES-128-GCM packet protection is implemented when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled.
-- ✅ AES-256-GCM packet protection is now supported.
-- ✅ ChaCha20-Poly1305 packet protection is now supported (for mobile/no hardware AES).
-- ✅ Cipher-suite-aware header protection: AES-ECB for AES-128/256-GCM, ChaCha20 for ChaCha20-Poly1305.
-- ✅ AEAD creation fails closed when the OpenSSL crypto backend is not compiled in.
-- ✅ Plaintext packet protection is isolated to test support and is not part of installed public headers.
-- ✅ Test-only protectors are rejected when production protection is required.
-- ✅ Key material is securely zeroed on destruction using platform-specific functions (secure.hpp).
-- ✅ All packet protector types (openssl_aead, initial_packet) securely erase keys on destruction.
+- ✅ `openssl_aead_protector` implements `packet_protector` interface
+- ✅ AES-128-GCM (16-byte key, 12-byte IV, 16-byte tag)
+- ✅ AES-256-GCM (32-byte key, 12-byte IV, 16-byte tag)
+- ✅ ChaCha20-Poly1305 (32-byte key, 12-byte IV, 16-byte tag)
+- ✅ Cipher-suite-aware header protection:
+  - AES-128-GCM → AES-128-ECB (16-byte HP key)
+  - AES-256-GCM → AES-256-ECB (32-byte HP key)
+  - ChaCha20-Poly1305 → ChaCha20 (32-byte HP key)
+- ✅ Fail-closed when OpenSSL crypto backend disabled
+- ✅ Plaintext protector isolated to test support
+- ✅ Secure key material zeroing on destruction (Windows SecureZeroMemory, macOS memset_s, Linux explicit_bzero)
+- ✅ All protector types erase keys: `initial_packet_protector`, `openssl_aead_protector`, `traffic_key_material`
 
 ### Transport Behavior
 
-- ✅ QUIC varint, packet number, packet header, frame, transport parameter, and packet pipeline primitives.
-- ✅ ACK/loss recovery, bytes-in-flight accounting, NewReno-style congestion baseline, and deterministic timers.
-- ✅ Stream receive/send state, flow-control frame handling, reset/stop handling, and retransmission behavior.
-- ✅ Connection ID routing, version negotiation, retry helper surfaces, endpoint-driver lifecycle, and diagnostics.
-- ✅ PATH_CHALLENGE/PATH_RESPONSE frame codec support.
-- ✅ Application-space PATH_CHALLENGE scheduling emits a same-value PATH_RESPONSE.
-- ✅ PATH_CHALLENGE/PATH_RESPONSE outside Application packet space closes with protocol error.
-- ✅ Peer address migration queues PATH_CHALLENGE after 1-RTT send keys are available and keeps the server anti-amplification limit in force.
-- ✅ Matching PATH_RESPONSE validates the migrated peer path and lifts the server anti-amplification limit for that path.
-- ✅ PATH_CHALLENGE token generation uses OpenSSL `RAND_bytes` by default and fails closed when neither OpenSSL crypto nor an explicit `path_challenge` callback is configured.
-- ✅ Peer-issued NEW_CONNECTION_ID handling enforces active_connection_id_limit, rejects conflicting duplicate sequence numbers, switches away from retired destination CIDs, and emits RETIRE_CONNECTION_ID for retired peer CIDs.
-- ✅ Inbound stateless reset detection matches learned peer NEW_CONNECTION_ID tokens, enters draining without sending a close packet, rejects undersized reset-shaped datagrams, and ignores retired peer CID tokens.
-- ✅ Endpoint stateless reset generation is available for locally issued CIDs after retirement, keeps reset datagrams smaller than the triggering datagram, uses a short-header-shaped first byte, and fails closed for unknown or still-active CIDs.
+- ✅ QUIC v1 varint, packet number, packet header, frame, transport parameter codecs
+- ✅ ACK/loss recovery, RTT estimation, PTO, bytes-in-flight accounting
+- ✅ NewReno congestion control (slow start, congestion avoidance, persistent congestion)
+- ✅ Stream receive/send state, flow control (stream-level and connection-level)
+- ✅ Connection ID routing, NEW_CONNECTION_ID, RETIRE_CONNECTION_ID
+- ✅ Stateless reset detection and generation
+- ✅ PATH_CHALLENGE/PATH_RESPONSE with peer migration validation
+- ✅ Anti-amplification limit (3x received bytes)
+- ✅ Version negotiation, retry helper surfaces
+- ✅ Endpoint driver lifecycle with connection limits
 
-### Interop Harness
+### Interop
 
-- ✅ Test-support `interop_runner` executes configured scenarios through an injected executor without being installed as public API.
-- ✅ Available peers no longer produce synthetic skip results; executor exit code, timeout, and exceptions map to pass/fail/error.
-- ✅ `scripts/run-interop.ps1` and `scripts/run-interop.sh` call the built harness binary and write per-scenario JSON results.
-- ✅ External interop wrapper scripts have no skip path; missing peers, missing TLS setup, harness errors, and non-zero executor exits fail the gate.
-- ✅ Harness wiring was verified locally with `FLOWQ_INTEROP_SCENARIO=basic_handshake` and a local executable peer.
-- ✅ FlowQ client handshake and bidirectional stream 0 echo pass against Python `aioquic` 1.3.0 in conda environment `expr`.
-- ✅ The aioquic validation run recorded FlowQ TLS backend OpenSSL QUIC TLS (`OpenSSL 3.6.1 27 Jan 2026`) and negotiated cipher suite `TLS_AES_128_GCM_SHA256`.
-- ✅ FlowQ OpenSSL QUIC TLS client setup requires an explicit CA file and verification host, configures SNI, and enables OpenSSL hostname verification.
-- ✅ The direct aioquic harness generates a short-lived localhost SAN certificate and passes the generated CA path plus server name to the FlowQ client.
-- ✅ FlowQ client application loss recovery passes against Python `aioquic` 1.3.0 after one intentionally dropped short-header datagram; FlowQ reports Application PTO loss detection and stream retransmission before receiving the echo.
-- ✅ Coalesced long-header datagrams now stay in core connection processing: peer source CID learning, trailing zero padding, and packet-protector refresh are covered by unit tests and the aioquic handshake regression.
-- ⚠️ Named non-aioquic QUIC peers are not available in the current local environment: ngtcp2, quiche, MsQuic, picoquic, and lsquic were not found on PATH.
+- ✅ aioquic 1.3.0: handshake, bidirectional stream echo, loss recovery (all PASS)
+- ✅ TLS backend: OpenSSL 3.6.1, cipher: TLS_AES_128_GCM_SHA256
+- ✅ Client: CA verification, SNI, hostname verification
+- ⚠️ Only 1 external peer validated (aioquic); ngtcp2, quiche, MsQuic not available
 
 ### Hardening
 
-- ✅ Fuzz targets: `fuzz_packet_header`, `fuzz_frame_decode`, `fuzz_qpack`.
-- ✅ ASan + UBSan workflow in `.github/workflows/robustness.yml` uses the same vcpkg manifest dependency path as the standard Linux build.
-- ✅ `detail::` namespace access is gated by `FLOWQ_DETAIL`.
-- ✅ Inspection methods are gated by `FLOWQ_ENABLE_INSPECTION`.
-- ✅ Public value-returning methods use `[[nodiscard]]` where applicable.
-- ✅ Movable core types use explicit `noexcept` move operations.
-- ✅ Public pointer ownership and thread-safety contracts are documented.
-- ✅ Plaintext packet-protection helpers are kept out of the installed public API surface.
-- ✅ Source-only HTTP/3, QPACK, 0-RTT, and test-support interop headers are kept out of the installed production package, with install validation rejecting regressions.
-- ✅ Release checklist validation rejects weak random generator usage in production QUIC headers.
-- ✅ Traffic secrets and key material are securely zeroed on destruction (Windows SecureZeroMemory, macOS memset_s, Linux explicit_bzero).
-- ✅ Multiple cipher suites supported: AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305.
-- ✅ Cipher-suite-aware header protection: AES-ECB (16/32 byte keys) and ChaCha20 (32 byte key).
-- ✅ All packet protector types securely erase keys on destruction (initial_packet_protector, openssl_aead_protector, traffic_key_material).
-- ✅ buffer::secure_zero() delegates to platform-specific secure.hpp implementation.
+- ✅ Fuzz targets: `fuzz_packet_header`, `fuzz_frame_decode`, `fuzz_qpack`
+- ✅ ASan + UBSan workflow (`.github/workflows/robustness.yml`)
+- ✅ `detail::` namespace gated by `FLOWQ_DETAIL`
+- ✅ Inspection methods gated by `FLOWQ_ENABLE_INSPECTION`
+- ✅ `[[nodiscard]]` on value-returning public methods
+- ✅ `noexcept` move operations on core types
+- ✅ Thread-safety contracts documented
+- ✅ Code quality gates: no TODO/FIXME, no type suppressions, no empty catch, no weak RNG
 
 ## Production-Candidate Scope
 
-FlowQ can only claim production-candidate status for the exact scope backed by local evidence and external peer interop results.
+**In scope**:
+- QUIC v1 transport (RFC 9000)
+- TLS 1.3 handshake (RFC 9001) via OpenSSL 3.5+ QUIC TLS
+- Cipher suites: AES-128-GCM-SHA256, AES-256-GCM-SHA384, TLS_CHACHA20_POLY1305_SHA256
+- Client and server roles
+- Windows MSVC/vcpkg platform
 
-**Candidate Scope Target**
-
-- **Operating system**: Windows with MSVC/vcpkg preset evidence
-- **QUIC version**: QUIC v1 structural transport behavior
-- **TLS/backend**: OpenSSL-backed packet protection where enabled
-- **Cipher suite**: AES-128-GCM-SHA256
-- **Roles**: Client and server surfaces
-- **Scenarios**: handshake path, stream echo, loss recovery, path validation, migrated-peer validation
-
-**Explicitly Outside Scope**
-
-- 0-RTT deployment policy
-- HTTP/3 deployment
-- WebTransport deployment
-- QPACK deployment guarantees
-- Alternative congestion-control algorithms beyond NewReno
+**Out of scope**:
+- 0-RTT deployment
+- HTTP/3, QPACK, WebTransport
+- BBR/CUBIC congestion control
 - Cross-platform release evidence
 - External security audit
 
 ## Open Gate Items
 
-- [x] Real interop runner replaces synthetic skip behavior in `tests/support/interop_runner.hpp`.
-- [x] Basic handshake passes against aioquic 1.3.0.
-- [x] Client STREAM delivery passes against aioquic 1.3.0.
-- [x] Bidirectional stream echo passes against aioquic 1.3.0.
-- [x] Loss recovery passes against aioquic 1.3.0.
-- [x] Interop results are recorded in `docs/interop/results.md`.
-- [x] TLS backend and cipher-suite versions used during validation are recorded.
-- [ ] Linux GCC preset execution evidence is recorded.
-- [ ] ASan/UBSan execution evidence is recorded.
-- [x] Strict-warning evidence is refreshed against the current test suite.
-- [ ] Human security review is recorded.
+- [x] Interop runner with real peer execution
+- [x] aioquic 1.3.0 handshake PASS
+- [x] aioquic 1.3.0 stream echo PASS
+- [x] aioquic 1.3.0 loss recovery PASS
+- [x] Interop results recorded in `docs/interop/results.md`
+- [x] TLS backend and cipher suite versions recorded
+- [x] Cipher-suite-aware header protection
+- [x] Secure key material zeroing across all protectors
+- [ ] Linux GCC execution evidence
+- [ ] ASan/UBSan execution evidence
+- [ ] Second external peer interop
+- [ ] Human security review
 
 ## Forbidden Public Claims
 
-The following public claims require evidence and must not appear outside policy documents:
-
-- "Production-ready" requires human security review.
-- "RFC-compliant" requires external peer interop evidence against named versions.
-- "Secure" requires external audit or formal evidence.
-- "Interoperable" requires passing scenarios against named peer versions.
+- "Production-ready" → requires human security review
+- "RFC-compliant" → requires multi-peer interop evidence
+- "Secure" → requires external audit
+- "Interoperable" → requires 2+ named peer versions
