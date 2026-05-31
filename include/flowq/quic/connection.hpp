@@ -311,12 +311,7 @@ public:
             auto parsed = parse_short_packet(
                 datagram.payload,
                 config_.local_connection_id.bytes.size(),
-                detail::rx_protector_for(packet_number_space::application, config_)
-#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
-                ,
-                config_.protection_policy
-#endif
-            );
+                detail::rx_protector_for(packet_number_space::application, config_));
             if (!parsed.ok()) {
                 enter_closing(parsed.error, received_at);
                 return;
@@ -351,12 +346,7 @@ public:
                 continue;
             }
             const auto* protector = detail::rx_protector_for(space, config_);
-            auto parsed = parse_long_packet(packet_bytes, protector
-#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
-                ,
-                config_.protection_policy
-#endif
-            );
+            auto parsed = parse_long_packet(packet_bytes, protector);
             if (!parsed.ok()) {
                 enter_closing(parsed.error, received_at);
                 return;
@@ -636,10 +626,6 @@ private:
                 frames,
                 detail::tx_protector_for(space, config_),
                 config_.pipeline
-#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
-                ,
-                config_.protection_policy
-#endif
             });
         }
         return assemble_long_packet(packet_build_request{
@@ -652,10 +638,6 @@ private:
             frames,
             detail::tx_protector_for(space, config_),
             config_.pipeline
-#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
-            ,
-            config_.protection_policy
-#endif
         });
     }
 
@@ -668,11 +650,6 @@ private:
     }
 
     [[nodiscard]] bool application_send_allowed() const noexcept {
-#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
-        if (config_.protection_policy == packet_protection_policy::test_allowed) {
-            return true;
-        }
-#endif
         return config_.tls_adapter != nullptr && application_data_ready(*config_.tls_adapter) &&
                config_.key_lifecycle.available(encryption_level::one_rtt, key_direction::send);
     }

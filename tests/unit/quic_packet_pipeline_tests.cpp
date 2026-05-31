@@ -31,7 +31,10 @@ void check_buffer(const flowq::buffer& buffer, std::initializer_list<unsigned in
 
 class xor_packet_protector final : public flowq::quic::packet_protector {
 public:
-    explicit xor_packet_protector(flowq::quic::protection_level level = flowq::quic::protection_level::initial) : level_{level} {}
+    explicit xor_packet_protector(
+        flowq::quic::protection_level level = flowq::quic::protection_level::initial,
+        bool provider_ready = false)
+        : level_{level}, provider_ready_{provider_ready} {}
 
     flowq::quic::protection_level level() const noexcept override {
         return level_;
@@ -39,6 +42,15 @@ public:
 
     flowq::quic::packet_security_level security_level() const noexcept override {
         return flowq::quic::packet_security_level::authenticated_encrypted;
+    }
+
+    flowq::quic::crypto_provider_status provider_status() const noexcept override {
+        if (!provider_ready_) {
+            return flowq::quic::crypto_provider_status::unavailable();
+        }
+        return flowq::quic::crypto_provider_status::available(
+            flowq::quic::cipher_suite::aes_128_gcm_sha256,
+            flowq::quic::crypto_capabilities{true, true, true, true, true});
     }
 
     flowq::quic::packet_protection_result protect(std::span<const std::byte> plaintext) const override {
@@ -56,6 +68,7 @@ public:
 
 private:
     flowq::quic::protection_level level_{};
+    bool provider_ready_{};
 
     static flowq::buffer transform(std::span<const std::byte> input) {
         std::vector<std::byte> output;
@@ -240,8 +253,7 @@ TEST_CASE("packet pipeline round trips Initial frames through plaintext protecto
             flowq::quic::frame{flowq::quic::padding_frame{2}}
         },
         &protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::test_allowed
+        flowq::quic::packet_pipeline_config{1200}
     };
 
     auto assembled = flowq::quic::assemble_long_packet(request);
@@ -251,8 +263,7 @@ TEST_CASE("packet pipeline round trips Initial frames through plaintext protecto
 
     auto parsed = flowq::quic::parse_long_packet(
         assembled.datagram,
-        protector,
-        flowq::quic::packet_protection_policy::test_allowed);
+        protector);
     REQUIRE(parsed.ok());
     CHECK(parsed.space == flowq::quic::packet_number_space::initial);
     CHECK(parsed.number.value == 7);
@@ -277,8 +288,7 @@ TEST_CASE("packet pipeline applies long header protection to packet number bytes
         flowq::quic::packet_number{flowq::quic::packet_number_space::initial, 0},
         {flowq::quic::frame{flowq::quic::crypto_frame{0, flowq::buffer{bytes({0x06, 0x00})}}}},
         &protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::production_required
+        flowq::quic::packet_pipeline_config{1200}
     };
 
     auto assembled = flowq::quic::assemble_long_packet(request);
@@ -313,16 +323,14 @@ TEST_CASE("packet pipeline round trips Handshake frames") {
         flowq::quic::packet_number{flowq::quic::packet_number_space::handshake, 9},
         {flowq::quic::frame{flowq::quic::crypto_frame{4, flowq::buffer{bytes({0xde, 0xad})}}}},
         &protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::test_allowed
+        flowq::quic::packet_pipeline_config{1200}
     };
 
     auto assembled = flowq::quic::assemble_long_packet(request);
     REQUIRE(assembled.ok());
     auto parsed = flowq::quic::parse_long_packet(
         assembled.datagram,
-        protector,
-        flowq::quic::packet_protection_policy::test_allowed);
+        protector);
 
     REQUIRE(parsed.ok());
     CHECK(parsed.space == flowq::quic::packet_number_space::handshake);
@@ -342,8 +350,7 @@ TEST_CASE("packet pipeline round trips Application frames through short headers"
             flowq::quic::frame{flowq::quic::stream_frame{0, 0, false, true, false, flowq::buffer{bytes({0x66, 0x77})}}}
         },
         &protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::test_allowed
+        flowq::quic::packet_pipeline_config{1200}
     };
 
     auto assembled = flowq::quic::assemble_application_packet(request);
@@ -355,8 +362,7 @@ TEST_CASE("packet pipeline round trips Application frames through short headers"
     auto parsed = flowq::quic::parse_short_packet(
         assembled.datagram,
         1,
-        protector,
-        flowq::quic::packet_protection_policy::test_allowed);
+        protector);
     REQUIRE(parsed.ok());
     CHECK(parsed.space == flowq::quic::packet_number_space::application);
     CHECK(parsed.number.value == 3);
@@ -377,8 +383,7 @@ TEST_CASE("packet pipeline applies short header protection in production mode") 
         flowq::quic::packet_number{flowq::quic::packet_number_space::application, 0},
         {flowq::quic::frame{flowq::quic::stream_frame{1, 0, false, true, false, flowq::buffer{bytes({0x66})}}}},
         &protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::production_required
+        flowq::quic::packet_pipeline_config{1200}
     };
 
     auto assembled = flowq::quic::assemble_application_packet(request);
@@ -400,8 +405,7 @@ TEST_CASE("packet pipeline applies short header protection in production mode") 
     auto parsed = flowq::quic::parse_short_packet(
         assembled.datagram,
         1,
-        &protector,
-        flowq::quic::packet_protection_policy::production_required);
+        &protector);
     REQUIRE(parsed.ok());
     CHECK(parsed.space == flowq::quic::packet_number_space::application);
     CHECK(parsed.number.value == 0);
@@ -416,13 +420,12 @@ TEST_CASE("packet pipeline applies short header protection in production mode") 
     CHECK(protector.last_associated_data[0] == std::byte{0x43});
 }
 
-TEST_CASE("packet pipeline parses short-header shell in test mode") {
+TEST_CASE("packet pipeline parses short-header shell with provider-backed plaintext protector") {
     flowq::quic::test::plaintext_packet_protector protector{};
     const auto parsed = flowq::quic::parse_short_packet(
         flowq::buffer{bytes({0x40, 0xaa, 0x07, 0x01})},
         1,
-        protector,
-        flowq::quic::packet_protection_policy::test_allowed);
+        protector);
 
     REQUIRE(parsed.ok());
     CHECK(parsed.space == flowq::quic::packet_number_space::application);
@@ -434,23 +437,21 @@ TEST_CASE("packet pipeline parses short-header shell in test mode") {
     CHECK(std::holds_alternative<flowq::quic::ping_frame>(parsed.frames[0]));
 }
 
-TEST_CASE("packet pipeline accepts production short-header parsing when protection policy is satisfied") {
+TEST_CASE("packet pipeline accepts short-header parsing when provider-backed protection is satisfied") {
     deterministic_header_protector protector{flowq::quic::protection_level::application};
     auto assembled = flowq::quic::assemble_application_packet(flowq::quic::application_packet_build_request{
         cid({0xaa}),
         flowq::quic::packet_number{flowq::quic::packet_number_space::application, 1},
         {flowq::quic::frame{flowq::quic::ping_frame{}}},
         &protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::production_required
+        flowq::quic::packet_pipeline_config{1200}
     });
     REQUIRE(assembled.ok());
 
     CHECK(flowq::quic::parse_short_packet(
         assembled.datagram,
         1,
-        &protector,
-        flowq::quic::packet_protection_policy::production_required).ok());
+        &protector).ok());
 }
 
 TEST_CASE("packet pipeline rejects invalid Application packet metadata invariants") {
@@ -496,8 +497,7 @@ TEST_CASE("packet pipeline enforces maximum datagram size") {
         flowq::quic::packet_number{flowq::quic::packet_number_space::initial, 1},
         {flowq::quic::frame{flowq::quic::crypto_frame{0, flowq::buffer{bytes({0x01, 0x02, 0x03, 0x04})}}}},
         &protector,
-        flowq::quic::packet_pipeline_config{8},
-        flowq::quic::packet_protection_policy::test_allowed
+        flowq::quic::packet_pipeline_config{8}
     };
 
     CHECK_FALSE(flowq::quic::assemble_long_packet(request).ok());
@@ -567,7 +567,7 @@ TEST_CASE("packet pipeline rejects packets without header protection sample") {
 }
 
 TEST_CASE("packet pipeline calls transforming protector") {
-    xor_packet_protector protector{};
+    xor_packet_protector protector{flowq::quic::protection_level::initial, true};
     flowq::quic::packet_build_request request{
         flowq::quic::long_packet_type::initial,
         1,
@@ -577,8 +577,7 @@ TEST_CASE("packet pipeline calls transforming protector") {
         flowq::quic::packet_number{flowq::quic::packet_number_space::initial, 2},
         {flowq::quic::frame{flowq::quic::ping_frame{}}},
         &protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::test_allowed
+        flowq::quic::packet_pipeline_config{1200}
     };
 
     auto assembled = flowq::quic::assemble_long_packet(request);
@@ -588,8 +587,7 @@ TEST_CASE("packet pipeline calls transforming protector") {
 
     auto parsed = flowq::quic::parse_long_packet(
         assembled.datagram,
-        protector,
-        flowq::quic::packet_protection_policy::test_allowed);
+        protector);
     REQUIRE(parsed.ok());
     CHECK(protector.unprotect_calls == 1);
     CHECK(parsed.protection == flowq::quic::protection_level::initial);
@@ -601,12 +599,13 @@ TEST_CASE("packet protectors report explicit security capability") {
     flowq::quic::test::plaintext_packet_protector plaintext{};
     xor_packet_protector external_adapter{};
 
-    CHECK(plaintext.security_level() == flowq::quic::packet_security_level::test_only);
+    CHECK(plaintext.security_level() == flowq::quic::packet_security_level::authenticated_encrypted);
     CHECK(external_adapter.security_level() == flowq::quic::packet_security_level::authenticated_encrypted);
+    CHECK(plaintext.provider_status().packet_protection_ready());
     CHECK_FALSE(plaintext.provider_status().production_ready());
 }
 
-TEST_CASE("packet pipeline defaults to production packet protection policy") {
+TEST_CASE("packet pipeline accepts provider-backed packet protection by default") {
     flowq::quic::test::plaintext_packet_protector plaintext{};
     flowq::quic::packet_build_request initial_request{
         flowq::quic::long_packet_type::initial,
@@ -621,8 +620,11 @@ TEST_CASE("packet pipeline defaults to production packet protection policy") {
     };
 
     auto initial = flowq::quic::assemble_long_packet(initial_request);
-    CHECK_FALSE(initial.ok());
-    CHECK(initial.error.message() == "production packet protection requires authenticated encrypted external crypto provider");
+    REQUIRE(initial.ok());
+    auto parsed_initial = flowq::quic::parse_long_packet(initial.datagram, plaintext);
+    REQUIRE(parsed_initial.ok());
+    REQUIRE(parsed_initial.frames.size() == 1);
+    CHECK(std::holds_alternative<flowq::quic::ping_frame>(parsed_initial.frames[0]));
 
     flowq::quic::application_packet_build_request application_request{
         cid({0xaa}),
@@ -633,49 +635,11 @@ TEST_CASE("packet pipeline defaults to production packet protection policy") {
     };
 
     auto application = flowq::quic::assemble_application_packet(application_request);
-    CHECK_FALSE(application.ok());
-    CHECK(application.error.message() == initial.error.message());
-
-    auto parsed_long = flowq::quic::parse_long_packet(flowq::buffer{bytes({0xc0})}, plaintext);
-    CHECK_FALSE(parsed_long.ok());
-    CHECK(parsed_long.error.message() == initial.error.message());
-
-    auto parsed_short = flowq::quic::parse_short_packet(flowq::buffer{bytes({0x40, 0xaa, 0x01})}, 1, plaintext);
-    CHECK_FALSE(parsed_short.ok());
-    CHECK(parsed_short.error.message() == initial.error.message());
-}
-
-TEST_CASE("packet pipeline rejects test-only protectors when production protection is required") {
-    flowq::quic::test::plaintext_packet_protector plaintext{};
-    flowq::quic::packet_build_request initial_request{
-        flowq::quic::long_packet_type::initial,
-        1,
-        cid({0xaa}),
-        cid({0xbb}),
-        {},
-        flowq::quic::packet_number{flowq::quic::packet_number_space::initial, 1},
-        {flowq::quic::frame{flowq::quic::ping_frame{}}},
-        &plaintext,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::production_required
-    };
-
-    auto initial = flowq::quic::assemble_long_packet(initial_request);
-    CHECK_FALSE(initial.ok());
-    CHECK(initial.error.code() == flowq::error_code::protocol_error);
-
-    flowq::quic::application_packet_build_request application_request{
-        cid({0xaa}),
-        flowq::quic::packet_number{flowq::quic::packet_number_space::application, 1},
-        {flowq::quic::frame{flowq::quic::ping_frame{}}},
-        &plaintext,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::production_required
-    };
-
-    auto application = flowq::quic::assemble_application_packet(application_request);
-    CHECK_FALSE(application.ok());
-    CHECK(application.error.code() == flowq::error_code::protocol_error);
+    REQUIRE(application.ok());
+    auto parsed_application = flowq::quic::parse_short_packet(application.datagram, 1, plaintext);
+    REQUIRE(parsed_application.ok());
+    REQUIRE(parsed_application.frames.size() == 1);
+    CHECK(std::holds_alternative<flowq::quic::ping_frame>(parsed_application.frames[0]));
 }
 
 TEST_CASE("packet pipeline rejects authenticated encrypted adapter without provider evidence when production protection is required") {
@@ -685,8 +649,7 @@ TEST_CASE("packet pipeline rejects authenticated encrypted adapter without provi
         flowq::quic::packet_number{flowq::quic::packet_number_space::application, 2},
         {flowq::quic::frame{flowq::quic::ping_frame{}}},
         &protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::production_required
+        flowq::quic::packet_pipeline_config{1200}
     };
 
     auto assembled = flowq::quic::assemble_application_packet(request);
@@ -701,8 +664,7 @@ TEST_CASE("packet pipeline accepts provider-backed authenticated encrypted adapt
         flowq::quic::packet_number{flowq::quic::packet_number_space::application, 2},
         {flowq::quic::frame{flowq::quic::ping_frame{}}},
         &protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::production_required
+        flowq::quic::packet_pipeline_config{1200}
     };
 
     auto assembled = flowq::quic::assemble_application_packet(request);
@@ -711,8 +673,7 @@ TEST_CASE("packet pipeline accepts provider-backed authenticated encrypted adapt
     auto parsed = flowq::quic::parse_short_packet(
         assembled.datagram,
         1,
-        &protector,
-        flowq::quic::packet_protection_policy::production_required);
+        &protector);
     REQUIRE(parsed.ok());
     CHECK(parsed.protection == flowq::quic::protection_level::application);
 }
@@ -728,8 +689,7 @@ TEST_CASE("packet pipeline rejects wrong-level provider when parsing long packet
         flowq::quic::packet_number{flowq::quic::packet_number_space::initial, 4},
         {flowq::quic::frame{flowq::quic::ping_frame{}}},
         &initial_protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::production_required
+        flowq::quic::packet_pipeline_config{1200}
     };
     auto initial = flowq::quic::assemble_long_packet(initial_request);
     REQUIRE(initial.ok());
@@ -737,8 +697,7 @@ TEST_CASE("packet pipeline rejects wrong-level provider when parsing long packet
     provider_backed_packet_protector application_protector{flowq::quic::protection_level::application};
     auto parsed_initial = flowq::quic::parse_long_packet(
         initial.datagram,
-        &application_protector,
-        flowq::quic::packet_protection_policy::production_required);
+        &application_protector);
     CHECK_FALSE(parsed_initial.ok());
     CHECK(parsed_initial.error.code() == flowq::error_code::protocol_error);
 
@@ -752,16 +711,14 @@ TEST_CASE("packet pipeline rejects wrong-level provider when parsing long packet
         flowq::quic::packet_number{flowq::quic::packet_number_space::handshake, 5},
         {flowq::quic::frame{flowq::quic::ping_frame{}}},
         &handshake_protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::production_required
+        flowq::quic::packet_pipeline_config{1200}
     };
     auto handshake = flowq::quic::assemble_long_packet(handshake_request);
     REQUIRE(handshake.ok());
 
     auto parsed_handshake = flowq::quic::parse_long_packet(
         handshake.datagram,
-        &initial_protector,
-        flowq::quic::packet_protection_policy::production_required);
+        &initial_protector);
     CHECK_FALSE(parsed_handshake.ok());
     CHECK(parsed_handshake.error.code() == flowq::error_code::protocol_error);
 }

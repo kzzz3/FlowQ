@@ -326,7 +326,7 @@ TEST_CASE("openssl_aead_packet_protector seals and opens minimal single-byte pla
     CHECK(opened.payload.data()[0] == std::byte{0x42});
 }
 
-TEST_CASE("openssl_aead_packet_protector round trips through long packet pipeline with production policy") {
+TEST_CASE("openssl_aead_packet_protector round trips through long packet pipeline with provider-backed protection") {
     auto material = make_test_material();
     REQUIRE(material.ok());
     flowq::quic::openssl_aead_packet_protector protector;
@@ -347,8 +347,7 @@ TEST_CASE("openssl_aead_packet_protector round trips through long packet pipelin
             flowq::quic::frame{flowq::quic::ping_frame{}}
         },
         &protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::production_required
+        flowq::quic::packet_pipeline_config{1200}
     };
 
     auto assembled = flowq::quic::assemble_long_packet(request);
@@ -357,8 +356,7 @@ TEST_CASE("openssl_aead_packet_protector round trips through long packet pipelin
 
     auto parsed = flowq::quic::parse_long_packet(
         assembled.datagram,
-        &protector,
-        flowq::quic::packet_protection_policy::production_required);
+        &protector);
     REQUIRE(parsed.ok());
     CHECK(parsed.number.value == 3);
     CHECK(parsed.space == flowq::quic::packet_number_space::handshake);
@@ -385,8 +383,7 @@ TEST_CASE("openssl_aead_packet_protector rejects tampered datagram through pipel
         flowq::quic::packet_number{flowq::quic::packet_number_space::handshake, 7},
         {flowq::quic::frame{flowq::quic::ping_frame{}}},
         &protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::production_required
+        flowq::quic::packet_pipeline_config{1200}
     };
 
     auto assembled = flowq::quic::assemble_long_packet(request);
@@ -398,8 +395,7 @@ TEST_CASE("openssl_aead_packet_protector rejects tampered datagram through pipel
 
     auto parsed = flowq::quic::parse_long_packet(
         tampered,
-        &protector,
-        flowq::quic::packet_protection_policy::production_required);
+        &protector);
     CHECK_FALSE(parsed.ok());
 }
 

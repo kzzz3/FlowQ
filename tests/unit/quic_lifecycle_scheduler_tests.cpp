@@ -44,6 +44,34 @@ flowq::buffer text(std::string value) {
     return flowq::buffer{output};
 }
 
+struct ready_tls_adapter : flowq::quic::tls_handshake_adapter {
+    [[nodiscard]] flowq::quic::handshake_state state() const noexcept override {
+        return flowq::quic::handshake_state::handshake_confirmed;
+    }
+
+    [[nodiscard]] flowq::quic::tls_key_availability key_availability() const noexcept override {
+        return flowq::quic::tls_key_availability{true, true, true};
+    }
+
+    [[nodiscard]] flowq::quic::crypto_provider_status provider_status() const noexcept override {
+        return flowq::quic::crypto_provider_status::available(
+            flowq::quic::cipher_suite::aes_128_gcm_sha256,
+            flowq::quic::crypto_capabilities{false, false, false, false, true});
+    }
+
+    [[nodiscard]] flowq::error receive_crypto(flowq::quic::crypto_bytes) override {
+        return {};
+    }
+
+    [[nodiscard]] std::vector<flowq::quic::crypto_bytes> drain_crypto() override {
+        return {};
+    }
+
+    [[nodiscard]] flowq::error advance() override {
+        return {};
+    }
+};
+
 flowq::quic::session_config make_config(
     flowq::quic::connection_id local,
     flowq::quic::connection_id remote,
@@ -60,7 +88,6 @@ flowq::quic::session_config make_config(
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     return config;
 }
 
@@ -171,12 +198,14 @@ TEST_CASE("lifecycle scheduler cancellation maps to stopped") {
 TEST_CASE("lifecycle scheduler drives real session idle timeout close") {
     flowq::context context{};
     flowq::quic::test::plaintext_packet_protector protector{};
+    ready_tls_adapter tls{};
     auto config = make_config(
         cid({0x01}),
         cid({0x02}),
         flowq::endpoint{"server", 4433, "hq-interop"},
         protector);
     config.max_idle_timeout = 5ms;
+    config.tls_adapter = &tls;
     flowq::quic::session session{std::move(config)};
     std::optional<flowq::quic::lifecycle_scheduler_result> result;
 

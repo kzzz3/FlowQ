@@ -41,6 +41,22 @@ if ($LASTEXITCODE -ne 0) {
 $StepNumber = 3
 
 Write-Host ""
+Write-Host "$StepNumber. Checking public packet protection API..." -ForegroundColor Yellow
+$publicBypassHits = @(
+    Select-String `
+        -Path (Join-Path $RepoRoot "include\flowq\quic\*.hpp") `
+        -Pattern 'FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS|packet_protection_policy|test_only'
+)
+if ($publicBypassHits.Count -gt 0) {
+    Write-Host "FAILED: public QUIC headers must not expose packet protection bypass APIs:" -ForegroundColor Red
+    foreach ($hit in $publicBypassHits) {
+        Write-Host "  $($hit.Path):$($hit.LineNumber): $($hit.Line.Trim())" -ForegroundColor Red
+    }
+    $Failed = $true
+}
+$StepNumber += 1
+
+Write-Host ""
 Write-Host "$StepNumber. Checking integration packet protection..." -ForegroundColor Yellow
 $integrationBypassHits = @(
     Select-String `

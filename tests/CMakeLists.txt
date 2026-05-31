@@ -65,7 +65,6 @@ target_compile_definitions(
     flowq_unit_tests
     PRIVATE
         FLOWQ_ENABLE_INSPECTION
-        FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS
 )
 
 include(Catch)

@@ -25,9 +25,6 @@ struct session_config {
     std::uint64_t initial_stream_send_max_data{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t initial_connection_send_max_data{std::numeric_limits<std::uint64_t>::max()};
     std::size_t max_packet_payload_size{std::numeric_limits<std::size_t>::max()};
-#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
-    packet_protection_policy protection_policy{packet_protection_policy::production_required};
-#endif
     std::size_t max_stream_frames{8};
     std::size_t max_stream_data_size{1200};
     std::uint64_t initial_max_stream_data_bidi_local{std::numeric_limits<std::uint64_t>::max()};
@@ -70,9 +67,6 @@ struct session_config {
         config.initial_stream_send_max_data,
         config.initial_connection_send_max_data,
         config.max_packet_payload_size,
-#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
-        config.protection_policy,
-#endif
         config.initial_max_stream_data_bidi_local,
         config.initial_max_stream_data_bidi_remote,
         config.initial_max_stream_data_uni,

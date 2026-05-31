@@ -61,9 +61,6 @@ struct connection_loop_config {
     std::uint64_t initial_stream_send_max_data{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t initial_connection_send_max_data{std::numeric_limits<std::uint64_t>::max()};
     std::size_t max_packet_payload_size{std::numeric_limits<std::size_t>::max()};
-#if defined(FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS)
-    packet_protection_policy protection_policy{packet_protection_policy::production_required};
-#endif
     std::uint64_t initial_max_stream_data_bidi_local{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t initial_max_stream_data_bidi_remote{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t initial_max_stream_data_uni{std::numeric_limits<std::uint64_t>::max()};
