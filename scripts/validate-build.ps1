@@ -74,6 +74,13 @@ Write-Host ""
 # Step 4: Install
 Write-Host "Step 4/5: Installing..." -ForegroundColor Yellow
 $InstallDir = "build/install-flowq"
+$DisallowedInstallHeaders = @(
+    "include/flowq/quic/http3.hpp",
+    "include/flowq/quic/http3_request.hpp",
+    "include/flowq/quic/qpack.hpp",
+    "include/flowq/quic/zero_rtt.hpp",
+    "include/flowq/quic/interop_runner.hpp"
+)
 $ResolvedInstallParent = Resolve-Path -Path "build" -ErrorAction SilentlyContinue
 if ($ResolvedInstallParent -and (Test-Path $InstallDir)) {
     $ResolvedInstallDir = Resolve-Path -Path $InstallDir
@@ -87,6 +94,13 @@ cmake --install "build/$Preset" --config $BuildType --prefix $InstallDir
 if ($LASTEXITCODE -ne 0) {
     Write-Host "FAILED: Install failed" -ForegroundColor Red
     exit 1
+}
+foreach ($header in $DisallowedInstallHeaders) {
+    $candidate = Join-Path $InstallDir $header
+    if (Test-Path $candidate) {
+        Write-Host "FAILED: Experimental/test header installed in production package: $header" -ForegroundColor Red
+        exit 1
+    }
 }
 Write-Host "OK: Install succeeded" -ForegroundColor Green
 Write-Host ""

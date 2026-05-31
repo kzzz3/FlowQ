@@ -103,6 +103,13 @@ echo ""
 # Step 4: Install
 echo "Step 4/5: Installing..."
 INSTALL_DIR="build/install-flowq"
+DISALLOWED_INSTALL_HEADERS=(
+    "include/flowq/quic/http3.hpp"
+    "include/flowq/quic/http3_request.hpp"
+    "include/flowq/quic/qpack.hpp"
+    "include/flowq/quic/zero_rtt.hpp"
+    "include/flowq/quic/interop_runner.hpp"
+)
 INSTALL_DIR_ABS="$(cd "$(dirname "$INSTALL_DIR")" && pwd)/$(basename "$INSTALL_DIR")"
 BUILD_ROOT_ABS="$(cd build && pwd)"
 case "$INSTALL_DIR_ABS" in
@@ -115,6 +122,12 @@ case "$INSTALL_DIR_ABS" in
         ;;
 esac
 cmake --install "build/$PRESET" --config "$BUILD_TYPE" --prefix "$INSTALL_DIR"
+for header in "${DISALLOWED_INSTALL_HEADERS[@]}"; do
+    if [[ -e "$INSTALL_DIR/$header" ]]; then
+        echo -e "${RED}FAILED${NC}: Experimental/test header installed in production package: $header"
+        exit 1
+    fi
+done
 echo -e "${GREEN}OK${NC}: Install succeeded"
 echo ""
 

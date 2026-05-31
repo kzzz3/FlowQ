@@ -43,20 +43,6 @@ is_negated_forbidden_claim() {
     [[ "$line" =~ (^|[[:space:]])no[[:space:]].*guarantees($|[[:space:]]) ]]
 }
 
-is_experimental_public_header() {
-    case "$1" in
-        include/flowq/quic/http3.hpp|\
-        include/flowq/quic/http3_request.hpp|\
-        include/flowq/quic/qpack.hpp|\
-        include/flowq/quic/zero_rtt.hpp)
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-}
-
 DOCUMENTED_PUBLIC_API_HEADERS=(
     "include/flowq/quic/recovery_scheduler.hpp"
     "include/flowq/quic/lifecycle_scheduler.hpp"
@@ -195,8 +181,6 @@ PLACEHOLDER_PATTERNS=(
 )
 
 while IFS= read -r file; do
-    is_experimental_public_header "$file" && continue
-
     for pattern in "${PLACEHOLDER_PATTERNS[@]}"; do
         matches=$(grep -n -i "$pattern" "$file" 2>/dev/null || true)
         if [[ -n "$matches" ]]; then
@@ -279,8 +263,6 @@ echo "Checking public QUIC API naming conventions..."
 
 NAMING_VIOLATION_COUNT=0
 while IFS= read -r file; do
-    is_experimental_public_header "$file" && continue
-
     in_detail=0
     line_number=0
     while IFS= read -r line || [[ -n "$line" ]]; do

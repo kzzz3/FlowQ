@@ -95,6 +95,12 @@ install(
 install(
     DIRECTORY include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING
+        PATTERN "*.hpp"
+        PATTERN "http3.hpp" EXCLUDE
+        PATTERN "http3_request.hpp" EXCLUDE
+        PATTERN "qpack.hpp" EXCLUDE
+        PATTERN "zero_rtt.hpp" EXCLUDE
 )
 
 install(

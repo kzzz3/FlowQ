@@ -38,7 +38,7 @@ FlowQ is organized around explicit protocol boundaries:
 3. Packet protection seams that require production-capable protectors by default.
 4. OpenSSL-gated AES-128-GCM packet protection and RFC 9001 header protection when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled.
 5. Public session, UDP/ASIO, endpoint-driver, diagnostics, fuzz, package-consumer, and CI surfaces.
-6. Structural HTTP/3, QPACK, WebTransport, 0-RTT, BBR, and CUBIC modules that are documented outside the production-candidate scope.
+6. Structural HTTP/3, QPACK, WebTransport, 0-RTT, BBR, and CUBIC modules that are documented outside the production-candidate scope; HTTP/3, QPACK, and 0-RTT headers stay out of the installed package.
 
 ## Getting Started
 
@@ -80,7 +80,7 @@ cmake -S tests/package-consumer -B build/package-consumer -G "Visual Studio 18 2
 cmake --build build/package-consumer --config Debug
 ```
 
-The installed package exports headers, `FlowQTargets.cmake`, `FlowQConfig.cmake`, and `FlowQConfigVersion.cmake`. Consumers should use the same vcpkg toolchain so FlowQ's public Asio and stdexec dependencies resolve consistently.
+The installed package exports production-scope headers, `FlowQTargets.cmake`, `FlowQConfig.cmake`, and `FlowQConfigVersion.cmake`. Consumers should use the same vcpkg toolchain so FlowQ's public Asio and stdexec dependencies resolve consistently.
 
 ### CI
 
@@ -149,7 +149,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - **Packet protection**: OpenSSL-backed AES-128-GCM packet protection with header protection when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled; unsupported cipher suites are rejected; creation fails closed when the OpenSSL crypto backend is not compiled in; plaintext packet protection is kept in test support only.
 - **Path validation primitives**: PATH_CHALLENGE/PATH_RESPONSE codec support and Application-space same-value response scheduling.
 - **Public surfaces**: session facade, UDP/ASIO adapter, timer schedulers, diagnostics, CMake package export, package-consumer check, fuzz targets, and sanitizer CI.
-- **Experimental surfaces**: HTTP/3/QPACK, WebTransport, 0-RTT, BBR, and CUBIC are structural modules and are not part of the production-candidate scope.
+- **Experimental surfaces**: HTTP/3/QPACK, WebTransport, 0-RTT, BBR, and CUBIC are structural modules and are not part of the production-candidate scope; HTTP/3, QPACK, and 0-RTT headers are not installed by the package.
 
 The test suite covers protocol core, RFC compliance, integration, performance, fuzz, and AEAD modules.
 
