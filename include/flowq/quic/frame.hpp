@@ -31,6 +31,11 @@ struct connection_close_frame {
     std::string reason;
 };
 
+struct application_close_frame {
+    std::uint64_t error_code{};
+    std::string reason;
+};
+
 struct reset_stream_frame {
     std::uint64_t stream_id{};
     std::uint64_t application_error_code{};
@@ -133,6 +138,7 @@ using frame = std::variant<
     padding_frame,
     ping_frame,
     connection_close_frame,
+    application_close_frame,
     reset_stream_frame,
     stop_sending_frame,
     ack_frame,
@@ -189,6 +195,23 @@ namespace detail {
 
     if (!append_varint(output, frame.reason.size())) {
         return {{}, codec_error("failed to encode CONNECTION_CLOSE reason length")};
+    }
+
+    for (auto character : frame.reason) {
+        output.push_back(static_cast<std::byte>(static_cast<unsigned char>(character)));
+    }
+
+    return {flowq::buffer{output}, {}};
+}
+
+[[nodiscard]] inline frame_encode_result encode_application_close(const application_close_frame& frame) {
+    std::vector<std::byte> output;
+    if (!append_varint(output, 0x1d) || !append_varint(output, frame.error_code)) {
+        return {{}, codec_error("failed to encode APPLICATION_CLOSE frame")};
+    }
+
+    if (!append_varint(output, frame.reason.size())) {
+        return {{}, codec_error("failed to encode APPLICATION_CLOSE reason length")};
     }
 
     for (auto character : frame.reason) {
@@ -377,6 +400,10 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
 
 [[nodiscard]] inline frame_encode_result encode_frame(const connection_close_frame& frame) {
     return detail::encode_connection_close(frame);
+}
+
+[[nodiscard]] inline frame_encode_result encode_frame(const application_close_frame& frame) {
+    return detail::encode_application_close(frame);
 }
 
 [[nodiscard]] inline frame_encode_result encode_frame(const reset_stream_frame& frame) {
@@ -709,6 +736,27 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
             }
             offset += static_cast<std::size_t>(reason_size);
             frames.emplace_back(connection_close_frame{error_code, frame_type, std::move(reason)});
+            continue;
+        }
+
+        if (type == 0x1d) {
+            std::uint64_t error_code = 0;
+            std::uint64_t reason_size = 0;
+            if (!detail::read_varint_at(input, offset, error_code) || !detail::read_varint_at(input, offset, reason_size)) {
+                return {{}, codec_error("truncated APPLICATION_CLOSE frame")};
+            }
+
+            if (reason_size > input.size() - offset) {
+                return {{}, codec_error("truncated APPLICATION_CLOSE reason phrase")};
+            }
+
+            std::string reason;
+            reason.reserve(static_cast<std::size_t>(reason_size));
+            for (std::uint64_t index = 0; index < reason_size; ++index) {
+                reason.push_back(static_cast<char>(input[offset + static_cast<std::size_t>(index)]));
+            }
+            offset += static_cast<std::size_t>(reason_size);
+            frames.emplace_back(application_close_frame{error_code, std::move(reason)});
             continue;
         }
 

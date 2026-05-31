@@ -1829,6 +1829,31 @@ TEST_CASE("connection loop enters draining after peer connection close and suppr
     CHECK(server.drain_actions().empty());
 }
 
+TEST_CASE("connection loop enters draining after peer application close and suppresses sends") {
+    flowq::quic::test::plaintext_packet_protector_set protector{};
+    auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
+    auto server = make_loop(cid({0x02}), cid({0x01}), flowq::endpoint{"client", 1111, "hq-interop"}, protector);
+
+    client.queue_application({flowq::quic::frame{flowq::quic::application_close_frame{0x0102, "app closed"}}});
+    client.flush(at(0ms));
+    auto datagram = require_single_outbound(client.drain_actions());
+
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(datagram.payload), datagram.peer});
+
+    auto close_actions = server.drain_actions();
+    REQUIRE(close_actions.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::close_action>(close_actions[0]));
+    const auto& error = std::get<flowq::quic::close_action>(close_actions[0]).error;
+    CHECK(error.code() == flowq::error_code::connection_closed);
+    CHECK(error.message() == "app closed");
+    CHECK(server.state() == flowq::quic::connection_loop_state::draining);
+
+    server.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    server.flush(at(1ms));
+
+    CHECK(server.drain_actions().empty());
+}
+
 TEST_CASE("connection loop closes on peer address change when active migration is disabled") {
     flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);
