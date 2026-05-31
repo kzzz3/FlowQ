@@ -62,7 +62,7 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ Movable core types use explicit `noexcept` move operations.
 - ✅ Public pointer ownership and thread-safety contracts are documented.
 - ✅ Plaintext packet-protection helpers are kept out of the installed public API surface.
-- ✅ Experimental HTTP/3, QPACK, 0-RTT, and test-support interop headers are kept out of the installed production package, with install validation rejecting regressions.
+- ✅ Source-only HTTP/3, QPACK, 0-RTT, and test-support interop headers are kept out of the installed production package, with install validation rejecting regressions.
 
 ## Production-Candidate Scope
 

@@ -38,7 +38,7 @@ FlowQ is organized around explicit protocol boundaries:
 3. Packet protection seams that require production-capable protectors by default.
 4. OpenSSL-gated AES-128-GCM packet protection and RFC 9001 header protection when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled.
 5. Public session, UDP/ASIO, endpoint-driver, diagnostics, fuzz, package-consumer, and CI surfaces.
-6. Structural HTTP/3, QPACK, WebTransport, 0-RTT, BBR, and CUBIC modules that are documented outside the production-candidate scope; HTTP/3, QPACK, and 0-RTT headers stay out of the installed package.
+6. Source-only HTTP/3, QPACK, WebTransport, 0-RTT, BBR, and CUBIC modules that are documented outside the production-candidate scope; HTTP/3, QPACK, and 0-RTT headers stay out of the installed package and their examples are not built by default.
 
 ## Getting Started
 
@@ -114,16 +114,15 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - `include/flowq/quic/recovery_scheduler.hpp`: ASIO scheduling adapter for deterministic QUIC recovery timer values.
 - `include/flowq/quic/lifecycle_scheduler.hpp`: ASIO scheduling adapter for idle, closing, and draining lifecycle timers.
 - `include/flowq/quic/timer_scheduler.hpp`: unified ASIO scheduling adapter that selects the earliest recovery or lifecycle timer.
-- `examples/qpack/main.cpp`: QPACK codec example.
 - `tests/integration/`: deterministic in-memory loopback tests that compose connection-loop pieces.
 - `tests/unit/`: Catch2 tests for each protocol module.
 - `.github/workflows/ci.yml`: Windows MSVC/vcpkg CI gate for build, tests, install, and package consumption.
 - `.github/workflows/robustness.yml`: Sanitizer and fuzz testing workflow.
-- `docs/plan.md`: project roadmap and milestone tracking.
+- `docs/plan.md`: current production hardening scope and gate checklist.
 - `docs/guides/`: getting-started, building, and testing guides.
 - `docs/production/`: production readiness gate and release checklist.
 - `docs/reference/`: architecture documentation.
-- `docs/milestones/`: milestone tracking and roadmap.
+- `docs/milestones/`: current milestone-to-evidence index.
 
 ## Tech Stack
 
@@ -149,7 +148,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the Windows MSVC/
 - **Packet protection**: OpenSSL-backed AES-128-GCM packet protection with header protection when `FLOWQ_ENABLE_OPENSSL_CRYPTO` is enabled; unsupported cipher suites are rejected; creation fails closed when the OpenSSL crypto backend is not compiled in; plaintext packet protection is kept in test support only.
 - **Path validation primitives**: PATH_CHALLENGE/PATH_RESPONSE codec support and Application-space same-value response scheduling.
 - **Public surfaces**: session facade, UDP/ASIO adapter, timer schedulers, diagnostics, CMake package export, package-consumer check, fuzz targets, and sanitizer CI.
-- **Experimental surfaces**: HTTP/3/QPACK, WebTransport, 0-RTT, BBR, and CUBIC are structural modules and are not part of the production-candidate scope; HTTP/3, QPACK, and 0-RTT headers are not installed by the package.
+- **Source-only surfaces**: HTTP/3/QPACK, WebTransport, 0-RTT, BBR, and CUBIC are not part of the production-candidate scope; HTTP/3, QPACK, and 0-RTT headers are not installed by the package, and QPACK examples require `FLOWQ_BUILD_SOURCE_ONLY_EXAMPLES=ON`.
 
 The test suite covers protocol core, RFC compliance, integration, performance, fuzz, and AEAD modules.
 
