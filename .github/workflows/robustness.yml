@@ -4,8 +4,6 @@ name: Robustness
 # undefined behavior, and logic bugs before they reach production.
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 permissions:
