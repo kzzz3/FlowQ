@@ -91,7 +91,38 @@ TEST_CASE("openssl_aead_packet_protector reports correct provider status") {
 }
 
 TEST_CASE("openssl_aead_packet_protector rejects unsupported cipher suites") {
+    // Only truly unsupported suites should be rejected
+    // AES-128-GCM, AES-256-GCM, and ChaCha20-Poly1305 are now supported
     for (auto suite : {
+             flowq::quic::cipher_suite::unknown
+         }) {
+        auto material = flowq::quic::traffic_key_material{};
+        const auto lengths = flowq::quic::cipher_suite_key_lengths(suite);
+        if (lengths.key == 0) {
+            // Unknown suite has no key lengths, create dummy material
+            material.key = flowq::buffer{std::vector<std::byte>(16, std::byte{0x01})};
+            material.iv = flowq::buffer{std::vector<std::byte>(12, std::byte{0x02})};
+            material.header_protection_key = flowq::buffer{std::vector<std::byte>(16, std::byte{0x03})};
+        } else {
+            material.key = flowq::buffer{std::vector<std::byte>(lengths.key, std::byte{0x01})};
+            material.iv = flowq::buffer{std::vector<std::byte>(lengths.iv, std::byte{0x02})};
+            material.header_protection_key = flowq::buffer{std::vector<std::byte>(lengths.header_protection, std::byte{0x03})};
+        }
+        material.suite = suite;
+
+        flowq::quic::openssl_aead_packet_protector protector;
+        auto result = flowq::quic::openssl_aead_packet_protector::create(
+            protector,
+            flowq::quic::protection_level::application,
+            std::move(material));
+        CHECK_FALSE(result.ok());
+        CHECK_FALSE(protector.is_ready());
+    }
+}
+
+TEST_CASE("openssl_aead_packet_protector accepts supported cipher suites") {
+    for (auto suite : {
+             flowq::quic::cipher_suite::aes_128_gcm_sha256,
              flowq::quic::cipher_suite::aes_256_gcm_sha384,
              flowq::quic::cipher_suite::chacha20_poly1305_sha256
          }) {
@@ -107,8 +138,8 @@ TEST_CASE("openssl_aead_packet_protector rejects unsupported cipher suites") {
             protector,
             flowq::quic::protection_level::application,
             std::move(material));
-        CHECK_FALSE(result.ok());
-        CHECK_FALSE(protector.is_ready());
+        CHECK(result.ok());
+        CHECK(protector.is_ready());
     }
 }
 

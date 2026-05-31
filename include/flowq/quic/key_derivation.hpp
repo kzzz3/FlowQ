@@ -4,6 +4,7 @@
 #include <flowq/error.hpp>
 #include <flowq/quic/crypto_provider.hpp>
 #include <flowq/quic/initial_keys.hpp>
+#include <flowq/secure.hpp>
 
 #include <array>
 #include <cstddef>
@@ -12,31 +13,58 @@
 
 namespace flowq::quic {
 
-struct cipher_key_lengths {
-    std::size_t key{};
-    std::size_t iv{};
-    std::size_t header_protection{};
-};
-
-[[nodiscard]] inline cipher_key_lengths cipher_suite_key_lengths(cipher_suite suite) {
-    switch (suite) {
-    case cipher_suite::aes_128_gcm_sha256:
-        return {16, 12, 16};
-    case cipher_suite::aes_256_gcm_sha384:
-        return {32, 12, 32};
-    case cipher_suite::chacha20_poly1305_sha256:
-        return {32, 12, 32};
-    default:
-        return {};
-    }
-}
-
 struct traffic_key_material {
     flowq::buffer key;
     flowq::buffer iv;
     flowq::buffer header_protection_key;
     cipher_suite suite{cipher_suite::unknown};
     flowq::error error{};
+
+    /// Default constructor.
+    traffic_key_material() = default;
+
+    /// Parameterized constructor.
+    traffic_key_material(flowq::buffer k, flowq::buffer i, flowq::buffer hp,
+                        cipher_suite s, flowq::error e)
+        : key{std::move(k)}, iv{std::move(i)}, header_protection_key{std::move(hp)},
+          suite{s}, error{std::move(e)} {}
+
+    /// Destructor securely zeroes all key material.
+    ~traffic_key_material() {
+        secure_zero_buffer(key);
+        secure_zero_buffer(iv);
+        secure_zero_buffer(header_protection_key);
+    }
+
+    // Move semantics
+    traffic_key_material(traffic_key_material&& other) noexcept
+        : key{std::move(other.key)},
+          iv{std::move(other.iv)},
+          header_protection_key{std::move(other.header_protection_key)},
+          suite{other.suite},
+          error{std::move(other.error)} {
+        // Other's buffers are now empty after move
+    }
+
+    traffic_key_material& operator=(traffic_key_material&& other) noexcept {
+        if (this != &other) {
+            // Securely zero current key material before moving
+            secure_zero_buffer(key);
+            secure_zero_buffer(iv);
+            secure_zero_buffer(header_protection_key);
+
+            key = std::move(other.key);
+            iv = std::move(other.iv);
+            header_protection_key = std::move(other.header_protection_key);
+            suite = other.suite;
+            error = std::move(other.error);
+        }
+        return *this;
+    }
+
+    // Delete copy semantics for security
+    traffic_key_material(const traffic_key_material&) = delete;
+    traffic_key_material& operator=(const traffic_key_material&) = delete;
 
     [[nodiscard]] bool ok() const noexcept {
         return error.ok();
