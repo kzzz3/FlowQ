@@ -27,38 +27,10 @@
 
 ## Supported Peers
 
-| Peer | Language | Install | Status | Notes |
-|------|----------|---------|--------|-------|
-| aioquic | Python | `pip install aioquic` | ✅ Verified | Full handshake + stream + loss recovery |
-| ngtcp2 | C | vcpkg | ✅ Verified | Initial packet generation |
-| quic-go | Go | `go build` | ⚠️ Built | Binary built, needs separate terminal for server |
-| quiche | Rust | `cargo build` | ❌ Blocked | Requires NASM for BoringSSL on Windows |
-
-## Building quic-go
-
-```powershell
-# Clone and build
-git clone --depth 1 https://github.com/quic-go/quic-go.git tools/quic-go
-cd tools/quic-go
-go build -o ..\quic-go-client.exe .\example\client\main.go
-go build -o ..\quic-go-server.exe .\example\main.go
-
-# Run server (in separate terminal)
-.\quic-go-server.exe --cert build\certs\cert.pem --key build\certs\key.pem --bind :4434
-
-# Run client
-.\quic-go-client.exe --cert build\certs\cert.pem https://localhost:4434/
-```
-
-## Building quiche
-
-```powershell
-# Requires NASM (https://www.nasm.us/)
-# Install NASM first, then:
-git clone --depth 1 https://github.com/cloudflare/quiche.git tools/quiche
-cd tools/quiche
-cargo build --examples --release
-```
+| Peer | Language | Install | Status |
+|------|----------|---------|--------|
+| aioquic | Python | `pip install aioquic` | ✅ Verified |
+| ngtcp2 | C | vcpkg | ✅ Verified |
 
 ## Running Interop Tests
 
