@@ -61,7 +61,12 @@ target_link_libraries(
 target_include_directories(flowq_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support)
 flowq_enable_project_warnings(flowq_unit_tests)
 
-target_compile_definitions(flowq_unit_tests PRIVATE FLOWQ_ENABLE_INSPECTION)
+target_compile_definitions(
+    flowq_unit_tests
+    PRIVATE
+        FLOWQ_ENABLE_INSPECTION
+        FLOWQ_ENABLE_TEST_PACKET_PROTECTION_BYPASS
+)
 
 include(Catch)
 catch_discover_tests(flowq_unit_tests)
