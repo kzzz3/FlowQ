@@ -45,7 +45,7 @@ TEST_CASE("Initial packet protector exposes packet-protection provider evidence 
 
 #if defined(FLOWQ_ENABLE_OPENSSL_CRYPTO)
 
-TEST_CASE("Initial packet protector round trips Initial packets through pipeline under production policy") {
+TEST_CASE("Initial packet protector round trips Initial packets through pipeline with provider-backed protection") {
     auto protector = flowq::quic::initial_packet_protector::client(cid({0x83, 0x94, 0xc8, 0xf0, 0x3e, 0x51, 0x57, 0x08}));
 
     flowq::quic::packet_build_request request{
@@ -60,8 +60,7 @@ TEST_CASE("Initial packet protector round trips Initial packets through pipeline
             flowq::quic::frame{flowq::quic::ping_frame{}}
         },
         &protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::production_required
+        flowq::quic::packet_pipeline_config{1200}
     };
 
     auto assembled = flowq::quic::assemble_long_packet(request);
@@ -70,8 +69,7 @@ TEST_CASE("Initial packet protector round trips Initial packets through pipeline
 
     auto parsed = flowq::quic::parse_long_packet(
         assembled.datagram,
-        &protector,
-        flowq::quic::packet_protection_policy::production_required);
+        &protector);
     REQUIRE(parsed.ok());
     CHECK(parsed.number.value == 2);
     CHECK(parsed.space == flowq::quic::packet_number_space::initial);
@@ -92,8 +90,7 @@ TEST_CASE("Initial packet protector rejects altered Initial packet ciphertext") 
         flowq::quic::packet_number{flowq::quic::packet_number_space::initial, 7},
         {flowq::quic::frame{flowq::quic::ping_frame{}}},
         &protector,
-        flowq::quic::packet_pipeline_config{1200},
-        flowq::quic::packet_protection_policy::production_required
+        flowq::quic::packet_pipeline_config{1200}
     };
 
     auto assembled = flowq::quic::assemble_long_packet(request);
@@ -104,8 +101,7 @@ TEST_CASE("Initial packet protector rejects altered Initial packet ciphertext") 
 
     auto parsed = flowq::quic::parse_long_packet(
         tampered,
-        &protector,
-        flowq::quic::packet_protection_policy::production_required);
+        &protector);
     CHECK_FALSE(parsed.ok());
     CHECK(parsed.error.code() == flowq::error_code::tls_error);
 }

@@ -54,6 +54,10 @@ public:
         return keys;
     }
 
+    flowq::quic::crypto_provider_status provider_status() const noexcept override {
+        return status;
+    }
+
     flowq::error receive_crypto(flowq::quic::crypto_bytes bytes) override {
         received.push_back(std::move(bytes));
         return {};
@@ -71,9 +75,31 @@ public:
 
     flowq::quic::handshake_state state_value{flowq::quic::handshake_state::idle};
     flowq::quic::tls_key_availability keys{};
+    flowq::quic::crypto_provider_status status{flowq::quic::crypto_provider_status::unavailable()};
     std::vector<flowq::quic::crypto_bytes> received;
     std::vector<flowq::quic::crypto_bytes> outbound;
 };
+
+flowq::quic::crypto_provider_status tls_key_schedule_status() {
+    return flowq::quic::crypto_provider_status::available(
+        flowq::quic::cipher_suite::aes_128_gcm_sha256,
+        flowq::quic::crypto_capabilities{false, false, false, false, true});
+}
+
+void mark_application_ready(recording_tls_adapter& adapter) {
+    adapter.state_value = flowq::quic::handshake_state::handshake_confirmed;
+    adapter.keys.application = true;
+    adapter.status = tls_key_schedule_status();
+}
+
+recording_tls_adapter& application_ready_tls_adapter() {
+    static recording_tls_adapter adapter = [] {
+        recording_tls_adapter ready{};
+        mark_application_ready(ready);
+        return ready;
+    }();
+    return adapter;
+}
 
 class provider_backed_packet_protector final : public flowq::quic::packet_protector {
 public:
@@ -130,7 +156,7 @@ flowq::quic::session_config make_config(
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
+    config.tls_adapter = &application_ready_tls_adapter();
     return config;
 }
 
@@ -151,7 +177,7 @@ flowq::quic::connection_loop make_loop(
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
+    config.tls_adapter = &application_ready_tls_adapter();
     return flowq::quic::connection_loop{std::move(config)};
 }
 
@@ -168,7 +194,6 @@ TEST_CASE("QUIC session public header exposes basic client configuration") {
     config.role = flowq::quic::connection_role::client;
 
     CHECK(config.version == 1);
-    CHECK(config.protection_policy == flowq::quic::packet_protection_policy::production_required);
     CHECK_FALSE(config.disable_active_migration);
     CHECK(config.active_connection_id_limit == 2);
     CHECK(config.tls_adapter == nullptr);
@@ -190,7 +215,6 @@ TEST_CASE("QUIC session blocks production Application data before TLS handshake 
     config.initial_rx_protector = &initial_protector;
     config.handshake_tx_protector = &handshake_protector;
     config.handshake_rx_protector = &handshake_protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::production_required;
     config.tls_adapter = &adapter;
     auto session = flowq::quic::session{std::move(config)};
 
@@ -365,19 +389,24 @@ TEST_CASE("QUIC session exposes lifecycle timer and returns idle timeout close")
     CHECK(expired.error.code() == flowq::error_code::timeout);
 }
 
-TEST_CASE("QUIC session does not arm Application recovery timer before handshake confirmation") {
+TEST_CASE("QUIC session rejects Application flush before handshake confirmation without arming recovery timer") {
     flowq::quic::test::plaintext_packet_protector protector{};
-    auto session = flowq::quic::session{make_config(
+    recording_tls_adapter adapter{};
+    auto config = make_config(
         cid({0x01}),
         cid({0x02}),
         flowq::endpoint{"server", 4433, "hq-interop"},
-        protector)};
+        protector);
+    config.tls_adapter = &adapter;
+    auto session = flowq::quic::session{std::move(config)};
 
     REQUIRE(session.append_stream_data(0, text("hello")).ok());
     REQUIRE(session.queue_stream_data({0}).ok());
-    REQUIRE(session.flush(at(0ms)).ok());
+    auto result = session.flush(at(0ms));
 
     auto timer = session.next_recovery_timer();
 
+    CHECK_FALSE(result.ok());
+    REQUIRE(result.closes.size() == 1);
     CHECK_FALSE(timer.has_value());
 }

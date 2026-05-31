@@ -104,7 +104,7 @@ External dependencies (TLS, crypto, diagnostics) use virtual interfaces:
 
 ### Fail-Closed Security
 
-Production protection policy rejects non-provider-backed protectors. Crypto provider boundaries fail when backend is absent, OpenSSL AEAD creation fails when the crypto backend is not compiled in, and OpenSSL QUIC TLS server construction fails when the certificate chain or private key is absent, unreadable, or mismatched.
+Packet protection rejects non-provider-backed protectors. Crypto provider boundaries fail when backend is absent, OpenSSL AEAD creation fails when the crypto backend is not compiled in, and OpenSSL QUIC TLS server construction fails when the certificate chain or private key is absent, unreadable, or mismatched.
 
 ## Build System
 

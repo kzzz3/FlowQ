@@ -102,6 +102,27 @@ public:
     std::vector<flowq::quic::crypto_bytes> outbound;
 };
 
+flowq::quic::crypto_provider_status tls_key_schedule_status() {
+    return flowq::quic::crypto_provider_status::available(
+        flowq::quic::cipher_suite::aes_128_gcm_sha256,
+        flowq::quic::crypto_capabilities{false, false, false, false, true});
+}
+
+void mark_application_ready(recording_tls_adapter& adapter) {
+    adapter.state_value = flowq::quic::handshake_state::handshake_confirmed;
+    adapter.keys.application = true;
+    adapter.status = tls_key_schedule_status();
+}
+
+recording_tls_adapter& application_ready_tls_adapter() {
+    static recording_tls_adapter adapter = [] {
+        recording_tls_adapter ready{};
+        mark_application_ready(ready);
+        return ready;
+    }();
+    return adapter;
+}
+
 class provider_backed_packet_protector final : public flowq::quic::packet_protector {
 public:
     explicit provider_backed_packet_protector(flowq::quic::protection_level level) : level_{level} {}
@@ -149,7 +170,6 @@ flowq::quic::connection_loop make_loop(
     std::uint64_t initial_stream_send_max_data = UINT64_MAX,
     std::uint64_t initial_connection_send_max_data = UINT64_MAX,
     std::size_t max_packet_payload_size = SIZE_MAX,
-    flowq::quic::packet_protection_policy protection_policy = flowq::quic::packet_protection_policy::test_allowed,
     bool disable_active_migration = false) {
     flowq::quic::connection_loop_config config{};
     config.role = flowq::quic::connection_role::client;
@@ -160,13 +180,13 @@ flowq::quic::connection_loop make_loop(
     config.initial_stream_send_max_data = initial_stream_send_max_data;
     config.initial_connection_send_max_data = initial_connection_send_max_data;
     config.max_packet_payload_size = max_packet_payload_size;
-    config.protection_policy = protection_policy;
     config.initial_tx_protector = &protector;
     config.initial_rx_protector = &protector;
     config.handshake_tx_protector = &protector;
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
+    config.tls_adapter = &application_ready_tls_adapter();
     config.disable_active_migration = disable_active_migration;
     return flowq::quic::connection_loop{std::move(config)};
 }
@@ -209,8 +229,7 @@ TEST_CASE("connection loop preserves queued frames that exceed payload budget fo
     auto first_datagram = require_single_outbound(loop.drain_actions());
     auto first = flowq::quic::parse_long_packet(
         first_datagram.payload,
-        protector,
-        flowq::quic::packet_protection_policy::test_allowed);
+        protector);
     REQUIRE(first.ok());
     REQUIRE(first.frames.size() == 2);
     CHECK(std::holds_alternative<flowq::quic::ping_frame>(first.frames[0]));
@@ -220,8 +239,7 @@ TEST_CASE("connection loop preserves queued frames that exceed payload budget fo
     auto second_datagram = require_single_outbound(loop.drain_actions());
     auto second = flowq::quic::parse_long_packet(
         second_datagram.payload,
-        protector,
-        flowq::quic::packet_protection_policy::test_allowed);
+        protector);
     REQUIRE(second.ok());
     REQUIRE(second.frames.size() == 1);
     CHECK(std::holds_alternative<flowq::quic::ping_frame>(second.frames[0]));
@@ -255,8 +273,7 @@ TEST_CASE("connection loop parses inbound Initial packets and generates ACK pack
     auto ack_datagram = require_single_outbound(server.drain_actions());
     auto parsed_ack = flowq::quic::parse_long_packet(
         ack_datagram.payload,
-        protector,
-        flowq::quic::packet_protection_policy::test_allowed);
+        protector);
     REQUIRE(parsed_ack.ok());
     REQUIRE(parsed_ack.frames.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::ack_frame>(parsed_ack.frames[0]));
@@ -332,7 +349,6 @@ TEST_CASE("connection loop enforces server anti-amplification limit before peer 
     server_config.handshake_rx_protector = &protector;
     server_config.application_tx_protector = &protector;
     server_config.application_rx_protector = &protector;
-    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.pipeline = flowq::quic::packet_pipeline_config{8192};
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -386,7 +402,6 @@ TEST_CASE("connection loop lets prevalidated server peer send before receiving p
     server_config.handshake_rx_protector = &protector;
     server_config.application_tx_protector = &protector;
     server_config.application_rx_protector = &protector;
-    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.peer_address_validated = true;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -417,7 +432,6 @@ TEST_CASE("connection loop ignores discarded Initial packet space") {
     server_config.handshake_rx_protector = &protector;
     server_config.application_tx_protector = &protector;
     server_config.application_rx_protector = &protector;
-    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.key_lifecycle = lifecycle;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -448,7 +462,6 @@ TEST_CASE("connection loop does not flush or recover discarded packet spaces") {
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.key_lifecycle = lifecycle;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -477,7 +490,6 @@ TEST_CASE("connection loop applies TLS key lifecycle discard decisions") {
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.tls_adapter = &adapter;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -492,9 +504,8 @@ TEST_CASE("connection loop applies TLS key lifecycle discard decisions") {
     CHECK(loop.sent_packets(flowq::quic::packet_number_space::handshake).packets().size() == 1);
 
     recording_tls_adapter confirmed_adapter{};
-    confirmed_adapter.state_value = flowq::quic::handshake_state::handshake_confirmed;
+    mark_application_ready(confirmed_adapter);
     confirmed_adapter.keys.handshake = true;
-    confirmed_adapter.keys.application = true;
     flowq::quic::connection_loop_config confirmed_config{};
     confirmed_config.role = flowq::quic::connection_role::client;
     confirmed_config.local_connection_id = cid({0x01});
@@ -506,7 +517,6 @@ TEST_CASE("connection loop applies TLS key lifecycle discard decisions") {
     confirmed_config.handshake_rx_protector = &protector;
     confirmed_config.application_tx_protector = &protector;
     confirmed_config.application_rx_protector = &protector;
-    confirmed_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     confirmed_config.tls_adapter = &confirmed_adapter;
     auto confirmed_loop = flowq::quic::connection_loop{std::move(confirmed_config)};
 
@@ -536,7 +546,6 @@ TEST_CASE("connection loop refreshes key lifecycle after inbound TLS CRYPTO chan
     server_config.handshake_rx_protector = &protector;
     server_config.application_tx_protector = &protector;
     server_config.application_rx_protector = &protector;
-    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.tls_adapter = &adapter;
     server_config.peer_address_validated = true;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
@@ -581,7 +590,6 @@ TEST_CASE("connection loop refreshes key lifecycle after draining TLS CRYPTO") {
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.tls_adapter = &adapter;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -612,7 +620,6 @@ TEST_CASE("connection loop discards Initial space after draining TLS handshake k
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.tls_adapter = &adapter;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -654,7 +661,6 @@ TEST_CASE("connection loop feeds inbound CRYPTO frames to TLS adapter by packet 
     server_config.handshake_rx_protector = &protector;
     server_config.application_tx_protector = &protector;
     server_config.application_rx_protector = &protector;
-    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.tls_adapter = &adapter;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -685,7 +691,6 @@ TEST_CASE("connection loop pumps TLS adapter CRYPTO bytes into packet-space fram
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.tls_adapter = &adapter;
     config.peer_address_validated = true;
     auto loop = flowq::quic::connection_loop{std::move(config)};
@@ -695,8 +700,7 @@ TEST_CASE("connection loop pumps TLS adapter CRYPTO bytes into packet-space fram
     auto datagram = require_single_outbound(loop.drain_actions());
     auto parsed = flowq::quic::parse_long_packet(
         datagram.payload,
-        protector,
-        flowq::quic::packet_protection_policy::test_allowed);
+        protector);
     REQUIRE(parsed.ok());
     CHECK(parsed.number.space == flowq::quic::packet_number_space::handshake);
     REQUIRE(parsed.frames.size() == 1);
@@ -885,7 +889,6 @@ TEST_CASE("connection loop closes when peer exceeds advertised stream count") {
     config.remote_connection_id = cid({0x01});
     config.peer = flowq::endpoint{"client", 1111, "hq-interop"};
     config.pipeline = flowq::quic::packet_pipeline_config{1200};
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.initial_tx_protector = &protector;
     config.initial_rx_protector = &protector;
     config.handshake_tx_protector = &protector;
@@ -932,7 +935,6 @@ TEST_CASE("connection loop enforces peer stream count limits and resumes after M
     config.remote_connection_id = cid({0x02});
     config.peer = flowq::endpoint{"server", 4433, "hq-interop"};
     config.pipeline = flowq::quic::packet_pipeline_config{1200};
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.initial_tx_protector = &protector;
     config.initial_rx_protector = &protector;
     config.handshake_tx_protector = &protector;
@@ -1174,8 +1176,9 @@ TEST_CASE("connection loop maps PTO to stream probe retransmission state") {
 TEST_CASE("connection loop arms Application PTO after TLS confirms handshake") {
     flowq::quic::test::plaintext_packet_protector protector{};
     recording_tls_adapter adapter{};
-    adapter.state_value = flowq::quic::handshake_state::handshake_confirmed;
-    adapter.keys = flowq::quic::tls_key_availability{true, true, true};
+    mark_application_ready(adapter);
+    adapter.keys.initial = true;
+    adapter.keys.handshake = true;
 
     flowq::quic::connection_loop_config config{};
     config.role = flowq::quic::connection_role::client;
@@ -1188,7 +1191,6 @@ TEST_CASE("connection loop arms Application PTO after TLS confirms handshake") {
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.tls_adapter = &adapter;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -1522,8 +1524,7 @@ TEST_CASE("connection loop parses and acknowledges Handshake packets") {
     auto ack_datagram = require_single_outbound(server.drain_actions());
     auto parsed_ack = flowq::quic::parse_long_packet(
         ack_datagram.payload,
-        protector,
-        flowq::quic::packet_protection_policy::test_allowed);
+        protector);
     REQUIRE(parsed_ack.ok());
     CHECK(parsed_ack.space == flowq::quic::packet_number_space::handshake);
     REQUIRE(parsed_ack.frames.size() == 1);
@@ -1542,8 +1543,7 @@ TEST_CASE("connection loop flushes queued Application frames as a short-header o
     auto parsed = flowq::quic::parse_short_packet(
         datagram.payload,
         1,
-        protector,
-        flowq::quic::packet_protection_policy::test_allowed);
+        protector);
     REQUIRE(parsed.ok());
     CHECK(parsed.space == flowq::quic::packet_number_space::application);
     CHECK(parsed.number.value == 0);
@@ -1576,8 +1576,7 @@ TEST_CASE("connection loop parses and acknowledges short-header Application pack
     auto parsed_ack = flowq::quic::parse_short_packet(
         ack_datagram.payload,
         1,
-        protector,
-        flowq::quic::packet_protection_policy::test_allowed);
+        protector);
     REQUIRE(parsed_ack.ok());
     CHECK(parsed_ack.space == flowq::quic::packet_number_space::application);
     REQUIRE(parsed_ack.frames.size() == 1);
@@ -1612,8 +1611,7 @@ TEST_CASE("connection loop answers Application PATH_CHALLENGE with matching PATH
     auto parsed_response = flowq::quic::parse_short_packet(
         response_datagram.payload,
         1,
-        protector,
-        flowq::quic::packet_protection_policy::test_allowed);
+        protector);
     REQUIRE(parsed_response.ok());
     REQUIRE(parsed_response.frames.size() == 1);
     REQUIRE(std::holds_alternative<flowq::quic::path_response_frame>(parsed_response.frames[0]));
@@ -1813,7 +1811,6 @@ TEST_CASE("connection loop closes on peer address change when active migration i
         UINT64_MAX,
         UINT64_MAX,
         SIZE_MAX,
-        flowq::quic::packet_protection_policy::test_allowed,
         true);
 
     client.queue_initial({flowq::quic::frame{flowq::quic::ping_frame{}}});
@@ -1869,7 +1866,6 @@ TEST_CASE("connection loop resets server anti-amplification budget after peer ad
     server_config.handshake_rx_protector = &protector;
     server_config.application_tx_protector = &protector;
     server_config.application_rx_protector = &protector;
-    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.pipeline = flowq::quic::packet_pipeline_config{8192};
     server_config.peer_address_validated = true;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
@@ -1910,7 +1906,6 @@ TEST_CASE("connection loop exposes idle lifecycle timer after outbound activity"
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.max_idle_timeout = 10ms;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -1938,7 +1933,6 @@ TEST_CASE("connection loop closes on expired idle lifecycle timer") {
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.max_idle_timeout = 10ms;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -1973,7 +1967,6 @@ TEST_CASE("connection loop refreshes idle lifecycle timer after inbound activity
     server_config.handshake_rx_protector = &protector;
     server_config.application_tx_protector = &protector;
     server_config.application_rx_protector = &protector;
-    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.max_idle_timeout = 10ms;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -2004,7 +1997,6 @@ TEST_CASE("connection loop does not refresh idle lifecycle timer for ACK-only pa
     server_config.handshake_rx_protector = &protector;
     server_config.application_tx_protector = &protector;
     server_config.application_rx_protector = &protector;
-    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.max_idle_timeout = 10ms;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -2037,7 +2029,6 @@ TEST_CASE("connection loop expires draining lifecycle state to closed") {
     server_config.handshake_rx_protector = &protector;
     server_config.application_tx_protector = &protector;
     server_config.application_rx_protector = &protector;
-    server_config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     server_config.closing_draining_timeout = 25ms;
     auto server = flowq::quic::connection_loop{std::move(server_config)};
 
@@ -2075,7 +2066,6 @@ TEST_CASE("connection loop expires closing lifecycle state to closed") {
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     config.closing_draining_timeout = 25ms;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -2091,27 +2081,6 @@ TEST_CASE("connection loop expires closing lifecycle state to closed") {
 
     CHECK(loop.state() == flowq::quic::connection_loop_state::closed);
     CHECK_FALSE(loop.next_lifecycle_timer(at(26ms)).has_value());
-}
-
-TEST_CASE("connection loop rejects test-only protection when production protection is required") {
-    flowq::quic::test::plaintext_packet_protector protector{};
-    auto loop = make_loop(
-        cid({0x01}),
-        cid({0x02}),
-        flowq::endpoint{"server", 4433, "hq-interop"},
-        protector,
-        UINT64_MAX,
-        UINT64_MAX,
-        SIZE_MAX,
-        flowq::quic::packet_protection_policy::production_required);
-
-    loop.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
-    loop.flush(at(0ms));
-
-    auto actions = loop.drain_actions();
-    REQUIRE(actions.size() == 1);
-    REQUIRE(std::holds_alternative<flowq::quic::close_action>(actions[0]));
-    CHECK_FALSE(std::get<flowq::quic::close_action>(actions[0]).error.ok());
 }
 
 TEST_CASE("connection loop blocks production Application data before TLS handshake confirmation and keys") {
@@ -2132,7 +2101,6 @@ TEST_CASE("connection loop blocks production Application data before TLS handsha
     config.handshake_rx_protector = &handshake_protector;
     config.application_tx_protector = &application_protector;
     config.application_rx_protector = &application_protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::production_required;
     config.tls_adapter = &adapter;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -2150,11 +2118,7 @@ TEST_CASE("connection loop allows production Application data with confirmed TLS
     provider_backed_packet_protector handshake_protector{flowq::quic::protection_level::handshake};
     provider_backed_packet_protector application_protector{flowq::quic::protection_level::application};
     recording_tls_adapter adapter{};
-    adapter.state_value = flowq::quic::handshake_state::handshake_confirmed;
-    adapter.keys.application = true;
-    adapter.status = flowq::quic::crypto_provider_status::available(
-        flowq::quic::cipher_suite::aes_128_gcm_sha256,
-        flowq::quic::crypto_capabilities{false, false, false, false, true});
+    mark_application_ready(adapter);
 
     flowq::quic::connection_loop_config config{};
     config.role = flowq::quic::connection_role::client;
@@ -2167,7 +2131,6 @@ TEST_CASE("connection loop allows production Application data with confirmed TLS
     config.handshake_rx_protector = &handshake_protector;
     config.application_tx_protector = &application_protector;
     config.application_rx_protector = &application_protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::production_required;
     config.tls_adapter = &adapter;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -2199,7 +2162,6 @@ TEST_CASE("connection loop blocks production Application data when TLS adapter l
     config.handshake_rx_protector = &handshake_protector;
     config.application_tx_protector = &application_protector;
     config.application_rx_protector = &application_protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::production_required;
     config.tls_adapter = &adapter;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
@@ -2272,7 +2234,6 @@ TEST_CASE("connection loop congestion window gates flush when exhausted") {
     config.handshake_rx_protector = &protector;
     config.application_tx_protector = &protector;
     config.application_rx_protector = &protector;
-    config.protection_policy = flowq::quic::packet_protection_policy::test_allowed;
     auto loop = flowq::quic::connection_loop{std::move(config)};
 
     // Send first packet to measure actual datagram size
