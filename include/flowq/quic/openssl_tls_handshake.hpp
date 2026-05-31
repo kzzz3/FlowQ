@@ -593,6 +593,9 @@ public:
         return flowq::error{flowq::error_code::tls_error, "OpenSSL QUIC TLS backend is disabled"};
     }
     [[nodiscard]] std::vector<crypto_bytes> drain_crypto() override { return {}; }
+    [[nodiscard]] flowq::error advance() override {
+        return flowq::error{flowq::error_code::tls_error, "OpenSSL QUIC TLS backend is disabled"};
+    }
     [[nodiscard]] const std::vector<std::byte>& peer_transport_params() const noexcept {
         static const std::vector<std::byte> empty;
         return empty;

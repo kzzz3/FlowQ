@@ -52,6 +52,10 @@ public:
         return output;
     }
 
+    flowq::error advance() override {
+        return {};
+    }
+
     flowq::quic::handshake_state state_value{flowq::quic::handshake_state::idle};
     flowq::quic::tls_key_availability keys{};
     flowq::quic::crypto_provider_status status{flowq::quic::crypto_provider_status::unavailable()};

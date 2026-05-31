@@ -10,6 +10,7 @@ public:
     flowq::quic::tls_key_availability key_availability() const noexcept override { return keys_; }
     flowq::error receive_crypto(flowq::quic::crypto_bytes) override { return {}; }
     std::vector<flowq::quic::crypto_bytes> drain_crypto() override { return {}; }
+    flowq::error advance() override { return {}; }
 
     flowq::quic::handshake_state state_{flowq::quic::handshake_state::idle};
     flowq::quic::tls_key_availability keys_{};
