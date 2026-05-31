@@ -98,7 +98,7 @@ if ($LASTEXITCODE -ne 0) {
 foreach ($header in $DisallowedInstallHeaders) {
     $candidate = Join-Path $InstallDir $header
     if (Test-Path $candidate) {
-        Write-Host "FAILED: Experimental/test header installed in production package: $header" -ForegroundColor Red
+        Write-Host "FAILED: Source-only/test-support header installed in production package: $header" -ForegroundColor Red
         exit 1
     }
 }
