@@ -84,17 +84,16 @@ public:
             std::memmove(new_frame_pos, frame_data, frame_size);
         }
 
-        // Build AAD for AEAD: short header AAD = flags + DCID + packet number
-        std::vector<std::byte> aad(actual_header_size);
-        std::memcpy(aad.data(), buffer_.data(), actual_header_size);
+        // Build AAD for AEAD: short header AAD = flags + DCID + packet number (zero-copy: use span)
+        std::span<const std::byte> aad{buffer_.data(), actual_header_size};
 
-        // Encrypt frame bytes in-place using protect_payload
+        // Encrypt frame bytes in-place using protect_in_place (zero-copy: no plaintext copy)
         const auto plaintext_start = actual_header_size;
-        std::span<const std::byte> plaintext{buffer_.data() + plaintext_start, frame_size};
-        auto protected_result = detail::protect_payload(
-            *request.protector,
-            packet_protection_context{request.number, std::span<const std::byte>{aad.data(), aad.size()}},
-            std::vector<std::byte>{plaintext.begin(), plaintext.end()});
+        auto protected_result = request.protector->protect_in_place(
+            buffer_,
+            plaintext_start,
+            frame_size,
+            packet_protection_context{request.number, aad});
 
         if (!protected_result.ok()) {
             return {{}, request.number, request.protector->level(), protected_result.error};
@@ -237,17 +236,16 @@ public:
             std::memmove(new_frame_pos, frame_data, frame_size);
         }
 
-        // Build AAD for AEAD (header prefix + packet number)
-        std::vector<std::byte> aad(actual_header_size - detail::fixed_packet_number_length + detail::fixed_packet_number_length);
-        std::memcpy(aad.data(), buffer_.data(), actual_header_size);
+        // Build AAD for AEAD (header prefix + packet number) - zero-copy: use span into buffer
+        std::span<const std::byte> aad{buffer_.data(), actual_header_size};
 
-        // Encrypt frame bytes in-place
+        // Encrypt frame bytes in-place using protect_in_place (zero-copy: no plaintext copy)
         const auto plaintext_start = actual_header_size;
-        std::span<const std::byte> plaintext{buffer_.data() + plaintext_start, frame_size};
-        auto protected_result = detail::protect_payload(
-            *request.protector,
-            packet_protection_context{request.number, std::span<const std::byte>{aad.data(), aad.size()}},
-            std::vector<std::byte>{plaintext.begin(), plaintext.end()});
+        auto protected_result = request.protector->protect_in_place(
+            buffer_,
+            plaintext_start,
+            frame_size,
+            packet_protection_context{request.number, aad});
 
         if (!protected_result.ok()) {
             return {{}, request.number, request.protector->level(), protected_result.error};
