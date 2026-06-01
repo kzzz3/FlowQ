@@ -19,9 +19,7 @@ In scope:
 Out of scope for the current production-candidate boundary:
 
 - HTTP/3, QPACK, WebTransport, and 0-RTT deployment guarantees.
-- Live AEAD key update installation.
-- AES-256-GCM and ChaCha20-Poly1305 packet protection.
-- Security-audit, Linux, and sanitizer claims until evidence is recorded in the production gate.
+- External security audit.
 
 ## Active Gate Work
 

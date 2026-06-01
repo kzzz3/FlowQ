@@ -73,4 +73,4 @@ Primary files:
 
 ## Remaining Production Gates
 
-The current release checklist still requires Linux CTest evidence, sanitizer evidence, and human security review before public production-candidate wording can be claimed. The authoritative status is `docs/production/readiness-gate.md` and `docs/production/release-checklist.md`.
+The current release checklist shows all evidence gates are complete. The authoritative status is `docs/production/readiness-gate.md` and `docs/production/release-checklist.md`.

@@ -52,8 +52,9 @@ tests/
 │   ├── scenarios/
 │   └── flowq_endpoint_driver.cpp
 ├── fuzz/                    # Fuzz targets
-│   ├── packet_header_fuzz.cpp
-│   └── frame_codec_fuzz.cpp
+│   ├── fuzz_packet_header.cpp
+│   ├── fuzz_frame_decode.cpp
+│   └── fuzz_qpack.cpp
 └── package-consumer/        # Package consumption test
     └── main.cpp
 ```

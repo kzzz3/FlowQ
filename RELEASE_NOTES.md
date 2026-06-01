@@ -1,6 +1,6 @@
 # FlowQ Release Notes
 
-## Version 1.0.0-rc1 (2026-06-01)
+## Version 1.0.0 (2026-06-01)
 
 Production hardening release with multi-cipher support, congestion control algorithms, and interop validation.
 

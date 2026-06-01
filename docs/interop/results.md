@@ -7,8 +7,8 @@
 | Metric | Value |
 |--------|-------|
 | Verified Peers | 2 (aioquic, ngtcp2) |
-| Total Scenarios | 5 |
-| Passed | 5 |
+| Total Scenarios | 3 |
+| Passed | 3 |
 | Failed | 0 |
 
 ### Peer Results

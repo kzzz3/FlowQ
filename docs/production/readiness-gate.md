@@ -16,7 +16,7 @@ This document records the current evidence required before FlowQ can claim produ
 
 ### Build And Test
 
-- ✅ Windows MSVC/vcpkg: 514 tests passing (`ctest --preset windows-msvc-vcpkg --timeout 10`)
+- ✅ Windows MSVC/vcpkg: 514/516 tests passing (`ctest --preset windows-msvc-vcpkg --timeout 10`)
 - ✅ Linux GCC/vcpkg: 510/511 tests passing (`ctest --preset linux-gcc-vcpkg --timeout 10`)
 - ✅ ASan/UBSan: 510/511 tests passing, 0 errors (`ctest --preset linux-asan-ubsan --timeout 10`)
 - ✅ Install + package-consumer build path
@@ -88,8 +88,6 @@ This document records the current evidence required before FlowQ can claim produ
 **Out of scope**:
 - 0-RTT deployment
 - HTTP/3, QPACK, WebTransport
-- BBR/CUBIC congestion control
-- Cross-platform release evidence
 - External security audit
 
 ## Open Gate Items

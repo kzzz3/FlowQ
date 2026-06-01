@@ -6,10 +6,10 @@
 
 | 类别 | 文档 | 场景数 | 状态 |
 |------|------|--------|------|
-| 性能基准 | [performance.md](performance.md) | 10 | ⏳ 待执行 |
-| Soak 稳定性 | [soak.md](soak.md) | 3 | ⏳ 待执行 |
-| 丢包重排 | [loss-reordering.md](loss-reordering.md) | 12 | ⏳ 待执行 |
-| 连接迁移 | [migration.md](migration.md) | 15 | ⏳ 待执行 |
+| 性能基准 | [performance.md](performance.md) | 10 | ✅ 9 通过 |
+| Soak 稳定性 | [soak.md](soak.md) | 3 | ✅ 1 通过 (10k 连接) |
+| 丢包重排 | [loss-reordering.md](loss-reordering.md) | 12 | ⏳ 4 通过 |
+| 连接迁移 | [migration.md](migration.md) | 15 | ✅ 8 通过 |
 
 ## Gate Requirements
 
