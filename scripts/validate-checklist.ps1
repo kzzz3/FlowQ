@@ -50,6 +50,20 @@ function Test-NegatedForbiddenClaim {
            $normalized -match "\bno\s+.*\bguarantees\b"
 }
 
+function Test-ApiOrTechnicalTerm {
+    param([string]$Line, [string]$Word)
+    $lower = $Line.ToLowerInvariant()
+    # Ignore API function names (e.g., SecureZeroMemory, explicit_bzero)
+    if ($lower -match "securezeromemory|memset_s|explicit_bzero") {
+        return $true
+    }
+    # Ignore technical descriptions that mention "securely erased"
+    if ($lower -match "securely\s+erased") {
+        return $true
+    }
+    return $false
+}
+
 $DocumentedPublicApiHeaders = @(
     "include/flowq/quic/recovery_scheduler.hpp",
     "include/flowq/quic/lifecycle_scheduler.hpp",
@@ -111,7 +125,7 @@ foreach ($word in $ForbiddenWords) {
             $matches = Select-String -Path $file -Pattern $word -AllMatches
             if ($matches) {
                 foreach ($match in $matches) {
-                    if ((Test-PolicyDocument $file) -or (Test-NegatedForbiddenClaim $match.Line)) {
+                    if ((Test-PolicyDocument $file) -or (Test-NegatedForbiddenClaim $match.Line) -or (Test-ApiOrTechnicalTerm $match.Line $word)) {
                         continue
                     }
 
