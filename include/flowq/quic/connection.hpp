@@ -284,10 +284,13 @@ public:
             result.newly_lost = std::move(detected.newly_lost);
             for (const auto packet_number : result.newly_lost) {
                 sent_tracker(space).mark_lost(packet_number);
-                congestion_->on_packet_lost(1200);
+                congestion_->on_packet_lost(config_.pipeline.max_datagram_size);
             }
             if (!result.newly_lost.empty()) {
                 congestion_->on_congestion_event();
+                if (pacing_enabled_) {
+                    pacing_.set_congestion_window(congestion_->congestion_window());
+                }
             }
             apply_stream_loss_mapping(space, result.newly_lost);
         }
@@ -296,8 +299,11 @@ public:
             if (timer->mode == loss_timer_mode::pto && now >= timer->deadline && result.newly_lost.empty()) {
                 result.newly_lost = mark_oldest_ack_eliciting_packet_lost(space);
                 if (!result.newly_lost.empty()) {
-                    congestion_->on_packet_lost(1200);
+                    congestion_->on_packet_lost(config_.pipeline.max_datagram_size);
                     congestion_->on_congestion_event();
+                    if (pacing_enabled_) {
+                        pacing_.set_congestion_window(congestion_->congestion_window());
+                    }
                     apply_stream_loss_mapping(space, result.newly_lost);
                 }
             }
@@ -1372,10 +1378,16 @@ private:
                 apply_stream_ack_mapping(space, result.newly_acknowledged);
                 apply_stream_loss_mapping(space, result.newly_lost);
                 if (!result.newly_acknowledged.empty()) {
-                    congestion_->on_packet_acknowledged(1200);
+                    congestion_->on_packet_acknowledged(config_.pipeline.max_datagram_size);
+                    if (pacing_enabled_) {
+                        pacing_.set_congestion_window(congestion_->congestion_window());
+                    }
                 }
                 if (!result.newly_lost.empty()) {
                     congestion_->on_congestion_event();
+                    if (pacing_enabled_) {
+                        pacing_.set_congestion_window(congestion_->congestion_window());
+                    }
                 }
             }
         }

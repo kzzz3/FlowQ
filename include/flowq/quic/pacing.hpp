@@ -150,7 +150,7 @@ private:
     // Tuning constants
     static constexpr std::uint64_t max_datagram_size_{1200};
     static constexpr std::uint64_t max_burst_bytes_{12000};  // 10 packets
-    static constexpr std::chrono::microseconds min_interval_{100};  // 100μs minimum
+    static constexpr std::chrono::microseconds min_interval_{50};  // 50μs minimum (faster recovery for high-bandwidth)
     static constexpr std::chrono::milliseconds max_interval_{100};  // 100ms maximum
 
     /// Update the pacing interval based on congestion window and RTT.
