@@ -23,6 +23,12 @@ vcpkg_installed/
 Thumbs.db
 
 # ====================
+# AI Agent state
+# ====================
+.sisyphus/
+.opencode/
+
+# ====================
 # CMake generated files
 # ====================
 CMakeFiles/
