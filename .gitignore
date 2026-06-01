@@ -1,11 +1,108 @@
-# CMake build outputs
+# ====================
+# Build outputs
+# ====================
 build*/
 out/
+cmake-build-*/
 
-# Local IDE/editor state
+# ====================
+# vcpkg installed packages
+# ====================
+vcpkg_installed/
+
+# ====================
+# IDE / Editor state
+# ====================
 .vs/
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
 
-# Local worktree folders, if used later
+# ====================
+# CMake generated files
+# ====================
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+CTestTestfile.cmake
+
+# ====================
+# Compiled objects
+# ====================
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+
+# ====================
+# Test outputs
+# ====================
+Testing/
+test-results/
+*.log
+
+# ====================
+# Documentation outputs
+# ====================
+docs/api/html/
+docs/api/latex/
+
+# ====================
+# Interop test artifacts
+# ====================
+build/certs/
+tests/interop/*.pyc
+tests/interop/__pycache__/
+
+# ====================
+# Worktrees
+# ====================
 .worktrees/
 worktrees/
+
+# ====================
+# OS generated files
+# ====================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ====================
+# Python
+# ====================
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+*.egg
+
+# ====================
+# Rust (for quiche if built locally)
+# ====================
+target/
+Cargo.lock
+
+# ====================
+# Go (for quic-go if built locally)
+# ====================
+*.exe~
+*.test
+*.out
