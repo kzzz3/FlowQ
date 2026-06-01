@@ -172,6 +172,16 @@ if(FLOWQ_BUILD_INTEROP)
     target_link_libraries(flowq_soak_test PRIVATE FlowQ::flowq)
     flowq_enable_project_warnings(flowq_soak_test)
 
+    # Loss benchmark
+    add_executable(flowq_loss_benchmark tests/interop/loss_benchmark.cpp)
+    target_link_libraries(flowq_loss_benchmark PRIVATE FlowQ::flowq)
+    flowq_enable_project_warnings(flowq_loss_benchmark)
+
+    # Migration benchmark
+    add_executable(flowq_migration_benchmark tests/interop/migration_benchmark.cpp)
+    target_link_libraries(flowq_migration_benchmark PRIVATE FlowQ::flowq)
+    flowq_enable_project_warnings(flowq_migration_benchmark)
+
     # ngtcp2 interop test
     find_package(ngtcp2 CONFIG QUIET)
     if(ngtcp2_FOUND)
