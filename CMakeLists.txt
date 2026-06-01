@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(FlowQ VERSION 0.1.0 LANGUAGES CXX)
+project(FlowQ VERSION 1.0.0 LANGUAGES CXX)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND NOT "cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
     list(APPEND CMAKE_CXX_COMPILE_FEATURES cxx_std_20 cxx_std_17 cxx_std_14 cxx_std_11)

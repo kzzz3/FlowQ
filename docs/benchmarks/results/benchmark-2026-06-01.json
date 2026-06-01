@@ -1,0 +1,57 @@
+{
+    "date":  "2026-06-01",
+    "scenarios":  [
+                      {
+                          "timestamp":  "2026-06-01T11:21:18",
+                          "name":  "benchmark sent packet tracker",
+                          "passed":  true
+                      },
+                      {
+                          "timestamp":  "2026-06-01T11:21:18",
+                          "name":  "benchmark varint encode",
+                          "passed":  true
+                      },
+                      {
+                          "timestamp":  "2026-06-01T11:21:18",
+                          "name":  "benchmark buffer operations",
+                          "passed":  true
+                      },
+                      {
+                          "timestamp":  "2026-06-01T11:21:18",
+                          "name":  "benchmark RTT estimation",
+                          "passed":  true
+                      },
+                      {
+                          "timestamp":  "2026-06-01T11:21:18",
+                          "name":  "benchmark congestion controller",
+                          "passed":  true
+                      },
+                      {
+                          "timestamp":  "2026-06-01T11:21:18",
+                          "name":  "benchmark packet header encode",
+                          "passed":  true
+                      },
+                      {
+                          "timestamp":  "2026-06-01T11:21:18",
+                          "name":  "benchmark packet encoding",
+                          "passed":  true
+                      },
+                      {
+                          "timestamp":  "2026-06-01T11:21:18",
+                          "name":  "benchmark key update state",
+                          "passed":  true
+                      },
+                      {
+                          "timestamp":  "2026-06-01T11:21:18",
+                          "name":  "benchmark path validation",
+                          "passed":  true
+                      }
+                  ],
+    "platform":  "windows-msvc-vcpkg",
+    "summary":  {
+                    "failed":  0,
+                    "total":  9,
+                    "passed":  9
+                },
+    "commit":  "83ce6d8"
+}

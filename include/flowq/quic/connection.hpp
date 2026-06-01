@@ -35,11 +35,12 @@ public:
           connection_send_max_data_{config_.initial_connection_send_max_data},
           peer_address_validated_{config_.peer_address_validated},
           recovery_pto_config_{config_.max_ack_delay},
+          congestion_{create_congestion_controller(config_.congestion_algo)},
           pacing_enabled_{config_.enable_pacing},
           key_update_enabled_{config_.enable_key_update} {
         // Initialize pacing with default values
-        if (pacing_enabled_) {
-            pacing_.initialize(congestion_.congestion_window(), std::chrono::milliseconds(100));
+        if (pacing_enabled_ && congestion_) {
+            pacing_.initialize(congestion_->congestion_window(), std::chrono::milliseconds(100));
         }
     }
 
@@ -281,10 +282,10 @@ public:
             result.newly_lost = std::move(detected.newly_lost);
             for (const auto packet_number : result.newly_lost) {
                 sent_tracker(space).mark_lost(packet_number);
-                congestion_.on_packet_lost(1200);
+                congestion_->on_packet_lost(1200);
             }
             if (!result.newly_lost.empty()) {
-                congestion_.on_congestion_event();
+                congestion_->on_congestion_event();
             }
             apply_stream_loss_mapping(space, result.newly_lost);
         }
@@ -293,8 +294,8 @@ public:
             if (timer->mode == loss_timer_mode::pto && now >= timer->deadline && result.newly_lost.empty()) {
                 result.newly_lost = mark_oldest_ack_eliciting_packet_lost(space);
                 if (!result.newly_lost.empty()) {
-                    congestion_.on_packet_lost(1200);
-                    congestion_.on_congestion_event();
+                    congestion_->on_packet_lost(1200);
+                    congestion_->on_congestion_event();
                     apply_stream_loss_mapping(space, result.newly_lost);
                 }
             }
@@ -449,8 +450,8 @@ public:
         return find_sent_stream_ranges(space, packet_number);
     }
 
-    [[nodiscard]] const congestion_controller& congestion() const noexcept {
-        return congestion_;
+    [[nodiscard]] const congestion_control_interface& congestion() const noexcept {
+        return *congestion_;
     }
 
     [[nodiscard]] const stream_receive_state* receive_stream(std::uint64_t stream_id) const noexcept {
@@ -475,7 +476,7 @@ public:
         if (!pacing_enabled_) {
             return true;
         }
-        return pacing_.can_send(congestion_.bytes_in_flight(), packet_size);
+        return pacing_.can_send(congestion_->bytes_in_flight(), packet_size);
     }
 
     // Key update methods
@@ -512,7 +513,7 @@ private:
     std::uint64_t peer_bytes_sent_{};
     rtt_estimator recovery_rtt_{};
     pto_config recovery_pto_config_{};
-    congestion_controller congestion_{};
+    std::unique_ptr<congestion_control_interface> congestion_;
     std::vector<recovery_packet> recovery_packets_{};
     bool lifecycle_dirty_{true};
     std::optional<std::chrono::steady_clock::time_point> last_activity_at_{};
@@ -1291,12 +1292,12 @@ private:
             clear_packet_space(space);
             return;
         }
-        if (!congestion_.can_send()) {
+        if (!congestion_->can_send()) {
             return;
         }
         // Pacing: check if we're allowed to send now
         if (pacing_enabled_ && space == packet_number_space::application) {
-            auto can_send_pacing = pacing_.can_send(congestion_.bytes_in_flight(), config_.max_packet_payload_size);
+            auto can_send_pacing = pacing_.can_send(congestion_->bytes_in_flight(), config_.max_packet_payload_size);
             if (!can_send_pacing) {
                 return;  // Wait for next pacing slot
             }
@@ -1330,7 +1331,7 @@ private:
         sent_tracker(space).on_packet_sent(assembled.number.value, ack_eliciting);
         recovery_packets_.push_back(recovery_packet{space, assembled.number.value, sent_at, ack_eliciting, sent_packet_state::outstanding});
         record_sent_stream_ranges(space, assembled.number.value, selected.frames);
-        congestion_.on_packet_sent(assembled.datagram.size(), ack_eliciting);
+        congestion_->on_packet_sent(assembled.datagram.size(), ack_eliciting);
         // Update pacing after sending
         if (pacing_enabled_) {
             pacing_.on_packet_sent(assembled.datagram.size());
@@ -1354,10 +1355,10 @@ private:
                 apply_stream_ack_mapping(space, result.newly_acknowledged);
                 apply_stream_loss_mapping(space, result.newly_lost);
                 if (!result.newly_acknowledged.empty()) {
-                    congestion_.on_packet_acknowledged(1200);
+                    congestion_->on_packet_acknowledged(1200);
                 }
                 if (!result.newly_lost.empty()) {
-                    congestion_.on_congestion_event();
+                    congestion_->on_congestion_event();
                 }
             }
         }
