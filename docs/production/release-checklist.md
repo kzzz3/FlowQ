@@ -10,10 +10,10 @@ Strict gate:
 ## Build and Test
 
 - [x] Windows MSVC/vcpkg: 514 tests passing
-- [ ] Linux GCC/vcpkg: preset `linux-gcc-vcpkg` exists, evidence not recorded
+- [x] Linux GCC/vcpkg: 510/511 tests passing (1 release_readiness not run)
 - [x] Install + package-consumer builds and runs
 - [x] No compiler warnings (`/W4 /WX` on MSVC)
-- [ ] No sanitizer errors (ASan/UBSan): preset `linux-asan-ubsan` exists, evidence not recorded
+- [x] No sanitizer errors (ASan/UBSan): 510/511 tests passing, 0 errors
 
 ## Code Quality
 

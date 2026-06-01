@@ -7,13 +7,14 @@
 ![TLS](https://img.shields.io/badge/TLS-1.3-blue)
 ![OpenSSL](https://img.shields.io/badge/crypto-OpenSSL-orange)
 
-FlowQ is a C++20 QUIC transport library under production hardening. The current codebase provides deterministic QUIC transport primitives, connection-loop behavior, stream and flow-control state, recovery/congestion primitives, routing/retry helpers, OpenSSL-gated AES-128-GCM packet protection, provider-backed TLS adapter surfaces, local session/endpoint adapters, and recorded aioquic handshake, stream, and loss-recovery interop evidence. It does not carry a production-candidate claim until release-gate evidence and human review are recorded.
+FlowQ is a C++20 QUIC transport library under production hardening. The current codebase provides deterministic QUIC transport primitives, connection-loop behavior, stream and flow-control state, recovery/congestion primitives, routing/retry helpers, OpenSSL-gated AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection, provider-backed TLS adapter surfaces, local session/endpoint adapters, and recorded aioquic handshake, stream, and loss-recovery interop evidence. It does not carry a production-candidate claim until release-gate evidence and human review are recorded.
 
 ## Features
 
 - **QUIC v1 transport core**: value codecs, packet pipeline, streams, ACK/loss, flow control, routing, and timers.
 - **TLS 1.3 adapter surface**: OpenSSL 3.5+ QUIC TLS via `SSL_set_quic_tls_cbs()` when enabled.
-- **AEAD Protection**: AES-128-GCM with RFC 9001 header protection
+- **AEAD Protection**: AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305 with RFC 9001 header protection.
+- **Congestion Control**: NewReno, BBR, CUBIC with pacing controller.
 - **Production policy gate**: installed packet APIs require production-capable protection by default.
 - **Interop harness**: process-driven scripts and harness wiring for external peer validation.
 

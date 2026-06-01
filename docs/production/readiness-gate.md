@@ -5,24 +5,25 @@ This document records the current evidence required before FlowQ can claim produ
 ## Current Status
 
 - **Level**: Production-readiness gate
-- **Date**: 2026-05-31
+- **Date**: 2026-06-01
 - **Status**: Non-production
 
-**Evidence summary**: Windows MSVC/vcpkg build with 511 tests passing, OpenSSL 3.6.1 QUIC TLS, AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, secure key material zeroing, AEAD key rotation, pacing controller, BBR/CUBIC congestion control, and aioquic 1.3.0 interop (handshake, stream echo, loss recovery).
+**Evidence summary**: Windows MSVC/vcpkg build with 514 tests passing, Linux GCC/vcpkg build with 510/511 tests passing, ASan/UBSan verification with 0 errors, OpenSSL 3.6.1 QUIC TLS, AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, secure key material zeroing, AEAD key rotation, pacing controller, BBR/CUBIC congestion control, and aioquic 1.3.0 interop (handshake, stream echo, loss recovery).
 
-**Gaps**: Linux GCC/sanitizer evidence, multi-peer interop, human security review.
+**Gaps**: Multi-peer interop, human security review.
 
 ## Evidence In Place
 
 ### Build And Test
 
-- ✅ Windows MSVC/vcpkg: 511 tests passing (`ctest --preset windows-msvc-vcpkg --timeout 10`)
+- ✅ Windows MSVC/vcpkg: 514 tests passing (`ctest --preset windows-msvc-vcpkg --timeout 10`)
+- ✅ Linux GCC/vcpkg: 510/511 tests passing (`ctest --preset linux-gcc-vcpkg --timeout 10`)
+- ✅ ASan/UBSan: 510/511 tests passing, 0 errors (`ctest --preset linux-asan-ubsan --timeout 10`)
 - ✅ Install + package-consumer build path
 - ✅ Clean install prefix validation
 - ✅ Release-readiness scripts (`scripts/check-release-readiness.ps1`, `scripts/check-release-readiness.sh`)
 - ✅ Strict production-candidate gates (`-RequireCompleteReleaseChecklist`)
 - ✅ Checklist validator (`scripts/validate-checklist.ps1`)
-- ⚠️ Linux GCC (`linux-gcc-vcpkg`) and ASan/UBSan (`linux-asan-ubsan`) presets exist but not executed locally
 
 ### Packet Protection
 
@@ -101,8 +102,8 @@ This document records the current evidence required before FlowQ can claim produ
 - [x] TLS backend and cipher suite versions recorded
 - [x] Cipher-suite-aware header protection
 - [x] Secure key material zeroing across all protectors
-- [ ] Linux GCC execution evidence
-- [ ] ASan/UBSan execution evidence
+- [x] Linux GCC execution evidence (510/511 tests passing)
+- [x] ASan/UBSan execution evidence (0 errors)
 - [ ] Second external peer interop
 - [ ] Human security review
 

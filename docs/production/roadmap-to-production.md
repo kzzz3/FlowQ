@@ -4,12 +4,12 @@
 
 - **日期**: 2026-06-01
 - **版本**: 1.0.0-rc1
-- **测试**: 514 tests passing (Windows MSVC/vcpkg)
+- **测试**: 514 tests (Windows), 510/511 tests (Linux)
 - **互操作**: aioquic 1.3.0 + ngtcp2 1.20.0
 - **密码套件**: AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305
 - **拥塞控制**: NewReno, BBR, CUBIC + Pacing
-- **Soak 测试**: 10,000 连接, 0 错误, 830 conn/sec
-- **生产就绪度**: ~85/100
+- **Soak 测试**: 10,000 连接, 0 错误
+- **生产就绪度**: ~90/100
 
 ## Phase 1: 生产候选 ✅ 已完成
 
@@ -63,11 +63,12 @@
 - [ ] 丢包重排 benchmark 实现
 - [ ] 连接迁移 benchmark 实现
 
-### 跨平台验证 (用户执行)
+### 跨平台验证 ✅ 已完成
 
-- [ ] Linux GCC 构建验证
-- [ ] ASan/UBSan 验证
-- [ ] macOS 平台验证
+- [x] Windows MSVC 构建验证 (514 tests passing)
+- [x] Linux GCC 构建验证 (510/511 tests passing)
+- [x] ASan/UBSan 验证 (0 errors)
+- [ ] macOS 平台验证 (可选)
 
 ### 互操作扩展
 
@@ -90,6 +91,8 @@
 
 | 日期 | 版本 | 更新 |
 |------|------|------|
+| 2026-06-01 | - | Linux GCC + ASan/UBSan 验证通过 |
+| 2026-06-01 | - | 修复 GCC 编译问题 (-Wchanges-meaning, missing <cmath>) |
 | 2026-06-01 | 1.0.0-rc1 | Pacing 调优 + BBR/CUBIC 集成 + Release Notes |
 | 2026-06-01 | - | Soak 测试 10,000 连接 + Benchmark 结果 |
 | 2026-05-31 | - | secure_zero + 多密码套件 + header protection 修复 |
