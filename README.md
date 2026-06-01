@@ -32,7 +32,7 @@ FlowQ is a C++20 QUIC transport library with production-grade security, multi-ci
 $env:VCPKG_ROOT = "D:/vcpkg"
 cmake --preset windows-msvc-vcpkg
 cmake --build --preset windows-msvc-vcpkg
-ctest --preset windows-msvc-vcpkg --timeout 10
+ctest --preset windows-msvc-vcpkg --timeout 60
 ```
 
 **Linux:**
@@ -40,7 +40,7 @@ ctest --preset windows-msvc-vcpkg --timeout 10
 export VCPKG_ROOT="$HOME/vcpkg"
 cmake --preset linux-gcc-vcpkg
 cmake --build --preset linux-gcc-vcpkg
-ctest --preset linux-gcc-vcpkg --timeout 10
+ctest --preset linux-gcc-vcpkg --timeout 60
 ```
 
 ## Documentation

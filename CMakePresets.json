@@ -51,6 +51,9 @@
       "configuration": "Debug",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "timeout": 60
       }
     },
     {
@@ -58,6 +61,9 @@
       "configurePreset": "linux-gcc-vcpkg",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "timeout": 60
       }
     }
   ]

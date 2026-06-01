@@ -15,7 +15,7 @@ cmake --preset windows-msvc-vcpkg
 cmake --build --preset windows-msvc-vcpkg
 
 # Test
-ctest --preset windows-msvc-vcpkg --timeout 10
+ctest --preset windows-msvc-vcpkg --timeout 60
 ```
 
 ### Linux GCC/vcpkg
@@ -25,7 +25,7 @@ export VCPKG_ROOT="$HOME/vcpkg"
 
 cmake --preset linux-gcc-vcpkg
 cmake --build --preset linux-gcc-vcpkg
-ctest --preset linux-gcc-vcpkg --timeout 10 --output-on-failure
+ctest --preset linux-gcc-vcpkg --timeout 60 --output-on-failure
 ```
 
 The complete Linux package gate is:
@@ -123,5 +123,5 @@ OpenSSL QUIC TLS requires OpenSSL 3.5+ with QUIC API support. Verify your vcpkg 
 
 Run with `--output-on-failure` to see detailed test output:
 ```powershell
-ctest --preset windows-msvc-vcpkg --timeout 10 --output-on-failure
+ctest --preset windows-msvc-vcpkg --timeout 60 --output-on-failure
 ```

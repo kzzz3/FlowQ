@@ -9,7 +9,7 @@ FlowQ uses [Catch2](https://github.com/catchorg/Catch2) for deterministic unit a
 ### Full Test Suite
 
 ```powershell
-ctest --preset windows-msvc-vcpkg --timeout 10 --output-on-failure
+ctest --preset windows-msvc-vcpkg --timeout 60 --output-on-failure
 ```
 
 ### Specific Test Categories

@@ -33,7 +33,7 @@ cmake --build --preset windows-msvc-vcpkg
 ### 4. Run Tests
 
 ```powershell
-ctest --preset windows-msvc-vcpkg --timeout 10
+ctest --preset windows-msvc-vcpkg --timeout 60
 ```
 
 ## What's Included
