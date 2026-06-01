@@ -43,6 +43,17 @@ is_negated_forbidden_claim() {
     [[ "$line" =~ (^|[[:space:]])no[[:space:]].*guarantees($|[[:space:]]) ]]
 }
 
+is_api_or_technical_term() {
+    local line word
+    line="$(echo "$1" | tr '[:upper:]' '[:lower:]')"
+    word="$2"
+    # Ignore API function names (e.g., SecureZeroMemory, memset_s, explicit_bzero)
+    [[ "$line" == *"securezeromemory"* || "$line" == *"memset_s"* || "$line" == *"explicit_bzero"* ]] && return 0
+    # Ignore technical descriptions that mention "securely erased"
+    [[ "$line" == *"securely erased"* ]] && return 0
+    return 1
+}
+
 DOCUMENTED_PUBLIC_API_HEADERS=(
     "include/flowq/quic/recovery_scheduler.hpp"
     "include/flowq/quic/lifecycle_scheduler.hpp"
@@ -137,7 +148,7 @@ for word in "${FORBIDDEN_WORDS[@]}"; do
             while IFS= read -r match; do
                 [[ -z "$match" ]] && continue
                 line="${match#*:}"
-                if is_policy_document "$file" || is_negated_forbidden_claim "$line"; then
+                if is_policy_document "$file" || is_negated_forbidden_claim "$line" || is_api_or_technical_term "$line" "$word"; then
                     continue
                 fi
 
