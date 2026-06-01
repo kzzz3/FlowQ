@@ -21,6 +21,113 @@ public:
     explicit zero_copy_packet_builder(std::size_t max_datagram_size)
         : buffer_(max_datagram_size) {}
 
+    /// Build a 1-RTT application packet with minimal copies.
+    /// Hot path: short header = 1 byte flags + DCID + 4 byte packet number + encrypted frames + AEAD tag.
+    [[nodiscard]] assembled_packet build_application_packet(const application_packet_build_request& request) {
+        if (request.protector == nullptr) {
+            return {{}, request.number, protection_level::none, detail::pipeline_error("packet protector is required")};
+        }
+        if (request.number.space != packet_number_space::application) {
+            return {{}, request.number, request.protector->level(), detail::pipeline_error("packet number space does not match short-header packet")};
+        }
+        if (!detail::application_protection_level_matches(request.protector->level())) {
+            return {{}, request.number, request.protector->level(), detail::pipeline_error("packet protector level does not match short-header packet")};
+        }
+        if (auto error = detail::validate_protection_policy(*request.protector); !error.ok()) {
+            return {{}, request.number, request.protector->level(), error};
+        }
+
+        // Reset write position
+        write_pos_ = 0;
+
+        // Reserve space for short header: 1 (flags) + max DCID (20) + 4 (pn)
+        constexpr std::size_t max_header_reserve = 32;
+        write_pos_ += max_header_reserve;
+
+        // Write frame bytes directly into buffer (zero-copy: no intermediate frame_bytes vector)
+        const auto frame_start = write_pos_;
+        for (const auto& frame : request.frames) {
+            const auto encoded = std::visit(
+                [](const auto& concrete_frame) {
+                    return encode_frame(concrete_frame);
+                },
+                frame);
+            if (!encoded.ok()) {
+                return {{}, request.number, request.protector->level(), encoded.error};
+            }
+            write_span(encoded.payload);
+        }
+        const auto frame_size = write_pos_ - frame_start;
+
+        // Build short header at the beginning of buffer
+        std::size_t header_pos = 0;
+
+        // First byte: 0x43 (fixed bit 0x40 | 4-byte packet number 0x03)
+        buffer_[header_pos++] = std::byte{0x43};
+
+        // Destination Connection ID (raw bytes, no length prefix for short headers)
+        const auto& dcid = request.destination_connection_id;
+        std::memcpy(buffer_.data() + header_pos, dcid.bytes.data(), dcid.bytes.size());
+        header_pos += dcid.bytes.size();
+
+        // Packet number (4 bytes, fixed length)
+        buffer_[header_pos++] = static_cast<std::byte>((request.number.value >> 24U) & 0xffU);
+        buffer_[header_pos++] = static_cast<std::byte>((request.number.value >> 16U) & 0xffU);
+        buffer_[header_pos++] = static_cast<std::byte>((request.number.value >> 8U) & 0xffU);
+        buffer_[header_pos++] = static_cast<std::byte>(request.number.value & 0xffU);
+
+        // Move frame bytes to after actual header (if reserved != actual)
+        const auto actual_header_size = header_pos;
+        if (max_header_reserve != actual_header_size) {
+            const auto frame_data = buffer_.data() + max_header_reserve;
+            const auto new_frame_pos = buffer_.data() + actual_header_size;
+            std::memmove(new_frame_pos, frame_data, frame_size);
+        }
+
+        // Build AAD for AEAD: short header AAD = flags + DCID + packet number
+        std::vector<std::byte> aad(actual_header_size);
+        std::memcpy(aad.data(), buffer_.data(), actual_header_size);
+
+        // Encrypt frame bytes in-place using protect_payload
+        const auto plaintext_start = actual_header_size;
+        std::span<const std::byte> plaintext{buffer_.data() + plaintext_start, frame_size};
+        auto protected_result = detail::protect_payload(
+            *request.protector,
+            packet_protection_context{request.number, std::span<const std::byte>{aad.data(), aad.size()}},
+            std::vector<std::byte>{plaintext.begin(), plaintext.end()});
+
+        if (!protected_result.ok()) {
+            return {{}, request.number, request.protector->level(), protected_result.error};
+        }
+
+        // Write protected payload (encrypted frames + AEAD tag) after header
+        const auto total_size = actual_header_size + protected_result.payload.size();
+        if (total_size > buffer_.size()) {
+            return {{}, request.number, request.protector->level(), detail::pipeline_error("datagram exceeds max size")};
+        }
+
+        // Copy protected payload after header (overwriting plaintext frames)
+        std::memcpy(buffer_.data() + actual_header_size, protected_result.payload.data(), protected_result.payload.size());
+
+        // Apply short header protection (XOR flags + packet number with mask)
+        if (request.protector->header_protection_enabled()) {
+            if (auto error = detail::apply_short_header_protection(
+                    std::span<std::byte>{buffer_.data(), total_size},
+                    dcid.bytes.size(),
+                    *request.protector); !error.ok()) {
+                return {{}, request.number, request.protector->level(), error};
+            }
+        }
+
+        if (total_size > request.config.max_datagram_size) {
+            return {{}, request.number, request.protector->level(), detail::pipeline_error("QUIC datagram exceeds maximum size")};
+        }
+
+        // Create result buffer
+        flowq::buffer result{std::vector<std::byte>{buffer_.data(), buffer_.data() + total_size}};
+        return {std::move(result), request.number, request.protector->level(), {}};
+    }
+
     /// Build a long packet (Initial or Handshake) with minimal copies.
     [[nodiscard]] assembled_packet build_long_packet(const packet_build_request& request) {
         if (request.protector == nullptr) {

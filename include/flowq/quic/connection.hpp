@@ -6,6 +6,7 @@
 #include <flowq/quic/connection_packet_spaces.hpp>
 #include <flowq/quic/connection_types.hpp>
 #include <flowq/quic/congestion.hpp>
+#include <flowq/quic/zero_copy_packet_builder.hpp>
 
 #ifdef FLOWQ_ENABLE_OPENSSL_CRYPTO
 #include <openssl/rand.h>
@@ -37,7 +38,8 @@ public:
           recovery_pto_config_{config_.max_ack_delay},
           congestion_{create_congestion_controller(config_.congestion_algo)},
           pacing_enabled_{config_.enable_pacing},
-          key_update_enabled_{config_.enable_key_update} {
+          key_update_enabled_{config_.enable_key_update},
+          buffer_pool_{config_.pipeline.max_datagram_size} {
         // Initialize pacing with default values
         if (pacing_enabled_ && congestion_) {
             pacing_.initialize(congestion_->congestion_window(), std::chrono::milliseconds(100));
@@ -534,6 +536,9 @@ private:
     key_update_manager key_update_mgr_;
     bool key_update_enabled_{false};
 
+    // Zero-copy packet assembly buffer pool (initialized when enable_zero_copy is set)
+    datagram_buffer_pool buffer_pool_;
+
     struct remote_connection_id_entry {
         std::uint64_t sequence_number{};
         connection_id id;
@@ -986,6 +991,18 @@ private:
 
     [[nodiscard]] assembled_packet assemble_space(packet_number_space space, std::uint64_t packet_number_value, const std::vector<frame>& frames) const {
         if (space == packet_number_space::application) {
+            // Zero-copy path: use pre-allocated builder for application packets (hot path)
+            if (config_.enable_zero_copy) {
+                static thread_local zero_copy_packet_builder builder{config_.pipeline.max_datagram_size};
+                return builder.build_application_packet(application_packet_build_request{
+                    config_.remote_connection_id,
+                    packet_number{space, packet_number_value},
+                    frames,
+                    detail::tx_protector_for(space, config_),
+                    config_.pipeline
+                });
+            }
+            // Standard copy-based path
             return assemble_application_packet(application_packet_build_request{
                 config_.remote_connection_id,
                 packet_number{space, packet_number_value},
