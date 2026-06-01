@@ -14,7 +14,7 @@ FlowQ is a C++20 QUIC transport library with production-grade security, multi-ci
 - **Multi-cipher AEAD**: AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305 with RFC 9001 header protection
 - **Congestion control**: NewReno, BBR, CUBIC with pacing controller
 - **Key rotation**: RFC 9000 Section 6 key update support
-- **Secure erasure**: platform-specific key material zeroing (SecureZeroMemory/memset_s/explicit_bzero)
+- **Key erasure**: platform-specific key material zeroing (SecureZeroMemory/memset_s/explicit_bzero)
 - **Interop validated**: aioquic 1.3.0 + ngtcp2 1.20.0
 
 ## Quick Start

@@ -7,7 +7,7 @@ Production hardening release with multi-cipher support, congestion control algor
 ### Features
 
 #### Security
-- **Secure key material zeroing**: All traffic secrets, AEAD keys, and IVs are securely erased on destruction
+- **Key material erasure**: All traffic secrets, AEAD keys, and IVs are securely erased on destruction
 - **Multi-cipher AEAD support**: AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305
 - **Cipher-suite-aware header protection**: AES-ECB for AES-128/256-GCM, ChaCha20 for ChaCha20-Poly1305
 - **AEAD key rotation**: RFC 9000 Section 6 key update support
