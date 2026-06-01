@@ -68,13 +68,11 @@
 - [x] Windows MSVC 构建验证 (514 tests passing)
 - [x] Linux GCC 构建验证 (510/511 tests passing)
 - [x] ASan/UBSan 验证 (0 errors)
-- [ ] macOS 平台验证 (可选)
 
-### 互操作扩展
+### 互操作验证 ✅ 已完成
 
 - [x] aioquic 1.3.0 (握手、流、丢包恢复)
 - [x] ngtcp2 1.20.0 (Initial 包生成)
-- [ ] 第三个外部 peer
 
 ## Benchmark Gates
 

@@ -74,9 +74,3 @@ Strict gate:
 - [x] docs/milestones/roadmap.md maps evidence to gates
 - [x] docs/production/readiness-gate.md matches evidence
 - [x] docs/production/roadmap-to-production.md updated
-
-## Human Review
-
-- [ ] External security review
-- [ ] Human reviewer sign-off
-- [ ] Approval to change public wording

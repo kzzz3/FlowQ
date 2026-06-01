@@ -73,15 +73,25 @@ endif()
 
 if(FLOWQ_BUILD_TESTS)
     include(CTest)
-    add_test(
-        NAME flowq.release_readiness
-        COMMAND powershell
-            -NoProfile
-            -ExecutionPolicy Bypass
-            -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-release-readiness.ps1
-            -SourceRoot ${CMAKE_CURRENT_SOURCE_DIR}
-            -SkipBuild
-    )
+    if(WIN32)
+        add_test(
+            NAME flowq.release_readiness
+            COMMAND powershell
+                -NoProfile
+                -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-release-readiness.ps1
+                -SourceRoot ${CMAKE_CURRENT_SOURCE_DIR}
+                -SkipBuild
+        )
+    else()
+        add_test(
+            NAME flowq.release_readiness
+            COMMAND bash
+                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-release-readiness.sh
+                --source-root ${CMAKE_CURRENT_SOURCE_DIR}
+                --skip-build
+        )
+    endif()
     add_subdirectory(tests)
 endif()
 

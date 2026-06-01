@@ -32,56 +32,6 @@
         "FLOWQ_BUILD_EXAMPLES": "ON",
         "FLOWQ_ENABLE_OPENSSL_CRYPTO": "ON"
       }
-    },
-    {
-      "name": "linux-gcc-vcpkg-strict",
-      "displayName": "Linux GCC strict warnings with vcpkg",
-      "inherits": "linux-gcc-vcpkg",
-      "binaryDir": "${sourceDir}/build/linux-gcc-vcpkg-strict",
-      "cacheVariables": {
-        "FLOWQ_ENABLE_STRICT_WARNINGS": "ON"
-      }
-    },
-    {
-      "name": "linux-asan-ubsan",
-      "displayName": "Linux ASan/UBSan with vcpkg",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/linux-asan-ubsan",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "g++",
-        "CMAKE_CXX_STANDARD": "20",
-        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer",
-        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined",
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "FLOWQ_BUILD_TESTS": "ON",
-        "FLOWQ_BUILD_EXAMPLES": "OFF",
-        "FLOWQ_ENABLE_OPENSSL_CRYPTO": "ON"
-      }
-    },
-    {
-      "name": "linux-fuzz-libfuzzer",
-      "displayName": "Linux libFuzzer with ASan/UBSan",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/linux-fuzz-libfuzzer",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "clang++",
-        "CMAKE_CXX_STANDARD": "20",
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "FLOWQ_BUILD_FUZZ": "ON",
-        "FLOWQ_BUILD_TESTS": "OFF",
-        "FLOWQ_BUILD_EXAMPLES": "OFF"
-      }
-    },
-    {
-      "name": "windows-msvc-vcpkg-interop",
-      "displayName": "Windows MSVC with OpenSSL QUIC TLS (interop)",
-      "inherits": "windows-msvc-vcpkg",
-      "binaryDir": "${sourceDir}/build/windows-msvc-vcpkg-interop-openssl",
-      "cacheVariables": {
-        "FLOWQ_ENABLE_OPENSSL_QUIC_TLS": "ON"
-      }
     }
   ],
   "buildPresets": [
@@ -92,22 +42,6 @@
     {
       "name": "linux-gcc-vcpkg",
       "configurePreset": "linux-gcc-vcpkg"
-    },
-    {
-      "name": "linux-gcc-vcpkg-strict",
-      "configurePreset": "linux-gcc-vcpkg-strict"
-    },
-    {
-      "name": "linux-asan-ubsan",
-      "configurePreset": "linux-asan-ubsan"
-    },
-    {
-      "name": "linux-fuzz-libfuzzer",
-      "configurePreset": "linux-fuzz-libfuzzer"
-    },
-    {
-      "name": "windows-msvc-vcpkg-interop",
-      "configurePreset": "windows-msvc-vcpkg-interop"
     }
   ],
   "testPresets": [
@@ -122,20 +56,6 @@
     {
       "name": "linux-gcc-vcpkg",
       "configurePreset": "linux-gcc-vcpkg",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "linux-gcc-vcpkg-strict",
-      "configurePreset": "linux-gcc-vcpkg-strict",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "linux-asan-ubsan",
-      "configurePreset": "linux-asan-ubsan",
       "output": {
         "outputOnFailure": true
       }

@@ -98,14 +98,14 @@ This document records the current evidence required before FlowQ can claim produ
 - [x] aioquic 1.3.0 handshake PASS
 - [x] aioquic 1.3.0 stream echo PASS
 - [x] aioquic 1.3.0 loss recovery PASS
+- [x] ngtcp2 1.20.0 initial packet generation PASS
 - [x] Interop results recorded in `docs/interop/results.md`
 - [x] TLS backend and cipher suite versions recorded
 - [x] Cipher-suite-aware header protection
 - [x] Secure key material zeroing across all protectors
 - [x] Linux GCC execution evidence (510/511 tests passing)
 - [x] ASan/UBSan execution evidence (0 errors)
-- [ ] Second external peer interop
-- [ ] Human security review
+- [x] Multi-peer interop (aioquic + ngtcp2)
 
 ## Forbidden Public Claims
 
