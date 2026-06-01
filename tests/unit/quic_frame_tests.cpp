@@ -303,7 +303,7 @@ TEST_CASE("QUIC frame codec round trips token connection-id and handshake-done f
         const auto& cid = std::get<flowq::quic::new_connection_id_frame>(decoded.frames[0]);
         CHECK(cid.sequence_number == 3);
         CHECK(cid.retire_prior_to == 1);
-        CHECK(cid.connection_id.bytes.size() == 4);
+            CHECK(cid.conn_id.bytes.size() == 4);
         CHECK(cid.stateless_reset_token.size() == 16);
     }
 

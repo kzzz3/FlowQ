@@ -947,7 +947,7 @@ TEST_CASE("stream send set enforces peer bidirectional stream count limit") {
 
     REQUIRE(streams.append(0, text("alpha")).ok());
     auto rejected = streams.append(4, text("beta"));
-    auto blocked = streams.streams_blocked_frame(flowq::quic::stream_direction::bidirectional);
+    auto blocked = streams.get_streams_blocked_frame(flowq::quic::stream_direction::bidirectional);
 
     CHECK_FALSE(rejected.ok());
     CHECK(rejected.error.code() == flowq::error_code::protocol_error);

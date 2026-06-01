@@ -2,6 +2,7 @@
 
 #include <flowq/quic/congestion.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <memory>
 

@@ -792,7 +792,7 @@ public:
         return found->second.blocked_frame();
     }
 
-    [[nodiscard]] std::optional<streams_blocked_frame> streams_blocked_frame(stream_direction direction) const noexcept {
+    [[nodiscard]] std::optional<streams_blocked_frame> get_streams_blocked_frame(stream_direction direction) const noexcept {
         const auto blocked = direction == stream_direction::bidirectional ? bidi_streams_blocked_ : uni_streams_blocked_;
         if (!blocked) {
             return std::nullopt;

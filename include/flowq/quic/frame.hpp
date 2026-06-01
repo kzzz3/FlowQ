@@ -120,7 +120,7 @@ struct streams_blocked_frame {
 struct new_connection_id_frame {
     std::uint64_t sequence_number{};
     std::uint64_t retire_prior_to{};
-    connection_id connection_id;
+    connection_id conn_id;
     flowq::buffer stateless_reset_token;
 };
 
@@ -348,7 +348,7 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
 }
 
 [[nodiscard]] inline frame_encode_result encode_new_connection_id(const new_connection_id_frame& frame) {
-    if (frame.connection_id.bytes.empty() || frame.connection_id.bytes.size() > 20) {
+    if (frame.conn_id.bytes.empty() || frame.conn_id.bytes.size() > 20) {
         return {{}, codec_error("NEW_CONNECTION_ID connection ID length must be 1 to 20 bytes")};
     }
     if (frame.stateless_reset_token.size() != 16) {
@@ -362,10 +362,10 @@ inline void append_buffer(std::vector<std::byte>& output, const flowq::buffer& b
     if (!append_varint(output, 0x18) ||
         !append_varint(output, frame.sequence_number) ||
         !append_varint(output, frame.retire_prior_to) ||
-        !append_varint(output, frame.connection_id.bytes.size())) {
-        return {{}, codec_error("failed to encode NEW_CONNECTION_ID frame")};
+        !append_varint(output, frame.conn_id.bytes.size())) {
+        return {{}, codec_error("NEW_CONNECTION_ID failed to encode varints")};
     }
-    append_buffer(output, frame.connection_id.bytes);
+    append_buffer(output, frame.conn_id.bytes);
     append_buffer(output, frame.stateless_reset_token);
     return {flowq::buffer{output}, {}};
 }

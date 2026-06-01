@@ -148,12 +148,12 @@ public:
             }
         }
         if (result.frames.size() < max_frames) {
-            if (auto blocked = send_streams_.streams_blocked_frame(stream_direction::bidirectional); blocked.has_value()) {
+            if (auto blocked = send_streams_.get_streams_blocked_frame(stream_direction::bidirectional); blocked.has_value()) {
                 result.frames.push_back(frame{*blocked});
             }
         }
         if (result.frames.size() < max_frames) {
-            if (auto blocked = send_streams_.streams_blocked_frame(stream_direction::unidirectional); blocked.has_value()) {
+            if (auto blocked = send_streams_.get_streams_blocked_frame(stream_direction::unidirectional); blocked.has_value()) {
                 result.frames.push_back(frame{*blocked});
             }
         }
@@ -879,7 +879,7 @@ private:
         }
 
         if (auto* existing = find_remote_connection_id(item.sequence_number); existing != nullptr) {
-            if (!same_connection_id(existing->id, item.connection_id) ||
+            if (!same_connection_id(existing->id, item.conn_id) ||
                 !same_bytes(existing->stateless_reset_token, item.stateless_reset_token)) {
                 return flowq::error{
                     flowq::error_code::protocol_error,
@@ -890,7 +890,7 @@ private:
 
         remote_connection_ids_.push_back(remote_connection_id_entry{
             item.sequence_number,
-            item.connection_id,
+            item.conn_id,
             item.stateless_reset_token,
             false});
 
