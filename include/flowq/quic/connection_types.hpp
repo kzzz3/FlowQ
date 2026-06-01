@@ -106,7 +106,7 @@ struct connection_loop_config {
     // Pacing configuration (disabled by default for backward compatibility)
     bool enable_pacing{false};
     
-    // Zero-copy packet assembly (experimental)
+    // Zero-copy packet assembly (integrated, default disabled)
     bool enable_zero_copy{false};
     
     // Key update configuration
