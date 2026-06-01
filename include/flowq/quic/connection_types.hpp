@@ -101,7 +101,7 @@ struct connection_loop_config {
     std::function<packet_protector_update()> packet_protector_refresh;
     
     // Congestion control configuration
-    congestion_algorithm congestion_algo{congestion_algorithm::new_reno};
+    congestion_algorithm congestion_algo{congestion_algorithm::cubic};
     
     // Pacing configuration (disabled by default for backward compatibility)
     bool enable_pacing{false};

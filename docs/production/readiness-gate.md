@@ -48,7 +48,7 @@ This document records the current evidence required before FlowQ can claim produ
 - ✅ ACK/loss recovery, RTT estimation, PTO, bytes-in-flight accounting
 - ✅ NewReno congestion control (slow start, congestion avoidance, persistent congestion)
 - ✅ BBR congestion control (bottleneck bandwidth and RTT estimation)
-- ✅ CUBIC congestion control (RFC 8312)
+- ✅ CUBIC congestion control (RFC 8312, TCP friendliness, fast convergence)
 - ✅ Pacing controller (RFC 9002 Section 7.7)
 - ✅ Stream receive/send state, flow control (stream-level and connection-level)
 - ✅ Connection ID routing, NEW_CONNECTION_ID, RETIRE_CONNECTION_ID

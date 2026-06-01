@@ -243,7 +243,8 @@ flowq::quic::connection_loop make_application_loop(
     flowq::endpoint peer,
     const flowq::quic::test::plaintext_packet_protector_set& protectors,
     std::uint64_t ack_delay_exponent,
-    std::chrono::milliseconds max_ack_delay) {
+    std::chrono::milliseconds max_ack_delay,
+    flowq::quic::congestion_algorithm algo = flowq::quic::congestion_algorithm::new_reno) {
     flowq::quic::connection_loop_config config{};
     config.role = flowq::quic::connection_role::client;
     config.local_connection_id = std::move(local);
@@ -259,6 +260,7 @@ flowq::quic::connection_loop make_application_loop(
     config.tls_adapter = &application_ready_tls_adapter();
     config.ack_delay_exponent = ack_delay_exponent;
     config.max_ack_delay = max_ack_delay;
+    config.congestion_algo = algo;
     return flowq::quic::connection_loop{std::move(config)};
 }
 

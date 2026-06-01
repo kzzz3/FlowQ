@@ -14,8 +14,8 @@ Production hardening release with multi-cipher support, congestion control algor
 - **Traffic secret access restriction**: `traffic_secret()` only available with `FLOWQ_ENABLE_INSPECTION`
 
 #### Congestion Control
+- **CUBIC (default)**: RFC 8312 cubic congestion control with TCP friendliness and fast convergence
 - **BBR**: Bottleneck Bandwidth and Round-trip propagation time
-- **CUBIC**: RFC 8312 cubic congestion control
 - **Pacing**: RFC 9002 Section 7.7 send rate smoothing
 - **Configurable algorithms**: Select congestion algorithm via `connection_loop_config`
 
@@ -31,7 +31,7 @@ Production hardening release with multi-cipher support, congestion control algor
 
 ### Breaking Changes
 
-- Default congestion algorithm is NewReno (unchanged)
+- Default congestion algorithm changed from NewReno to CUBIC
 - Pacing disabled by default (`enable_pacing = false`)
 - Zero-copy disabled by default (`enable_zero_copy = false`)
 - `traffic_secret()` requires `FLOWQ_ENABLE_INSPECTION`
@@ -50,7 +50,8 @@ No breaking API changes from 0.1.0. All existing code should compile unchanged.
 To enable new features:
 ```cpp
 flowq::quic::connection_loop_config config;
-config.congestion_algo = flowq::quic::congestion_algorithm::bbr;  // or cubic
+config.congestion_algo = flowq::quic::congestion_algorithm::cubic;  // default
+config.congestion_algo = flowq::quic::congestion_algorithm::new_reno;  // or bbr
 config.enable_pacing = true;
 config.enable_key_update = true;
 ```

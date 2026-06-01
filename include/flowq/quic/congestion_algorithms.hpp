@@ -170,10 +170,10 @@ private:
     static constexpr std::uint64_t min_cwnd_ = 2 * 1200;       // 2 * max_datagram_size
 };
 
-/// CUBIC congestion control.
+/// CUBIC congestion control (RFC 8312).
 ///
-/// CUBIC is a congestion control algorithm standardized in RFC 8312.
-/// It uses a cubic function to calculate the congestion window.
+/// CUBIC uses a cubic function to calculate the congestion window,
+/// with TCP friendliness and fast convergence support per RFC 8312.
 ///
 /// Reference: RFC 8312
 class cubic_congestion_controller final : public congestion_control_interface {
@@ -187,6 +187,13 @@ public:
     void on_packet_acknowledged(std::uint64_t bytes) noexcept override {
         bytes_in_flight_ -= bytes;
         
+        if (phase_ == congestion_phase::recovery) {
+            // CUBIC exits recovery on first ACK and enters congestion avoidance
+            phase_ = congestion_phase::congestion_avoidance;
+            epoch_start_ = std::chrono::steady_clock::now();
+            last_max_cwnd_ = cwnd_;  // Set W_max for CUBIC function
+        }
+        
         if (phase_ == congestion_phase::slow_start) {
             // Slow start: increase cwnd by bytes_acked
             cwnd_ += bytes;
@@ -196,18 +203,28 @@ public:
                 last_max_cwnd_ = cwnd_;
             }
         } else if (phase_ == congestion_phase::congestion_avoidance) {
-            // CUBIC congestion avoidance
+            auto now = std::chrono::steady_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - epoch_start_).count();
+                now - epoch_start_).count();
             
             // CUBIC function: W_cubic(t) = C * (t - K)^3 + W_max
             // where K = cbrt(W_max * beta / C)
             auto t = static_cast<double>(elapsed) / 1000.0;  // Convert to seconds
-            auto w_max = static_cast<double>(last_max_cwnd_) / 1200.0;  // In segments
+            auto w_max = static_cast<double>(last_max_cwnd_) / max_datagram_size_;  // In segments
             auto k = std::cbrt(w_max * beta_ / cubic_c_);
             auto w_cubic = cubic_c_ * std::pow(t - k, 3.0) + w_max;
             
-            cwnd_ = static_cast<std::uint64_t>(w_cubic * 1200.0);
+            auto cubic_window = static_cast<std::uint64_t>(w_cubic * max_datagram_size_);
+            
+            // TCP friendliness (RFC 8312 Section 4.1):
+            // Estimate the Reno-friendly window to ensure CUBIC does not fall
+            // behind a standard TCP connection under the same conditions.
+            // Use a minimum RTT to avoid division by very small numbers.
+            auto rtt_sec = std::max(last_rtt_.count() / 1000000.0, 0.001);
+            auto reno_window = static_cast<double>(cwnd_) +
+                (3.0 * beta_ / (2.0 - beta_)) * (t / rtt_sec) * max_datagram_size_;
+            
+            cwnd_ = std::max(cubic_window, static_cast<std::uint64_t>(reno_window));
             cwnd_ = std::max(cwnd_, min_cwnd_);
         }
     }
@@ -215,7 +232,15 @@ public:
     void on_packet_lost(std::uint64_t bytes) noexcept override {
         bytes_in_flight_ -= bytes;
         
-        last_max_cwnd_ = cwnd_;
+        // Fast convergence (RFC 8312 Section 4.6):
+        // If cwnd < last_max_cwnd_, reduce last_max_cwnd_ further to converge
+        // faster to the fair share when competing flows cause repeated losses.
+        if (cwnd_ < last_max_cwnd_) {
+            last_max_cwnd_ = cwnd_ * (1.0 + beta_) / 2.0;
+        } else {
+            last_max_cwnd_ = cwnd_;
+        }
+        
         cwnd_ = static_cast<std::uint64_t>(cwnd_ * beta_);
         cwnd_ = std::max(cwnd_, min_cwnd_);
         ssthresh_ = cwnd_;
@@ -225,10 +250,21 @@ public:
     }
 
     void on_congestion_event() noexcept override {
-        last_max_cwnd_ = cwnd_;
+        // Fast convergence on congestion event
+        if (cwnd_ < last_max_cwnd_) {
+            last_max_cwnd_ = cwnd_ * (1.0 + beta_) / 2.0;
+        } else {
+            last_max_cwnd_ = cwnd_;
+        }
+        
         cwnd_ = static_cast<std::uint64_t>(cwnd_ * beta_);
         cwnd_ = std::max(cwnd_, min_cwnd_);
         ssthresh_ = cwnd_;
+    }
+
+    /// Update RTT estimate for TCP friendliness calculations.
+    void update_rtt(std::chrono::microseconds rtt) noexcept {
+        last_rtt_ = rtt;
     }
 
     [[nodiscard]] std::uint64_t congestion_window() const noexcept override {
@@ -247,17 +283,24 @@ public:
         return phase_;
     }
 
+    /// Get the last maximum congestion window (for testing).
+    [[nodiscard]] std::uint64_t last_max_cwnd() const noexcept {
+        return last_max_cwnd_;
+    }
+
 private:
     std::uint64_t cwnd_{initial_cwnd_};
     std::uint64_t bytes_in_flight_{0};
     std::uint64_t ssthresh_{initial_cwnd_};
-    std::uint64_t last_max_cwnd_{0};
+    std::uint64_t last_max_cwnd_{initial_cwnd_};
     std::chrono::steady_clock::time_point epoch_start_{};
+    std::chrono::microseconds last_rtt_{std::chrono::milliseconds{100}};
     congestion_phase phase_{congestion_phase::slow_start};
 
     // CUBIC parameters (RFC 8312)
     static constexpr double cubic_c_ = 0.4;
     static constexpr double beta_ = 0.7;
+    static constexpr double max_datagram_size_ = 1200.0;
     
     static constexpr std::uint64_t initial_cwnd_ = 10 * 1200;  // 10 * max_datagram_size
     static constexpr std::uint64_t min_cwnd_ = 2 * 1200;       // 2 * max_datagram_size

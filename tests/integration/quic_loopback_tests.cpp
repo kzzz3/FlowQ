@@ -61,7 +61,8 @@ flowq::quic::connection_loop make_loop(
     flowq::quic::test::confirmed_tls_adapter& tls,
     bool client_direction,
     std::uint64_t initial_stream_send_max_data = UINT64_MAX,
-    std::uint64_t initial_connection_send_max_data = UINT64_MAX) {
+    std::uint64_t initial_connection_send_max_data = UINT64_MAX,
+    flowq::quic::congestion_algorithm algo = flowq::quic::congestion_algorithm::new_reno) {
     flowq::quic::connection_loop_config config{};
     config.role = flowq::quic::connection_role::client;
     config.local_connection_id = std::move(local);
@@ -72,6 +73,7 @@ flowq::quic::connection_loop make_loop(
     config.initial_connection_send_max_data = initial_connection_send_max_data;
     config.max_packet_payload_size = SIZE_MAX;
     config.tls_adapter = &tls;
+    config.congestion_algo = algo;
     flowq::quic::test::mark_application_ready(config.key_lifecycle);
     config.initial_tx_protector = client_direction ? &protectors.client_initial_tx : &protectors.server_initial_tx;
     config.initial_rx_protector = client_direction ? &protectors.server_initial_tx : &protectors.client_initial_tx;
