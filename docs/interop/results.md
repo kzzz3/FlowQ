@@ -10,7 +10,8 @@
 | Total scenarios | 2 |
 | Passed | 2 |
 | Failed | 0 |
-| Machine report | `docs/interop/results/aioquic-20260606T142829Z-8b9526a.json` |
+| Machine report | `docs/interop/results/aioquic-20260606T153349Z-31934f6.json` |
+| FlowQ commit | `31934f6` |
 | Evidence validator | `scripts/validate-interop-evidence.py --results-dir docs/interop/results --min-full-flow-peers 1` |
 
 ### Peer Results
@@ -25,6 +26,7 @@
 - **Platform**: Windows MSVC/vcpkg
 - **FlowQ TLS**: OpenSSL QUIC TLS (OpenSSL 3.6.1)
 - **Cipher Suite**: TLS_AES_128_GCM_SHA256
+- **Client Config**: peer `127.0.0.1:4433`, stream payload `hello from FlowQ`, expected echo `echo from aioquic`
 - **Runner**: `scripts/run-aioquic-interop.ps1 -CondaEnv expr -Scenario all`
 
 ## Machine Validation
