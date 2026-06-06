@@ -7,7 +7,7 @@ The authoritative gate status is maintained in [readiness-gate.md](readiness-gat
 | Area | Status |
 |------|--------|
 | Version | 1.0.0 evidence set |
-| Windows tests | 525/525 passing |
+| Windows tests | 526/526 passing |
 | Linux tests | 510/511 passing |
 | ASan/UBSan | 0 errors |
 | Full-flow interop | aioquic 1.3.0 |

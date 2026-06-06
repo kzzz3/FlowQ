@@ -78,6 +78,13 @@ if(Python3_Interpreter_FOUND)
     )
     set_tests_properties(flowq.interop_evidence_validator PROPERTIES LABELS "interop")
 
+    add_test(
+        NAME flowq.quic_client_configuration
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/interop/test_quic_client_configuration.py
+    )
+    set_tests_properties(flowq.quic_client_configuration PROPERTIES LABELS "interop")
+
     if(WIN32)
         add_test(
             NAME flowq.aioquic_runner_script

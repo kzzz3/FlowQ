@@ -5,12 +5,14 @@
 #include <flowq/quic/tls_protector_factory.hpp>
 #include <asio.hpp>
 #include <array>
+#include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -19,13 +21,38 @@
 namespace {
 
 constexpr std::string_view default_ca_file{"build/certs/cert.pem"};
+constexpr std::string_view default_peer_host{"127.0.0.1"};
+constexpr std::uint16_t default_peer_port{4433};
 constexpr std::string_view default_server_name{"localhost"};
+constexpr std::string_view default_stream_payload{"hello from FlowQ"};
 
 std::string configured_value(const char* environment_name, std::string_view fallback) {
     if (const auto* value = std::getenv(environment_name); value != nullptr && value[0] != '\0') {
         return value;
     }
     return std::string{fallback};
+}
+
+std::string required_configured_value(const char* environment_name) {
+    if (const auto* value = std::getenv(environment_name); value != nullptr && value[0] != '\0') {
+        return value;
+    }
+    throw std::runtime_error{std::string{environment_name} + " must be set"};
+}
+
+std::uint16_t configured_port(const char* environment_name, std::uint16_t fallback) {
+    if (const auto* value = std::getenv(environment_name); value != nullptr && value[0] != '\0') {
+        std::uint32_t parsed{};
+        const auto input = std::string_view{value};
+        const auto* begin = input.data();
+        const auto* end = input.data() + input.size();
+        const auto [next, error] = std::from_chars(begin, end, parsed);
+        if (error != std::errc{} || next != end || parsed == 0 || parsed > 65535) {
+            throw std::runtime_error{std::string{environment_name} + " must be an integer in the range 1..65535"};
+        }
+        return static_cast<std::uint16_t>(parsed);
+    }
+    return fallback;
 }
 
 bool send_datagrams(
@@ -127,7 +154,11 @@ int main() {
             static_cast<std::byte>(0x07), static_cast<std::byte>(0x08)}}};
 
         auto ca_file = configured_value("FLOWQ_QUIC_CA_FILE", default_ca_file);
+        auto peer_host = configured_value("FLOWQ_QUIC_PEER_HOST", default_peer_host);
+        auto peer_port = configured_port("FLOWQ_QUIC_PEER_PORT", default_peer_port);
         auto server_name = configured_value("FLOWQ_QUIC_SERVER_NAME", default_server_name);
+        auto stream_payload = configured_value("FLOWQ_QUIC_STREAM_PAYLOAD", default_stream_payload);
+        auto expected_echo = required_configured_value("FLOWQ_QUIC_EXPECT_ECHO");
 
         flowq::quic::openssl_tls_config tls_config{.is_client = true};
         tls_config.ca_file = ca_file.c_str();
@@ -178,7 +209,7 @@ int main() {
         session_cfg.role = flowq::quic::connection_role::client;
         session_cfg.local_connection_id = local_cid;
         session_cfg.remote_connection_id = remote_cid;
-        session_cfg.peer = flowq::endpoint{"127.0.0.1", 4433, "hq-interop"};
+        session_cfg.peer = flowq::endpoint{peer_host, peer_port, "hq-interop"};
         session_cfg.initial_tx_protector = &initial_tx_protector;
         session_cfg.initial_rx_protector = &initial_rx_protector;
         session_cfg.tls_adapter = tls_adapter.get();
@@ -211,7 +242,7 @@ int main() {
                 std::cout << "Handshake confirmed" << std::endl;
                 std::cout << "Negotiated cipher: " << flowq::quic::cipher_suite_name(tls_adapter->negotiated_cipher()) << std::endl;
                 session.discard_packet_space(flowq::quic::packet_number_space::handshake);
-                if (!send_stream_payload(session, socket, "hello from FlowQ")) {
+                if (!send_stream_payload(session, socket, stream_payload)) {
                     return 1;
                 }
                 application_stream_sent = true;
@@ -266,7 +297,7 @@ int main() {
                 }
                 const auto payload = buffer_to_string(delivery.data);
                 std::cout << "Received stream " << delivery.stream_id << ": " << payload << std::endl;
-                if (delivery.stream_id == 0 && payload == "echo from aioquic") {
+                if (delivery.stream_id == 0 && payload == expected_echo) {
                     echo_received = true;
                 }
             }

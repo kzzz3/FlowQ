@@ -126,6 +126,14 @@ Write-Host ""
 
 $previousClient = $env:FLOWQ_CLIENT
 $previousScenario = $env:FLOWQ_INTEROP_SCENARIO
+$previousPeerHost = $env:FLOWQ_QUIC_PEER_HOST
+$previousPeerPort = $env:FLOWQ_QUIC_PEER_PORT
+$previousStreamPayload = $env:FLOWQ_QUIC_STREAM_PAYLOAD
+$previousExpectedEcho = $env:FLOWQ_QUIC_EXPECT_ECHO
+$clientPeerHost = "127.0.0.1"
+$clientPeerPort = 4433
+$clientStreamPayload = "hello from FlowQ"
+$clientExpectedEcho = "echo from aioquic"
 $results = @()
 
 try {
@@ -133,6 +141,10 @@ try {
         Write-Host "Running aioquic scenario: $scenarioName" -ForegroundColor Cyan
         $env:FLOWQ_CLIENT = $resolvedClientBinary
         $env:FLOWQ_INTEROP_SCENARIO = $scenarioName
+        $env:FLOWQ_QUIC_PEER_HOST = $clientPeerHost
+        $env:FLOWQ_QUIC_PEER_PORT = $clientPeerPort.ToString()
+        $env:FLOWQ_QUIC_STREAM_PAYLOAD = $clientStreamPayload
+        $env:FLOWQ_QUIC_EXPECT_ECHO = $clientExpectedEcho
 
         $watch = [System.Diagnostics.Stopwatch]::StartNew()
         $scenarioResult = Invoke-NativeCapture -Command "conda" -Arguments @("run", "-n", $CondaEnv, "python", "tests/interop/test_interop.py")
@@ -170,6 +182,30 @@ try {
     } else {
         $env:FLOWQ_INTEROP_SCENARIO = $previousScenario
     }
+
+    if ($null -eq $previousPeerHost) {
+        Remove-Item Env:FLOWQ_QUIC_PEER_HOST -ErrorAction SilentlyContinue
+    } else {
+        $env:FLOWQ_QUIC_PEER_HOST = $previousPeerHost
+    }
+
+    if ($null -eq $previousPeerPort) {
+        Remove-Item Env:FLOWQ_QUIC_PEER_PORT -ErrorAction SilentlyContinue
+    } else {
+        $env:FLOWQ_QUIC_PEER_PORT = $previousPeerPort
+    }
+
+    if ($null -eq $previousStreamPayload) {
+        Remove-Item Env:FLOWQ_QUIC_STREAM_PAYLOAD -ErrorAction SilentlyContinue
+    } else {
+        $env:FLOWQ_QUIC_STREAM_PAYLOAD = $previousStreamPayload
+    }
+
+    if ($null -eq $previousExpectedEcho) {
+        Remove-Item Env:FLOWQ_QUIC_EXPECT_ECHO -ErrorAction SilentlyContinue
+    } else {
+        $env:FLOWQ_QUIC_EXPECT_ECHO = $previousExpectedEcho
+    }
 }
 
 $summary = @{
@@ -185,6 +221,12 @@ $report = @{
         flowq_client = $clientDisplayPath
         conda_env = $CondaEnv
         aioquic_version = $aioquicVersion
+        client_config = @{
+            peer_host = $clientPeerHost
+            peer_port = $clientPeerPort
+            stream_payload = $clientStreamPayload
+            expected_echo = $clientExpectedEcho
+        }
     }
     peer = @{
         name = "aioquic"

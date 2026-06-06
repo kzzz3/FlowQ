@@ -34,9 +34,11 @@ The strict production-candidate gate raises the peer minimum to 2 and remains bl
 
 - `conda` must provide the `expr` environment with `aioquic` installed.
 - `flowq_quic_client` must be built with OpenSSL QUIC TLS and OpenSSL crypto enabled.
-- `FLOWQ_CLIENT` and `FLOWQ_INTEROP_SCENARIO` are set by `scripts/run-aioquic-interop.ps1`.
+- `FLOWQ_CLIENT`, `FLOWQ_INTEROP_SCENARIO`, and `FLOWQ_QUIC_EXPECT_ECHO` are set by `scripts/run-aioquic-interop.ps1`.
+- `flowq_quic_client` reads peer and stream configuration from `FLOWQ_QUIC_PEER_HOST`, `FLOWQ_QUIC_PEER_PORT`, `FLOWQ_QUIC_STREAM_PAYLOAD`, and the required `FLOWQ_QUIC_EXPECT_ECHO` value.
 - Missing binaries, missing conda/aioquic dependencies, unsupported scenarios, and non-zero scenario exits fail the production gate.
 - Missing peer/version metadata, missing `flowq_commit`, failed required scenarios, and mismatched JSON summaries fail the release-readiness gate.
+- Aioquic reports include `metadata.client_config` so peer host, peer port, stream payload, and expected echo settings are auditable with the evidence.
 
 ## Running
 
@@ -45,6 +47,8 @@ aioquic full-flow runner:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-aioquic-interop.ps1 -CondaEnv expr -Scenario all
 ```
+
+Direct `flowq_quic_client` executions must set `FLOWQ_QUIC_EXPECT_ECHO` explicitly so the client validates the selected peer's response contract instead of assuming aioquic behavior.
 
 Optional ngtcp2 Initial packet smoke:
 

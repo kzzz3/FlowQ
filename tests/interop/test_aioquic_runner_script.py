@@ -85,6 +85,10 @@ class AioquicRunnerScriptTests(unittest.TestCase):
                         "  exit /b 0",
                         ")",
                         "echo simulated scenario failure 1>&2",
+                        "echo FLOWQ_QUIC_PEER_HOST=%FLOWQ_QUIC_PEER_HOST% 1>&2",
+                        "echo FLOWQ_QUIC_PEER_PORT=%FLOWQ_QUIC_PEER_PORT% 1>&2",
+                        "echo FLOWQ_QUIC_STREAM_PAYLOAD=%FLOWQ_QUIC_STREAM_PAYLOAD% 1>&2",
+                        "echo FLOWQ_QUIC_EXPECT_ECHO=%FLOWQ_QUIC_EXPECT_ECHO% 1>&2",
                         "exit /b 23",
                         "",
                     ]
@@ -120,6 +124,14 @@ class AioquicRunnerScriptTests(unittest.TestCase):
         self.assertEqual(report["scenarios"][0]["name"], "bidirectional_stream")
         self.assertEqual(report["scenarios"][0]["exit_code"], 23)
         self.assertIn("simulated scenario failure", report["scenarios"][0]["output"])
+        self.assertIn("FLOWQ_QUIC_PEER_HOST=127.0.0.1", report["scenarios"][0]["output"])
+        self.assertIn("FLOWQ_QUIC_PEER_PORT=4433", report["scenarios"][0]["output"])
+        self.assertIn("FLOWQ_QUIC_STREAM_PAYLOAD=hello from FlowQ", report["scenarios"][0]["output"])
+        self.assertIn("FLOWQ_QUIC_EXPECT_ECHO=echo from aioquic", report["scenarios"][0]["output"])
+        self.assertEqual(report["metadata"]["client_config"]["peer_host"], "127.0.0.1")
+        self.assertEqual(report["metadata"]["client_config"]["peer_port"], 4433)
+        self.assertEqual(report["metadata"]["client_config"]["stream_payload"], "hello from FlowQ")
+        self.assertEqual(report["metadata"]["client_config"]["expected_echo"], "echo from aioquic")
 
 
 if __name__ == "__main__":
