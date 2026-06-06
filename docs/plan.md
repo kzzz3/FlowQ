@@ -29,8 +29,9 @@ Out of scope for the current production-candidate boundary:
 1. Keep installed headers limited to the production QUIC transport API.
 2. Keep test-only plaintext protection out of installed public headers.
 3. Keep the aioquic interop runner fail-closed; missing client binaries, missing conda/aioquic dependencies, unsupported scenarios, and non-zero scenario exits fail the gate.
-4. Keep experimental examples outside the default build and install package.
-5. Keep documentation synchronized with current code and evidence only.
+4. Keep checked-in interop JSON evidence machine-validatable with peer/version metadata, `flowq_commit`, matching summaries, and required full-flow scenarios.
+5. Keep experimental examples outside the default build and install package.
+6. Keep documentation synchronized with current code and evidence only.
 
 ## Verification Commands
 
@@ -66,5 +67,11 @@ Python aioquic interop from the `expr` conda environment:
 ```
 
 The aioquic runner fails closed when the FlowQ client binary, conda environment, aioquic package, or selected scenario is unavailable. It supports `bidirectional_stream` and `loss_recovery`; handshake completion is asserted in both scenarios.
+
+Checked-in interop evidence gate:
+
+```powershell
+python scripts\validate-interop-evidence.py --results-dir docs\interop\results --min-full-flow-peers 1
+```
 
 Linux and sanitizer evidence are recorded in `docs/production/release-checklist.md`; regenerate them before a release cut when Linux toolchains, dependencies, or packet-processing code changes.

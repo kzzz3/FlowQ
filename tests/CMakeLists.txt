@@ -68,3 +68,14 @@ target_compile_definitions(
 
 include(Catch)
 catch_discover_tests(flowq_unit_tests)
+
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_test(
+        NAME flowq.interop_evidence_validator
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/interop/test_interop_evidence_validator.py
+    )
+else()
+    message(STATUS "Python3 interpreter not found, skipping flowq.interop_evidence_validator")
+endif()

@@ -179,14 +179,14 @@ if(FLOWQ_BUILD_INTEROP)
     target_link_libraries(flowq_migration_benchmark PRIVATE FlowQ::flowq)
     flowq_enable_project_warnings(flowq_migration_benchmark)
 
-    # ngtcp2 interop test
+    # Optional ngtcp2 Initial packet smoke target
     find_package(ngtcp2 CONFIG QUIET)
     if(ngtcp2_FOUND)
-        message(STATUS "ngtcp2 found, building ngtcp2 interop test")
+        message(STATUS "ngtcp2 found, building optional ngtcp2 Initial packet smoke target")
         add_executable(flowq_ngtcp2_interop tests/interop/ngtcp2_interop.cpp)
         target_link_libraries(flowq_ngtcp2_interop PRIVATE FlowQ::flowq ngtcp2::ngtcp2)
         flowq_enable_project_warnings(flowq_ngtcp2_interop)
     else()
-        message(STATUS "ngtcp2 not found, skipping ngtcp2 interop test")
+        message(STATUS "ngtcp2 not found, skipping optional ngtcp2 Initial packet smoke target")
     endif()
 endif()

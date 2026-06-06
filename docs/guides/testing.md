@@ -50,6 +50,7 @@ tests/
 │   └── quic_endpoint_driver_tests.cpp
 ├── interop/                 # Interop tools (opt-in)
 │   ├── test_interop.py
+│   ├── test_interop_evidence_validator.py
 │   └── ngtcp2_interop.cpp
 ├── fuzz/                    # Fuzz targets
 │   ├── fuzz_packet_header.cpp
@@ -78,6 +79,16 @@ Test module interactions:
 - Session façade
 - UDP session adapter
 - Endpoint driver
+
+### Interop Evidence Tests
+
+The aioquic full-flow runner records JSON evidence under `docs/interop/results`. The release gate validates that evidence with:
+
+```powershell
+python scripts\validate-interop-evidence.py --results-dir docs\interop\results --min-full-flow-peers 1
+```
+
+The strict production-candidate gate uses `--min-full-flow-peers 2`; it remains blocked until a second external peer records the required full-flow scenarios.
 
 ### Fuzz Tests
 
@@ -130,3 +141,4 @@ REQUIRE_THAT(result, Catch::Matchers::Predicate<...>([](auto& val) {
 Tests run automatically on GitHub Actions:
 - **ci.yml**: Windows MSVC/vcpkg build, test, install, package-consumer
 - **robustness.yml**: Linux sanitizer/fuzz testing (Ubuntu)
+- Release-readiness scripts validate documentation, checklist state, packet-protection boundaries, and checked-in interop evidence.

@@ -11,6 +11,7 @@
 | Passed | 2 |
 | Failed | 0 |
 | Machine report | `docs/interop/results/aioquic-20260606T142829Z-8b9526a.json` |
+| Evidence validator | `scripts/validate-interop-evidence.py --results-dir docs/interop/results --min-full-flow-peers 1` |
 
 ### Peer Results
 
@@ -25,6 +26,14 @@
 - **FlowQ TLS**: OpenSSL QUIC TLS (OpenSSL 3.6.1)
 - **Cipher Suite**: TLS_AES_128_GCM_SHA256
 - **Runner**: `scripts/run-aioquic-interop.ps1 -CondaEnv expr -Scenario all`
+
+## Machine Validation
+
+```powershell
+python scripts\validate-interop-evidence.py --results-dir docs\interop\results --min-full-flow-peers 1
+```
+
+The strict production-candidate gate uses `--min-full-flow-peers 2` and is expected to fail until a second external peer records the required full-flow scenarios.
 
 ## Supported Peers
 
@@ -42,6 +51,9 @@ cmake --build --preset windows-msvc-vcpkg-interop-openssl --config Debug --targe
 
 # aioquic tests
 .\scripts\run-aioquic-interop.ps1 -CondaEnv expr -Scenario all
+
+# Validate checked-in evidence
+python scripts\validate-interop-evidence.py --results-dir docs\interop\results --min-full-flow-peers 1
 
 # Optional ngtcp2 Initial packet generation smoke
 .\build\windows-msvc-vcpkg-interop-openssl\Debug\flowq_ngtcp2_interop.exe --ca build\certs\cert.pem

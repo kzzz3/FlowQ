@@ -1,6 +1,7 @@
-// FlowQ <-> ngtcp2 Interop Test
+// FlowQ ngtcp2 Initial packet smoke target
 //
-// Verifies FlowQ can generate valid Initial packets compatible with ngtcp2.
+// Verifies FlowQ can generate a protected QUIC Initial datagram for optional
+// local ngtcp2 inspection.
 //
 // Usage:
 //   flowq_ngtcp2_interop --host <host> --port <port> --ca <cert_file>
@@ -40,7 +41,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    std::cout << "FlowQ <-> ngtcp2 Interop Test" << std::endl;
+    std::cout << "FlowQ ngtcp2 Initial packet smoke" << std::endl;
     std::cout << "Connecting to " << host << ":" << port << std::endl;
 
     // Use same fixed CIDs as quic_client
@@ -124,6 +125,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    std::cout << "FlowQ ngtcp2 interop: Initial packet generation PASSED" << std::endl;
+    std::cout << "FlowQ ngtcp2 Initial packet generation PASSED" << std::endl;
     return 0;
 }

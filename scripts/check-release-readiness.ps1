@@ -72,6 +72,30 @@ if ($integrationBypassHits.Count -gt 0) {
 }
 $StepNumber += 1
 
+Write-Host ""
+Write-Host "$StepNumber. Checking interop evidence..." -ForegroundColor Yellow
+$interopPeerMinimum = 1
+if ($RequireCompleteReleaseChecklist) {
+    $interopPeerMinimum = 2
+}
+$pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+if (-not $pythonCommand) {
+    Write-Host "FAILED: python is required to validate interop evidence" -ForegroundColor Red
+    $Failed = $true
+} else {
+    $pythonPath = $pythonCommand.Path
+    if (-not $pythonPath) {
+        $pythonPath = $pythonCommand.Source
+    }
+    & $pythonPath .\scripts\validate-interop-evidence.py `
+        --results-dir .\docs\interop\results `
+        --min-full-flow-peers $interopPeerMinimum
+    if ($LASTEXITCODE -ne 0) {
+        $Failed = $true
+    }
+}
+$StepNumber += 1
+
 if ($RequireCompleteReleaseChecklist) {
     Write-Host ""
     Write-Host "$StepNumber. Checking release checklist completion..." -ForegroundColor Yellow

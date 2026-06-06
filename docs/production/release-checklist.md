@@ -8,9 +8,11 @@ Strict gate:
 .\scripts\check-release-readiness.ps1 -RequireCompleteReleaseChecklist
 ```
 
+The strict gate requires 2+ machine-validated full-flow external peers plus the human review and audit items below.
+
 ## Build and Test
 
-- [x] Windows MSVC/vcpkg OpenSSL interop: 523/523 tests passing
+- [x] Windows MSVC/vcpkg OpenSSL interop: 524/524 tests passing
 - [x] Linux GCC/vcpkg: 510/511 tests passing (1 release_readiness not run)
 - [x] Install + package-consumer builds and runs
 - [x] No compiler warnings (`/W4 /WX` on MSVC)
@@ -46,6 +48,7 @@ Strict gate:
 - [x] aioquic 1.3.0 bidirectional stream echo PASS
 - [x] aioquic 1.3.0 loss recovery PASS
 - [x] Results recorded with peer name, version, TLS backend, cipher suite
+- [x] Checked-in JSON evidence validated by `scripts/validate-interop-evidence.py`
 - [ ] Second external peer full handshake and stream scenario PASS
 
 ## Congestion Control

@@ -20,12 +20,23 @@ cmake --preset windows-msvc-vcpkg-interop-openssl
 - `bidirectional_stream`: TLS handshake completion and bidirectional stream echo
 - `loss_recovery`: One dropped short-header datagram, retransmission, and stream echo
 
+## Evidence Validation
+
+Checked-in JSON reports under `docs/interop/results` are validated by the release-readiness gate:
+
+```powershell
+python scripts\validate-interop-evidence.py --results-dir docs\interop\results --min-full-flow-peers 1
+```
+
+The strict production-candidate gate raises the peer minimum to 2 and remains blocked until a second full-flow external peer is recorded.
+
 ## Requirements
 
 - `conda` must provide the `expr` environment with `aioquic` installed.
 - `flowq_quic_client` must be built with OpenSSL QUIC TLS and OpenSSL crypto enabled.
 - `FLOWQ_CLIENT` and `FLOWQ_INTEROP_SCENARIO` are set by `scripts/run-aioquic-interop.ps1`.
 - Missing binaries, missing conda/aioquic dependencies, unsupported scenarios, and non-zero scenario exits fail the production gate.
+- Missing peer/version metadata, missing `flowq_commit`, failed required scenarios, and mismatched JSON summaries fail the release-readiness gate.
 
 ## Running
 
