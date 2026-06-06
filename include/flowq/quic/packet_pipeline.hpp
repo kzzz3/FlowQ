@@ -92,14 +92,14 @@ public:
     }
 
     /// Zero-copy protect: encrypt plaintext in-place within a pre-allocated buffer.
-    /// Default implementation falls back to copy-based protect() for backward compatibility.
-    /// Subclasses can override for true in-place AEAD (e.g., OpenSSL EVP_EncryptUpdate into same buffer).
+    /// Base implementation delegates to context-aware protect() and copies ciphertext back.
+    /// Provider implementations can override for true in-place AEAD.
     [[nodiscard]] virtual packet_protection_result protect_in_place(
         std::span<std::byte> buffer,
         std::size_t plaintext_offset,
         std::size_t plaintext_size,
         const packet_protection_context& context) const {
-        // Default: extract plaintext, encrypt via existing protect(), copy result back
+        // Base path: extract plaintext, encrypt via protect(), copy result back.
         std::vector<std::byte> plaintext(
             buffer.begin() + static_cast<std::ptrdiff_t>(plaintext_offset),
             buffer.begin() + static_cast<std::ptrdiff_t>(plaintext_offset + plaintext_size));

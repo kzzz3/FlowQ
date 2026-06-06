@@ -40,7 +40,7 @@ ctest --preset windows-msvc-vcpkg --timeout 60
 
 - **Core Protocol**: QUIC varint, packet-number, frame, header, packet pipeline, and transport-parameter codecs
 - **Connection Management**: Connection loop, stream state, flow control
-- **Packet Protection**: Crypto provider boundaries, TLS handshake adapter, key lifecycle, and OpenSSL-gated AES-128-GCM packet protection
+- **Packet Protection**: Crypto provider boundaries, TLS handshake adapter, key lifecycle, and OpenSSL-gated AES-128-GCM, AES-256-GCM, and ChaCha20-Poly1305 packet protection
 - **Recovery**: ACK/loss detection, congestion control, recovery timers
 - **Diagnostics**: Event sink, qlog-style observability
 - **Path Validation**: PATH_CHALLENGE/PATH_RESPONSE codec, Application-space response scheduling, and migrated-peer validation before lifting server anti-amplification limits

@@ -27,7 +27,7 @@ Production hardening release with multi-cipher support, congestion control algor
 - **514 unit tests** passing
 - **Benchmark framework**: 40 scenarios across 4 categories
 - **Soak test**: 10,000 connections, 0 errors, 830 conn/sec
-- **Zero-copy packet builder**: Single-buffer assembly (experimental)
+- **Zero-copy packet builder**: Integrated opt-in single-buffer assembly
 
 ### Breaking Changes
 
@@ -41,13 +41,11 @@ Production hardening release with multi-cipher support, congestion control algor
 - Single cipher suite per connection (no negotiation)
 - No HTTP/3, QPACK, WebTransport (source-only)
 - No 0-RTT deployment support
-- Windows-only validation (Linux/macOS pending)
+- macOS release validation is not recorded
 
-### Upgrade Guide
+### Recommended Configuration
 
-No breaking API changes from 0.1.0. All existing code should compile unchanged.
-
-To enable new features:
+Recommended configuration for the current release:
 ```cpp
 flowq::quic::connection_loop_config config;
 config.congestion_algo = flowq::quic::congestion_algorithm::cubic;  // default
@@ -56,17 +54,11 @@ config.enable_pacing = true;
 config.enable_key_update = true;
 ```
 
----
-
-## Version 0.1.0 (2026-05-29)
-
-Initial release with QUIC v1 transport core.
-
 ### Capabilities
 
 - QUIC value codecs: varint, packet number, packet header, frame, and transport parameter handling.
 - Packet pipeline: assembly/parsing through explicit packet-protection interfaces.
-- Packet protection: OpenSSL-gated AES-128-GCM packet protection with RFC 9001 header protection.
+- Packet protection: OpenSSL-gated AES-128-GCM, AES-256-GCM, and ChaCha20-Poly1305 packet protection with RFC 9001 header protection.
 - Fail-closed behavior: OpenSSL AEAD creation fails when the crypto backend is not compiled in.
 - Connection loop: packet-space tracking, ACK/loss integration, stream delivery, flow-control updates.
 - Path validation primitives: PATH_CHALLENGE/PATH_RESPONSE codec support.

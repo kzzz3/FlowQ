@@ -2,7 +2,7 @@
 
 ## Design Overview
 
-FlowQ is a C++20 QUIC transport library under production hardening. The current architecture combines deterministic protocol primitives, connection-loop behavior, packet-protection seams, OpenSSL-gated AES-128-GCM packet protection, endpoint routing with stateless reset handling, diagnostics, release-gate tooling, and recorded aioquic handshake, stream, and loss-recovery interop evidence. Production-candidate status is gated on the remaining release evidence and human review.
+FlowQ is a C++20 QUIC transport library under production hardening. The current architecture combines deterministic protocol primitives, connection-loop behavior, packet-protection provider boundaries, OpenSSL-gated AES-128-GCM, AES-256-GCM, and ChaCha20-Poly1305 packet protection, endpoint routing with stateless reset handling, diagnostics, release-gate tooling, and recorded aioquic handshake, stream, and loss-recovery interop evidence. Production-candidate status is gated on the remaining release evidence and human review.
 
 ## Architecture Layers
 
@@ -39,7 +39,7 @@ FlowQ is a C++20 QUIC transport library under production hardening. The current 
 - **frame.hpp**: QUIC frame codec (STREAM, ACK, CRYPTO, PATH_CHALLENGE, PATH_RESPONSE, etc.)
 - **packet_header.hpp**: Long/short header codecs
 - **transport_parameters.hpp**: QUIC transport parameter codec and config mapping
-- **openssl_aead_protector.hpp**: OpenSSL-gated AES-128-GCM packet protection and header protection
+- **openssl_aead_protector.hpp**: OpenSSL-gated AES-128-GCM, AES-256-GCM, and ChaCha20-Poly1305 packet protection and header protection
 
 ### Connection Management
 
@@ -94,7 +94,7 @@ All code is in headers for easy integration. No separate compilation units.
 
 ### Deterministic Testing
 
-Unit tests use deterministic timers and local packet-protection test support. OpenSSL-enabled tests cover AES-128-GCM packet protection; plaintext packet protection is excluded from installed public headers, and production-required policy rejects non-provider-backed protectors.
+Unit tests use deterministic timers and local packet-protection test support. OpenSSL-enabled tests cover AES-128-GCM, AES-256-GCM, and ChaCha20-Poly1305 packet protection; plaintext packet protection is excluded from installed public headers, and production-required policy rejects non-provider-backed protectors.
 
 ### Virtual Seams
 
@@ -154,8 +154,10 @@ Robustness testing with random inputs.
 ## Production-Candidate Boundary
 
 - aioquic 1.3.0 interop results are recorded for handshake, bidirectional stream echo, and application loss recovery.
+- ngtcp2 1.20.0 evidence is limited to Initial packet generation smoke.
+- A second external peer with full handshake and stream evidence is not recorded.
 - Human security review is not recorded.
-- ChaCha20-Poly1305 and AES-256-GCM packet protection are rejected by `openssl_aead_protector`.
+- AES-128-GCM, AES-256-GCM, and ChaCha20-Poly1305 packet protection are supported by `openssl_aead_protector`.
 - Live AEAD key update installation is outside current evidence.
 - Stateless reset receive handling and retired-local-CID reset generation have local release evidence. HTTP/3 deployment, WebTransport deployment, and 0-RTT deployment policy have no release evidence.
 - HTTP/3, QPACK, and 0-RTT headers are not installed by the production package; the install validation gate fails if they reappear in `build/install-flowq/include`.

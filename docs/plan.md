@@ -8,17 +8,20 @@ In scope:
 
 - QUIC v1 transport value codecs, packet-number helpers, frame/header codecs, and transport-parameter codec.
 - Deterministic connection loop behavior for packet spaces, streams, flow control, ACK/loss, recovery timers, congestion accounting, lifecycle timers, routing, version negotiation, retry helpers, and endpoint lifecycle.
-- OpenSSL-gated AES-128-GCM packet protection and RFC 9001 header protection when `FLOWQ_ENABLE_OPENSSL_CRYPTO=ON`.
+- OpenSSL-gated AES-128-GCM, AES-256-GCM, and ChaCha20-Poly1305 packet protection and RFC 9001 header protection when `FLOWQ_ENABLE_OPENSSL_CRYPTO=ON`.
 - OpenSSL QUIC TLS adapter when `FLOWQ_ENABLE_OPENSSL_QUIC_TLS=ON`, including fail-closed server certificate/key configuration.
 - Peer-issued connection ID migration policy: active CID limit enforcement, conflicting duplicate NEW_CONNECTION_ID rejection, retire_prior_to destination CID switching, and RETIRE_CONNECTION_ID emission.
 - Inbound stateless reset handling for learned peer NEW_CONNECTION_ID tokens, including minimum-size enforcement and retired-token rejection.
 - Endpoint stateless reset generation for retired locally issued connection IDs, including unknown/active-CID fail-closed behavior and reset datagrams that stay smaller than the triggering datagram.
 - Public session, UDP/ASIO, endpoint-driver, timer scheduler, diagnostics, CMake package export, package-consumer, fuzz, and interop harness surfaces.
 - aioquic external-peer evidence for handshake, bidirectional stream echo, and loss recovery.
+- ngtcp2 external-peer Initial packet generation smoke evidence.
 
 Out of scope for the current production-candidate boundary:
 
 - HTTP/3, QPACK, WebTransport, and 0-RTT deployment guarantees.
+- A second external peer with full handshake and stream evidence.
+- Human security review.
 - External security audit.
 
 ## Active Gate Work
@@ -54,7 +57,7 @@ Strict production-candidate gate:
 ./scripts/check-release-readiness.sh --require-complete-release-checklist
 ```
 
-The strict gate is expected to fail until Linux, sanitizer, and human review evidence is recorded and checked in `docs/production/release-checklist.md`.
+The strict gate is expected to fail until a second external full-flow peer, human security review, and external security audit evidence are recorded and checked in `docs/production/release-checklist.md`.
 
 Python aioquic interop from the `expr` conda environment:
 
@@ -66,4 +69,4 @@ conda run -n expr python tests\interop\test_interop.py
 
 The direct Python aioquic harness supports `bidirectional_stream` (default) and `loss_recovery`; handshake completion is asserted in both scenarios. The C++ wrapper scenario files use `basic_handshake`, `stream_echo`, and `loss_recovery`.
 
-Linux and sanitizer evidence must be generated on a Linux host using the presets and scripts documented in `docs/production/release-checklist.md`.
+Linux and sanitizer evidence are recorded in `docs/production/release-checklist.md`; regenerate them before a release cut when Linux toolchains, dependencies, or packet-processing code changes.

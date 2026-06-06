@@ -348,7 +348,7 @@ struct evp_cipher_context {
         return {{}, initial_key_error("ChaCha20 header protection not available (EVP_CHACHA20 not defined)")};
 #endif
     }
-    // For AES-based suites, use AES-ECB
+    // AES-based QUIC header protection uses AES-ECB with the suite key size.
     return aes_header_protection_mask(header_protection_key, sample);
 #else
     (void)suite;
@@ -358,8 +358,7 @@ struct evp_cipher_context {
 #endif
 }
 
-/// Legacy initial header protection mask (AES-128-ECB only).
-/// Kept for backward compatibility with Initial packet protection.
+/// QUIC Initial header protection mask using RFC 9001 AES-128-ECB initial secrets.
 [[nodiscard]] inline header_protection_mask_result initial_header_protection_mask(
     std::span<const std::byte> header_protection_key,
     std::span<const std::byte> sample) {

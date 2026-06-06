@@ -6,8 +6,9 @@
 
 | Metric | Value |
 |--------|-------|
-| Verified Peers | 2 (aioquic, ngtcp2) |
-| Total Scenarios | 3 |
+| Full-flow peers | 1 (aioquic) |
+| Structural smoke peers | 1 (ngtcp2) |
+| Total scenarios | 3 |
 | Passed | 3 |
 | Failed | 0 |
 
@@ -15,9 +16,9 @@
 
 | Peer | Version | Scenario | Result | Details |
 |------|---------|----------|--------|---------|
-| aioquic | 1.3.0 | bidirectional_stream | **PASS** | Handshake + stream echo |
-| aioquic | 1.3.0 | loss_recovery | **PASS** | Drop + retransmit + recovery |
-| ngtcp2 | 1.20.0 | initial_packet | **PASS** | Initial packet generation |
+| aioquic | 1.3.0 | bidirectional_stream | PASS | Handshake + stream echo |
+| aioquic | 1.3.0 | loss_recovery | PASS | Drop + retransmit + recovery |
+| ngtcp2 | 1.20.0 | initial_packet | PASS | Initial packet generation smoke |
 
 ### Environment
 
@@ -29,8 +30,8 @@
 
 | Peer | Language | Install | Status |
 |------|----------|---------|--------|
-| aioquic | Python | `pip install aioquic` | ✅ Verified |
-| ngtcp2 | C | vcpkg | ✅ Verified |
+| aioquic | Python | `pip install aioquic` | Verified full-flow peer |
+| ngtcp2 | C | vcpkg | Verified Initial-packet smoke peer |
 
 ## Running Interop Tests
 
@@ -42,13 +43,6 @@ cmake --build --preset windows-msvc-vcpkg-interop --config Debug
 # aioquic tests
 conda run -n expr python tests/interop/test_interop.py
 
-# ngtcp2 interop
+# ngtcp2 Initial packet generation smoke
 .\build\windows-msvc-vcpkg-interop-openssl\Debug\flowq_ngtcp2_interop.exe --ca build\certs\cert.pem
 ```
-
-## Historical Results
-
-| Date | Peers | Passed | Failed |
-|------|-------|--------|--------|
-| 2026-06-01 | aioquic + ngtcp2 | 5/5 | 0 |
-| 2026-05-31 | aioquic + ngtcp2 | 5/5 | 0 |

@@ -1,8 +1,9 @@
 # FlowQ Release Checklist
 
-Complete all items before claiming production-candidate status.
+Complete all items before claiming production-candidate status. Public production-ready or secure claims additionally require the human and audit gates below.
 
 Strict gate:
+
 ```powershell
 .\scripts\check-release-readiness.ps1 -RequireCompleteReleaseChecklist
 ```
@@ -32,18 +33,21 @@ Strict gate:
 - [x] Installed package excludes HTTP/3, QPACK, 0-RTT, test-support headers
 - [x] TLS handshake adapter is boundary-only
 - [x] No timing-sensitive code without constant-time annotations
-- [x] Key material securely zeroed on destruction (secure.hpp)
+- [x] Key material zeroed on destruction
 - [x] Cipher-suite-aware header protection (AES-128/256-ECB, ChaCha20)
 - [x] All protector types erase keys on destruction
-- [x] traffic_secret() restricted to FLOWQ_ENABLE_INSPECTION
+- [x] `traffic_secret()` restricted to `FLOWQ_ENABLE_INSPECTION`
+- [ ] Human security review recorded
+- [ ] External security audit recorded before public secure or production-ready claims
 
 ## Interop
 
 - [x] aioquic 1.3.0 handshake PASS
 - [x] aioquic 1.3.0 bidirectional stream echo PASS
 - [x] aioquic 1.3.0 loss recovery PASS
-- [x] ngtcp2 1.20.0 initial packet generation PASS
+- [x] ngtcp2 1.20.0 Initial packet generation smoke PASS
 - [x] Results recorded with peer name, version, TLS backend, cipher suite
+- [ ] Second external peer full handshake and stream scenario PASS
 
 ## Congestion Control
 
@@ -56,12 +60,12 @@ Strict gate:
 
 - [x] AEAD key rotation (RFC 9000 Section 6)
 - [x] Key update state machine
-- [x] Secure key material erasure on destruction
+- [x] Key material erasure on destruction
 
 ## Benchmarks
 
 - [x] Benchmark framework established (40 scenarios)
-- [x] Benchmark execution script (run-benchmarks.ps1)
+- [x] Benchmark execution script (`run-benchmarks.ps1`)
 - [x] Initial benchmark results recorded (9 scenarios PASS)
 - [x] Soak stability test (10,000 connections, 0 errors)
 - [x] Loss/reordering benchmark (8 scenarios, 4 PASS)

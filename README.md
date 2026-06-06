@@ -6,7 +6,7 @@
 ![QUIC](https://img.shields.io/badge/protocol-QUIC%20v1-informational)
 ![TLS](https://img.shields.io/badge/TLS-1.3-blue)
 
-FlowQ is a C++20 QUIC transport library with production-grade security, multi-cipher support, and interop validation.
+FlowQ is a C++20 QUIC transport library under production hardening, with multi-cipher packet protection, congestion-control coverage, and recorded external interop evidence.
 
 ## Features
 
@@ -15,7 +15,7 @@ FlowQ is a C++20 QUIC transport library with production-grade security, multi-ci
 - **Congestion control**: CUBIC (default, RFC 8312 with TCP friendliness and fast convergence), NewReno, BBR with pacing controller
 - **Key rotation**: RFC 9000 Section 6 key update support
 - **Key erasure**: platform-specific key material zeroing (SecureZeroMemory/memset_s/explicit_bzero)
-- **Interop validated**: aioquic 1.3.0 + ngtcp2 1.20.0
+- **Interop evidence**: aioquic 1.3.0 handshake/stream/loss scenarios; ngtcp2 1.20.0 Initial packet generation smoke
 
 ## Quick Start
 
@@ -76,7 +76,7 @@ FlowQ/
 
 1. Use TDD: write failing test → implement → refactor
 2. Keep changes atomic: implementation + tests together
-3. Run full test suite before submitting: `ctest --preset <preset> --timeout 10`
+3. Run full test suite before submitting: `ctest --preset <preset> --timeout 60`
 4. No type suppressions (`as any`, `@ts-ignore`) or empty catch blocks
 
 ## License

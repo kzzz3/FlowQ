@@ -103,7 +103,7 @@ struct connection_loop_config {
     // Congestion control configuration
     congestion_algorithm congestion_algo{congestion_algorithm::cubic};
     
-    // Pacing configuration (disabled by default for backward compatibility)
+    // Pacing is opt-in to keep default send timing conservative.
     bool enable_pacing{false};
     
     // Zero-copy packet assembly (integrated, default disabled)

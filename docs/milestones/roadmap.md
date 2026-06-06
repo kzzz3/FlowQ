@@ -73,4 +73,4 @@ Primary files:
 
 ## Remaining Production Gates
 
-The current release checklist shows all evidence gates are complete. The authoritative status is `docs/production/readiness-gate.md` and `docs/production/release-checklist.md`.
+The authoritative status is `docs/production/readiness-gate.md` and `docs/production/release-checklist.md`. Current open gates are a second external full-flow peer, human security review, and external security audit. ngtcp2 is currently represented by Initial packet generation smoke evidence only.
