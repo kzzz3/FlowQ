@@ -52,7 +52,7 @@ tests/
 │   ├── test_interop.py
 │   ├── test_aioquic_runner_script.py
 │   ├── test_interop_evidence_validator.py
-│   └── ngtcp2_interop.cpp
+│   └── ngtcp2_initial_smoke.cpp
 ├── fuzz/                    # Fuzz targets
 │   ├── fuzz_packet_header.cpp
 │   ├── fuzz_frame_decode.cpp

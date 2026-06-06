@@ -56,5 +56,5 @@ cmake --build --preset windows-msvc-vcpkg-interop-openssl --config Debug --targe
 python scripts\validate-interop-evidence.py --results-dir docs\interop\results --min-full-flow-peers 1
 
 # Optional ngtcp2 Initial packet generation smoke
-.\build\windows-msvc-vcpkg-interop-openssl\Debug\flowq_ngtcp2_interop.exe --ca build\certs\cert.pem
+.\build\windows-msvc-vcpkg-interop-openssl\Debug\flowq_ngtcp2_initial_smoke.exe --ca build\certs\cert.pem
 ```

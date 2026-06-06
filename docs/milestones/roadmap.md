@@ -54,7 +54,7 @@ Primary files:
 - `tests/interop/test_interop.py`
 - `tests/interop/aioquic_peer.py`
 - `tools/quic_client.cpp`
-- `tests/interop/ngtcp2_interop.cpp`
+- `tests/interop/ngtcp2_initial_smoke.cpp`
 - `scripts/run-aioquic-interop.ps1`
 - `scripts/validate-interop-evidence.py`
 

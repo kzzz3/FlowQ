@@ -49,5 +49,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-aioquic-intero
 Optional ngtcp2 Initial packet smoke:
 
 ```powershell
-.\build\windows-msvc-vcpkg-interop-openssl\Debug\flowq_ngtcp2_interop.exe --ca build\certs\cert.pem
+.\build\windows-msvc-vcpkg-interop-openssl\Debug\flowq_ngtcp2_initial_smoke.exe --ca build\certs\cert.pem
 ```

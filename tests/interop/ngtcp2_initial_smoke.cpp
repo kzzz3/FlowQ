@@ -4,7 +4,7 @@
 // local ngtcp2 inspection.
 //
 // Usage:
-//   flowq_ngtcp2_interop --host <host> --port <port> --ca <cert_file>
+//   flowq_ngtcp2_initial_smoke --host <host> --port <port> --ca <cert_file>
 
 #include <flowq/quic/session.hpp>
 #include <flowq/quic/openssl_tls_handshake.hpp>
@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (ca_file.empty()) {
-        std::cerr << "Usage: flowq_ngtcp2_interop --host <host> --port <port> --ca <cert_file>" << std::endl;
+        std::cerr << "Usage: flowq_ngtcp2_initial_smoke --host <host> --port <port> --ca <cert_file>" << std::endl;
         return 1;
     }
 
