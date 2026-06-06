@@ -50,6 +50,7 @@ tests/
 │   └── quic_endpoint_driver_tests.cpp
 ├── interop/                 # Interop tools (opt-in)
 │   ├── test_interop.py
+│   ├── test_aioquic_runner_script.py
 │   ├── test_interop_evidence_validator.py
 │   └── ngtcp2_interop.cpp
 ├── fuzz/                    # Fuzz targets
@@ -89,6 +90,12 @@ python scripts\validate-interop-evidence.py --results-dir docs\interop\results -
 ```
 
 The strict production-candidate gate uses `--min-full-flow-peers 2`; it remains blocked until a second external peer records the required full-flow scenarios.
+
+CTest also covers the checked-in evidence validator and, on Windows, the aioquic PowerShell runner fail-closed behavior:
+
+```powershell
+ctest --preset windows-msvc-vcpkg-interop-openssl -R "flowq\.(interop_evidence_validator|aioquic_runner_script)" --output-on-failure
+```
 
 ### Fuzz Tests
 

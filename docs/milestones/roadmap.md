@@ -45,6 +45,7 @@ Current evidence:
 
 - aioquic from the `expr` conda environment observes FlowQ handshake completion, and the direct Python `bidirectional_stream` and `loss_recovery` scenarios pass.
 - The aioquic runner has no skip path; a requested scenario must pass or fail with recorded evidence.
+- The aioquic runner fail-closed behavior is covered by the Windows `flowq.aioquic_runner_script` CTest.
 - The interop evidence records peer name, peer version, FlowQ TLS backend version, negotiated cipher suite, scenario result, and FlowQ commit.
 - `scripts/validate-interop-evidence.py` validates checked-in JSON evidence in the release-readiness gate.
 

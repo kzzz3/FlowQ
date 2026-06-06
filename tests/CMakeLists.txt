@@ -76,6 +76,18 @@ if(Python3_Interpreter_FOUND)
         COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/interop/test_interop_evidence_validator.py
     )
+    set_tests_properties(flowq.interop_evidence_validator PROPERTIES LABELS "interop")
+
+    if(WIN32)
+        add_test(
+            NAME flowq.aioquic_runner_script
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/interop/test_aioquic_runner_script.py
+        )
+        set_tests_properties(flowq.aioquic_runner_script PROPERTIES LABELS "interop")
+    else()
+        message(STATUS "Skipping flowq.aioquic_runner_script; PowerShell runner coverage is Windows-only")
+    endif()
 else()
-    message(STATUS "Python3 interpreter not found, skipping flowq.interop_evidence_validator")
+    message(STATUS "Python3 interpreter not found, skipping Python interop CTest gates")
 endif()

@@ -8,7 +8,7 @@ This document records the current evidence required before FlowQ can claim produ
 - **Date**: 2026-06-06
 - **Status**: Release-readiness evidence is machine-gated; production-candidate and production-ready claims remain blocked
 
-**Evidence summary**: Windows MSVC/vcpkg OpenSSL interop preset with 524/524 tests passing, Linux GCC/vcpkg build with 510/511 tests passing, ASan/UBSan verification with 0 errors, OpenSSL 3.6.1 QUIC TLS, AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, key material zeroing, AEAD key rotation, pacing controller, BBR/CUBIC congestion control, and machine-validated aioquic 1.3.0 full-flow interop (handshake, stream echo, loss recovery).
+**Evidence summary**: Windows MSVC/vcpkg OpenSSL interop preset with 525/525 tests passing, Linux GCC/vcpkg build with 510/511 tests passing, ASan/UBSan verification with 0 errors, OpenSSL 3.6.1 QUIC TLS, AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, key material zeroing, AEAD key rotation, pacing controller, BBR/CUBIC congestion control, and machine-validated aioquic 1.3.0 full-flow interop (handshake, stream echo, loss recovery).
 
 **Open gaps**: second external peer full handshake/stream evidence, human security review, external security audit.
 
@@ -16,7 +16,7 @@ This document records the current evidence required before FlowQ can claim produ
 
 ### Build And Test
 
-- Windows MSVC/vcpkg OpenSSL interop: 524/524 tests passing (`ctest --preset windows-msvc-vcpkg-interop-openssl --timeout 60 --output-on-failure`)
+- Windows MSVC/vcpkg OpenSSL interop: 525/525 tests passing (`ctest --preset windows-msvc-vcpkg-interop-openssl --timeout 60 --output-on-failure`)
 - Linux GCC/vcpkg: 510/511 tests passing (`ctest --preset linux-gcc-vcpkg --timeout 60`)
 - ASan/UBSan: 510/511 tests passing, 0 errors (`ctest --preset linux-asan-ubsan --timeout 60`)
 - Install + package-consumer build path
@@ -25,6 +25,7 @@ This document records the current evidence required before FlowQ can claim produ
 - Strict production-candidate gate tooling (`-RequireCompleteReleaseChecklist`), currently blocked by open checklist items
 - Checklist validator (`scripts/validate-checklist.ps1`)
 - Interop evidence validator (`scripts/validate-interop-evidence.py`): current gate requires 1+ full-flow peer; strict gate requires 2+ full-flow peers
+- CTest coverage for the checked-in interop evidence validator and Windows aioquic runner fail-closed behavior
 
 ### Packet Protection
 
@@ -61,7 +62,7 @@ This document records the current evidence required before FlowQ can claim produ
 ### Interop
 
 - aioquic 1.3.0: handshake, bidirectional stream echo, loss recovery
-- aioquic runner: `scripts/run-aioquic-interop.ps1 -CondaEnv expr -Scenario all`, fail-closed on missing client binary, conda environment, aioquic package, or unsupported scenario
+- aioquic runner: `scripts/run-aioquic-interop.ps1 -CondaEnv expr -Scenario all`, fail-closed on missing client binary, conda environment, aioquic package, or unsupported scenario; Windows runner behavior is covered by `flowq.aioquic_runner_script`
 - Machine evidence validation: `scripts/validate-interop-evidence.py --results-dir docs/interop/results --min-full-flow-peers 1`
 - ngtcp2 Initial packet generation smoke remains an optional local target when ngtcp2 is available at configure time; it is not part of the current recorded gate evidence
 - TLS backend: OpenSSL 3.6.1, cipher: TLS_AES_128_GCM_SHA256

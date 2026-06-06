@@ -66,7 +66,7 @@ Python aioquic interop from the `expr` conda environment:
 .\scripts\run-aioquic-interop.ps1 -CondaEnv expr -Scenario all
 ```
 
-The aioquic runner fails closed when the FlowQ client binary, conda environment, aioquic package, or selected scenario is unavailable. It supports `bidirectional_stream` and `loss_recovery`; handshake completion is asserted in both scenarios.
+The aioquic runner fails closed when the FlowQ client binary, conda environment, aioquic package, or selected scenario is unavailable. Windows CTest covers these runner failure paths through `flowq.aioquic_runner_script`. It supports `bidirectional_stream` and `loss_recovery`; handshake completion is asserted in both scenarios.
 
 Checked-in interop evidence gate:
 

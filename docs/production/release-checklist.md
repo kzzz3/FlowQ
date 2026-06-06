@@ -12,7 +12,7 @@ The strict gate requires 2+ machine-validated full-flow external peers plus the 
 
 ## Build and Test
 
-- [x] Windows MSVC/vcpkg OpenSSL interop: 524/524 tests passing
+- [x] Windows MSVC/vcpkg OpenSSL interop: 525/525 tests passing
 - [x] Linux GCC/vcpkg: 510/511 tests passing (1 release_readiness not run)
 - [x] Install + package-consumer builds and runs
 - [x] No compiler warnings (`/W4 /WX` on MSVC)
@@ -49,6 +49,7 @@ The strict gate requires 2+ machine-validated full-flow external peers plus the 
 - [x] aioquic 1.3.0 loss recovery PASS
 - [x] Results recorded with peer name, version, TLS backend, cipher suite
 - [x] Checked-in JSON evidence validated by `scripts/validate-interop-evidence.py`
+- [x] aioquic runner fail-closed paths covered by CTest
 - [ ] Second external peer full handshake and stream scenario PASS
 
 ## Congestion Control
