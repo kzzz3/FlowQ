@@ -1,0 +1,34 @@
+﻿{
+    "summary":  {
+                    "failed":  0,
+                    "total":  2,
+                    "passed":  2
+                },
+    "peer":  {
+                 "version":  "1.3.0",
+                 "name":  "aioquic"
+             },
+    "scenarios":  [
+                      {
+                          "output":  "==================================================\r\nFlowQ Interop Test: FlowQ Client -\u003e aioquic Server (bidirectional_stream)\r\n==================================================\r\n[Test] Starting FlowQ client...\r\n[aioquic] handshake completed\r\n[aioquic] stream data received: stream=0 bytes=16\r\n[Test] Client stdout: TLS backend: OpenSSL QUIC TLS (OpenSSL 3.6.1 27 Jan 2026)\r\n\r\nGenerated 1 datagram(s)\r\n\r\nSending 1200 bytes\r\n\r\nReceived 46 bytes\r\n\r\nSending 1200 bytes\r\n\r\nReceived 1200 bytes\r\n\r\nReceived 244 bytes\r\n\r\nSending 79 bytes\r\n\r\nHandshake confirmed\r\n\r\nNegotiated cipher: TLS_AES_128_GCM_SHA256\r\n\r\nSending 48 bytes\r\n\r\nReceived 52 bytes\r\n\r\nReceived 44 bytes\r\n\r\nReceived stream 0: echo from aioquic\r\n\r\n\r\n\r\nInterop test PASSED: aioquic observed QUIC handshake, FlowQ STREAM data, and sent echo data",
+                          "status":  "passed",
+                          "name":  "bidirectional_stream",
+                          "duration_ms":  1465,
+                          "exit_code":  0
+                      },
+                      {
+                          "output":  "==================================================\r\nFlowQ Interop Test: FlowQ Client -\u003e aioquic Server (loss_recovery)\r\n==================================================\r\n[Test] Starting FlowQ client...\r\n[aioquic] handshake completed\r\n[aioquic] intentionally dropped first short-header datagram (48 bytes)\r\n[aioquic] stream data received: stream=0 bytes=16\r\n[Test] Client stdout: TLS backend: OpenSSL QUIC TLS (OpenSSL 3.6.1 27 Jan 2026)\r\n\r\nGenerated 1 datagram(s)\r\n\r\nSending 1200 bytes\r\n\r\nReceived 46 bytes\r\n\r\nSending 1200 bytes\r\n\r\nReceived 1200 bytes\r\n\r\nReceived 244 bytes\r\n\r\nSending 79 bytes\r\n\r\nHandshake confirmed\r\n\r\nNegotiated cipher: TLS_AES_128_GCM_SHA256\r\n\r\nSending 48 bytes\r\n\r\nReceived 52 bytes\r\n\r\nRecovery timer fired for packet number space 2; newly lost packets: 0\r\n\r\nRetransmitting stream 0\r\n\r\nSending 48 bytes\r\n\r\nReceived 44 bytes\r\n\r\nReceived stream 0: echo from aioquic\r\n\r\n\r\n\r\nInterop test PASSED: aioquic observed QUIC handshake, FlowQ STREAM data, and sent echo data",
+                          "status":  "passed",
+                          "name":  "loss_recovery",
+                          "duration_ms":  1552,
+                          "exit_code":  0
+                      }
+                  ],
+    "metadata":  {
+                     "aioquic_version":  "1.3.0",
+                     "flowq_client":  "build\\windows-msvc-vcpkg-interop-openssl\\Debug\\flowq_quic_client.exe",
+                     "timestamp":  "2026-06-06T14:28:29Z",
+                     "conda_env":  "expr",
+                     "flowq_commit":  "8b9526a"
+                 }
+}

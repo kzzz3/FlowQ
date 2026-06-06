@@ -8,7 +8,7 @@ This document records the current evidence required before FlowQ can claim produ
 - **Date**: 2026-06-06
 - **Status**: Release-candidate evidence assembled; production-ready wording remains blocked
 
-**Evidence summary**: Windows MSVC/vcpkg OpenSSL interop preset with 523/523 tests passing, Linux GCC/vcpkg build with 510/511 tests passing, ASan/UBSan verification with 0 errors, OpenSSL 3.6.1 QUIC TLS, AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, key material zeroing, AEAD key rotation, pacing controller, BBR/CUBIC congestion control, aioquic 1.3.0 full-flow interop (handshake, stream echo, loss recovery), and ngtcp2 1.20.0 Initial packet generation smoke evidence.
+**Evidence summary**: Windows MSVC/vcpkg OpenSSL interop preset with 523/523 tests passing, Linux GCC/vcpkg build with 510/511 tests passing, ASan/UBSan verification with 0 errors, OpenSSL 3.6.1 QUIC TLS, AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, key material zeroing, AEAD key rotation, pacing controller, BBR/CUBIC congestion control, and aioquic 1.3.0 full-flow interop (handshake, stream echo, loss recovery).
 
 **Open gaps**: second external peer full handshake/stream evidence, human security review, external security audit.
 
@@ -61,7 +61,7 @@ This document records the current evidence required before FlowQ can claim produ
 
 - aioquic 1.3.0: handshake, bidirectional stream echo, loss recovery
 - aioquic runner: `scripts/run-aioquic-interop.ps1 -CondaEnv expr -Scenario all`, fail-closed on missing client binary, conda environment, aioquic package, or unsupported scenario
-- ngtcp2 1.20.0: Initial packet generation smoke
+- ngtcp2 Initial packet generation smoke remains an optional local target when ngtcp2 is available at configure time; it is not part of the current recorded gate evidence
 - TLS backend: OpenSSL 3.6.1, cipher: TLS_AES_128_GCM_SHA256
 - Client verification path: CA verification, SNI, hostname verification
 - Full handshake/stream external peers: 1 (`aioquic`)
@@ -102,7 +102,6 @@ Out of scope:
 - [x] aioquic 1.3.0 handshake PASS
 - [x] aioquic 1.3.0 stream echo PASS
 - [x] aioquic 1.3.0 loss recovery PASS
-- [x] ngtcp2 1.20.0 Initial packet generation smoke PASS
 - [x] Interop results recorded in `docs/interop/results.md`
 - [x] TLS backend and cipher suite versions recorded
 - [x] Cipher-suite-aware header protection

@@ -11,7 +11,7 @@ The authoritative gate status is maintained in [readiness-gate.md](readiness-gat
 | Linux tests | 510/511 passing |
 | ASan/UBSan | 0 errors |
 | Full-flow interop | aioquic 1.3.0 |
-| Structural interop smoke | ngtcp2 1.20.0 Initial packet generation |
+| Structural interop smoke | Optional ngtcp2 Initial packet generation target |
 | Cipher suites | AES-128/256-GCM, ChaCha20-Poly1305 |
 | Congestion control | NewReno, BBR, CUBIC + pacing |
 

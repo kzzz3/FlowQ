@@ -5,7 +5,7 @@ This directory contains the opt-in interop tools for testing FlowQ against matur
 ## Supported Peer Implementations
 
 - aioquic full-flow server peer
-- ngtcp2 Initial packet generation smoke target
+- optional ngtcp2 Initial packet generation smoke target
 
 ## Usage
 
@@ -35,7 +35,7 @@ aioquic full-flow runner:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-aioquic-interop.ps1 -CondaEnv expr -Scenario all
 ```
 
-ngtcp2 Initial packet smoke:
+Optional ngtcp2 Initial packet smoke:
 
 ```powershell
 .\build\windows-msvc-vcpkg-interop-openssl\Debug\flowq_ngtcp2_interop.exe --ca build\certs\cert.pem

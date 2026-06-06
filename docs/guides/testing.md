@@ -48,7 +48,7 @@ tests/
 │   ├── quic_loopback_tests.cpp
 │   ├── quic_udp_session_tests.cpp
 │   └── quic_endpoint_driver_tests.cpp
-├── interop/                 # Interop harness (opt-in)
+├── interop/                 # Interop tools (opt-in)
 │   ├── test_interop.py
 │   └── ngtcp2_interop.cpp
 ├── fuzz/                    # Fuzz targets

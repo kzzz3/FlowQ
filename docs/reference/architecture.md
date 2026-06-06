@@ -154,7 +154,7 @@ Robustness testing with random inputs.
 ## Production-Candidate Boundary
 
 - aioquic 1.3.0 interop results are recorded for handshake, bidirectional stream echo, and application loss recovery.
-- ngtcp2 1.20.0 evidence is limited to Initial packet generation smoke.
+- ngtcp2 Initial packet generation smoke is an optional local target and is not part of the current recorded gate evidence.
 - A second external peer with full handshake and stream evidence is not recorded.
 - Human security review is not recorded.
 - AES-128-GCM, AES-256-GCM, and ChaCha20-Poly1305 packet protection are supported by `openssl_aead_protector`.

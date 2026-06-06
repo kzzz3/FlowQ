@@ -45,7 +45,6 @@ Strict gate:
 - [x] aioquic 1.3.0 handshake PASS
 - [x] aioquic 1.3.0 bidirectional stream echo PASS
 - [x] aioquic 1.3.0 loss recovery PASS
-- [x] ngtcp2 1.20.0 Initial packet generation smoke PASS
 - [x] Results recorded with peer name, version, TLS backend, cipher suite
 - [ ] Second external peer full handshake and stream scenario PASS
 

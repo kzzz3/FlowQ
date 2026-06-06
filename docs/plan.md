@@ -15,7 +15,7 @@ In scope:
 - Endpoint stateless reset generation for retired locally issued connection IDs, including unknown/active-CID fail-closed behavior and reset datagrams that stay smaller than the triggering datagram.
 - Public session, UDP/ASIO, endpoint-driver, timer scheduler, diagnostics, CMake package export, package-consumer, fuzz, and opt-in interop tool surfaces.
 - aioquic external-peer evidence for handshake, bidirectional stream echo, and loss recovery.
-- ngtcp2 external-peer Initial packet generation smoke evidence.
+- Optional ngtcp2 Initial packet generation smoke tooling when ngtcp2 is available locally.
 
 Out of scope for the current production-candidate boundary:
 
