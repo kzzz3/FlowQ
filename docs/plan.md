@@ -13,7 +13,7 @@ In scope:
 - Peer-issued connection ID migration policy: active CID limit enforcement, conflicting duplicate NEW_CONNECTION_ID rejection, retire_prior_to destination CID switching, and RETIRE_CONNECTION_ID emission.
 - Inbound stateless reset handling for learned peer NEW_CONNECTION_ID tokens, including minimum-size enforcement and retired-token rejection.
 - Endpoint stateless reset generation for retired locally issued connection IDs, including unknown/active-CID fail-closed behavior and reset datagrams that stay smaller than the triggering datagram.
-- Public session, UDP/ASIO, endpoint-driver, timer scheduler, diagnostics, CMake package export, package-consumer, fuzz, and interop harness surfaces.
+- Public session, UDP/ASIO, endpoint-driver, timer scheduler, diagnostics, CMake package export, package-consumer, fuzz, and opt-in interop tool surfaces.
 - aioquic external-peer evidence for handshake, bidirectional stream echo, and loss recovery.
 - ngtcp2 external-peer Initial packet generation smoke evidence.
 
@@ -28,7 +28,7 @@ Out of scope for the current production-candidate boundary:
 
 1. Keep installed headers limited to the production QUIC transport API.
 2. Keep test-only plaintext protection out of installed public headers.
-3. Keep external interop wrappers free of skip paths; missing peers or scenario configuration must be recorded as errors.
+3. Keep the aioquic interop runner fail-closed; missing client binaries, missing conda/aioquic dependencies, unsupported scenarios, and non-zero scenario exits fail the gate.
 4. Keep experimental examples outside the default build and install package.
 5. Keep documentation synchronized with current code and evidence only.
 
@@ -62,11 +62,9 @@ The strict gate is expected to fail until a second external full-flow peer, huma
 Python aioquic interop from the `expr` conda environment:
 
 ```powershell
-conda run -n expr python tests\interop\test_interop.py
-$env:FLOWQ_INTEROP_SCENARIO = "loss_recovery"
-conda run -n expr python tests\interop\test_interop.py
+.\scripts\run-aioquic-interop.ps1 -CondaEnv expr -Scenario all
 ```
 
-The direct Python aioquic harness supports `bidirectional_stream` (default) and `loss_recovery`; handshake completion is asserted in both scenarios. The C++ wrapper scenario files use `basic_handshake`, `stream_echo`, and `loss_recovery`.
+The aioquic runner fails closed when the FlowQ client binary, conda environment, aioquic package, or selected scenario is unavailable. It supports `bidirectional_stream` and `loss_recovery`; handshake completion is asserted in both scenarios.
 
 Linux and sanitizer evidence are recorded in `docs/production/release-checklist.md`; regenerate them before a release cut when Linux toolchains, dependencies, or packet-processing code changes.

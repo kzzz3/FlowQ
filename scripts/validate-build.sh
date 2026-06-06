@@ -111,7 +111,6 @@ DISALLOWED_INSTALL_HEADERS=(
     "include/flowq/quic/http3_request.hpp"
     "include/flowq/quic/qpack.hpp"
     "include/flowq/quic/zero_rtt.hpp"
-    "include/flowq/quic/interop_runner.hpp"
 )
 INSTALL_DIR_ABS="$(cd "$(dirname "$INSTALL_DIR")" && pwd)/$(basename "$INSTALL_DIR")"
 BUILD_ROOT_ABS="$(cd build && pwd)"

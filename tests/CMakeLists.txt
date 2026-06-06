@@ -29,7 +29,6 @@ add_executable(
     unit/quic_http3_tests.cpp
     unit/quic_initial_keys_tests.cpp
     unit/quic_initial_packet_protector_tests.cpp
-    unit/quic_interop_tests.cpp
     unit/quic_key_derivation_tests.cpp
     unit/quic_key_lifecycle_tests.cpp
     unit/quic_lifecycle_scheduler_tests.cpp

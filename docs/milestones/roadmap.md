@@ -44,17 +44,16 @@ Primary files:
 Current evidence:
 
 - aioquic from the `expr` conda environment observes FlowQ handshake completion, and the direct Python `bidirectional_stream` and `loss_recovery` scenarios pass.
-- External interop wrapper scripts have no skip path; a requested scenario must pass or fail with recorded evidence.
-- The interop harness records peer name, peer version, FlowQ TLS backend version, negotiated cipher suite, and scenario result.
+- The aioquic runner has no skip path; a requested scenario must pass or fail with recorded evidence.
+- The interop evidence records peer name, peer version, FlowQ TLS backend version, negotiated cipher suite, and scenario result.
 
 Primary files:
 
 - `tests/interop/test_interop.py`
 - `tests/interop/aioquic_peer.py`
-- `tests/interop/flowq_endpoint_driver.cpp`
-- `tests/interop/scenarios/`
-- `scripts/run-interop.ps1`
-- `scripts/run-interop.sh`
+- `tools/quic_client.cpp`
+- `tests/interop/ngtcp2_interop.cpp`
+- `scripts/run-aioquic-interop.ps1`
 
 ## Package Boundary
 

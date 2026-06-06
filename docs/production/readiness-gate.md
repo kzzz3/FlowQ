@@ -8,7 +8,7 @@ This document records the current evidence required before FlowQ can claim produ
 - **Date**: 2026-06-06
 - **Status**: Release-candidate evidence assembled; production-ready wording remains blocked
 
-**Evidence summary**: Windows MSVC/vcpkg build with 514 tests passing, Linux GCC/vcpkg build with 510/511 tests passing, ASan/UBSan verification with 0 errors, OpenSSL 3.6.1 QUIC TLS, AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, key material zeroing, AEAD key rotation, pacing controller, BBR/CUBIC congestion control, aioquic 1.3.0 full-flow interop (handshake, stream echo, loss recovery), and ngtcp2 1.20.0 Initial packet generation smoke evidence.
+**Evidence summary**: Windows MSVC/vcpkg OpenSSL interop preset with 523/523 tests passing, Linux GCC/vcpkg build with 510/511 tests passing, ASan/UBSan verification with 0 errors, OpenSSL 3.6.1 QUIC TLS, AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, key material zeroing, AEAD key rotation, pacing controller, BBR/CUBIC congestion control, aioquic 1.3.0 full-flow interop (handshake, stream echo, loss recovery), and ngtcp2 1.20.0 Initial packet generation smoke evidence.
 
 **Open gaps**: second external peer full handshake/stream evidence, human security review, external security audit.
 
@@ -16,7 +16,7 @@ This document records the current evidence required before FlowQ can claim produ
 
 ### Build And Test
 
-- Windows MSVC/vcpkg: 514/516 tests passing (`ctest --preset windows-msvc-vcpkg --timeout 60`)
+- Windows MSVC/vcpkg OpenSSL interop: 523/523 tests passing (`ctest --preset windows-msvc-vcpkg-interop-openssl --timeout 60 --output-on-failure`)
 - Linux GCC/vcpkg: 510/511 tests passing (`ctest --preset linux-gcc-vcpkg --timeout 60`)
 - ASan/UBSan: 510/511 tests passing, 0 errors (`ctest --preset linux-asan-ubsan --timeout 60`)
 - Install + package-consumer build path
@@ -60,6 +60,7 @@ This document records the current evidence required before FlowQ can claim produ
 ### Interop
 
 - aioquic 1.3.0: handshake, bidirectional stream echo, loss recovery
+- aioquic runner: `scripts/run-aioquic-interop.ps1 -CondaEnv expr -Scenario all`, fail-closed on missing client binary, conda environment, aioquic package, or unsupported scenario
 - ngtcp2 1.20.0: Initial packet generation smoke
 - TLS backend: OpenSSL 3.6.1, cipher: TLS_AES_128_GCM_SHA256
 - Client verification path: CA verification, SNI, hostname verification

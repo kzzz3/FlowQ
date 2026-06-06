@@ -72,8 +72,8 @@ class buffer_pool {
 - 减少 30-50% 的 CPU 开销
 - 提升 20-40% 的吞吐量
 
-## 兼容性
+## 当前 API 边界
 
-- 保持现有 API 兼容
-- 新 API 通过 `FLOWQ_ENABLE_ZERO_COPY` 宏启用
-- 降级到传统路径时无性能损失
+- 零拷贝路径以当前 `buffer_pool` 和 packet pipeline 为边界。
+- 新增发送路径直接进入生产发送/接收链路，以单一生产路径实现。
+- API 变更以当前 transport surface 为准，避免维护额外适配层。

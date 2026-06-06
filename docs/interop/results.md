@@ -1,6 +1,6 @@
 # FlowQ Interop Results
 
-## Latest Results (2026-06-01)
+## Latest Results (2026-06-06)
 
 ### Summary
 
@@ -25,6 +25,7 @@
 - **Platform**: Windows MSVC/vcpkg
 - **FlowQ TLS**: OpenSSL QUIC TLS (OpenSSL 3.6.1)
 - **Cipher Suite**: TLS_AES_128_GCM_SHA256
+- **Runner**: `scripts/run-aioquic-interop.ps1 -CondaEnv expr -Scenario all`
 
 ## Supported Peers
 
@@ -37,11 +38,11 @@
 
 ```powershell
 # Build with interop support
-cmake --preset windows-msvc-vcpkg-interop -DVCPKG_MANIFEST_FEATURES="interop"
-cmake --build --preset windows-msvc-vcpkg-interop --config Debug
+cmake --preset windows-msvc-vcpkg-interop-openssl
+cmake --build --preset windows-msvc-vcpkg-interop-openssl --config Debug --target flowq_quic_client
 
 # aioquic tests
-conda run -n expr python tests/interop/test_interop.py
+.\scripts\run-aioquic-interop.ps1 -CondaEnv expr -Scenario all
 
 # ngtcp2 Initial packet generation smoke
 .\build\windows-msvc-vcpkg-interop-openssl\Debug\flowq_ngtcp2_interop.exe --ca build\certs\cert.pem

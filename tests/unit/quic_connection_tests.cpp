@@ -1468,6 +1468,118 @@ TEST_CASE("connection loop maps PTO to stream probe retransmission state") {
     CHECK(as_string(stream.data) == "hello");
 }
 
+TEST_CASE("connection loop keeps PTO stream probe after non-stream Application timer loss") {
+    flowq::quic::test::plaintext_packet_protector_set protector{};
+    auto client = make_loop(
+        cid({0x01}),
+        cid({0x02}),
+        flowq::endpoint{"server", 4433, "hq-interop"},
+        protector,
+        UINT64_MAX,
+        UINT64_MAX,
+        1200);
+    auto server = make_loop(
+        cid({0x02}),
+        cid({0x01}),
+        flowq::endpoint{"client", 4433, "hq-interop"},
+        protector,
+        UINT64_MAX,
+        UINT64_MAX,
+        1200);
+
+    client.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    (void)client.drain_actions();
+
+    client.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(10ms));
+    (void)client.drain_actions();
+
+    server.queue_application({flowq::quic::frame{flowq::quic::ack_frame{1, 0, 0, {}}}});
+    server.flush(at(90ms));
+    auto ack = require_single_outbound(server.drain_actions());
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack.payload), ack.peer}, at(90ms));
+    auto post_ack_actions = client.drain_actions();
+    for (const auto& action : post_ack_actions) {
+        CHECK_FALSE(std::holds_alternative<flowq::quic::close_action>(action));
+    }
+    CHECK(client.state() == flowq::quic::connection_loop_state::active);
+    CHECK(client.congestion().can_send());
+
+    const std::vector<std::uint64_t> order{0};
+    REQUIRE(client.append_stream_data(0, text("hello")).ok());
+    auto scheduled = client.schedule_stream_frames(order, 1, 16);
+    REQUIRE(scheduled.ok());
+    REQUIRE(scheduled.frames.size() == 1);
+    client.queue_application(std::move(scheduled.frames));
+    client.flush(at(200ms));
+    auto stream_datagram = require_single_outbound(client.drain_actions());
+    (void)stream_datagram;
+    CHECK(client.state() == flowq::quic::connection_loop_state::active);
+
+    const auto& packets_before_timer =
+        client.sent_packets(flowq::quic::packet_number_space::application).packets();
+    REQUIRE(packets_before_timer.size() >= 3);
+    CHECK(packets_before_timer[2].packet_number == 2);
+    CHECK(packets_before_timer[2].ack_eliciting);
+    CHECK(packets_before_timer[2].state == flowq::quic::sent_packet_state::outstanding);
+    auto stream_ranges = client.sent_stream_ranges(flowq::quic::packet_number_space::application, 2);
+    REQUIRE(stream_ranges.size() == 1);
+    CHECK(stream_ranges[0].stream_id == 0);
+
+    auto lost = client.on_recovery_timer(flowq::quic::packet_number_space::application, at(500ms));
+    const auto& packets_after_timer =
+        client.sent_packets(flowq::quic::packet_number_space::application).packets();
+    auto retransmit = client.schedule_stream_frames(order, 1, 16);
+
+    CHECK(lost.newly_lost == std::vector<std::uint64_t>{0, 2});
+    CHECK(packets_after_timer[2].state == flowq::quic::sent_packet_state::lost);
+    REQUIRE(retransmit.ok());
+    REQUIRE(retransmit.frames.size() == 1);
+    REQUIRE(std::holds_alternative<flowq::quic::stream_frame>(retransmit.frames[0]));
+    const auto& stream = std::get<flowq::quic::stream_frame>(retransmit.frames[0]);
+    CHECK(stream.stream_id == 0);
+    CHECK(stream.offset == 0);
+    CHECK(as_string(stream.data) == "hello");
+}
+
+TEST_CASE("connection loop ignores acknowledged ACK only packet bytes in congestion accounting") {
+    flowq::quic::test::plaintext_packet_protector_set protector{};
+    auto client = make_application_loop(
+        cid({0x01}),
+        cid({0x02}),
+        flowq::endpoint{"server", 4433, "hq-interop"},
+        protector,
+        3,
+        25ms);
+    auto server = make_application_loop(
+        cid({0x02}),
+        cid({0x01}),
+        flowq::endpoint{"client", 1111, "hq-interop"},
+        protector,
+        3,
+        25ms,
+        flowq::quic::congestion_algorithm::cubic);
+
+    client.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto ping = require_single_outbound(client.drain_actions());
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(ping.payload), ping.peer}, at(1ms));
+    (void)server.drain_actions();
+
+    server.acknowledge(flowq::quic::packet_number_space::application, at(2ms));
+    auto ack_only = require_single_outbound(server.drain_actions());
+    CHECK(server.congestion().bytes_in_flight() == 0);
+
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_only.payload), ack_only.peer}, at(3ms));
+    (void)client.drain_actions();
+    client.acknowledge(flowq::quic::packet_number_space::application, at(4ms));
+    auto ack_of_ack_only = require_single_outbound(client.drain_actions());
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(ack_of_ack_only.payload), ack_of_ack_only.peer}, at(5ms));
+
+    CHECK(server.congestion().bytes_in_flight() == 0);
+}
+
 TEST_CASE("connection loop arms Application PTO after TLS confirms handshake") {
     flowq::quic::test::plaintext_packet_protector_set protector{};
     recording_tls_adapter adapter{};

@@ -6,6 +6,7 @@
 #include <asio.hpp>
 #include <array>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -90,6 +91,9 @@ bool retransmit_stream_payload(
     }
     if (!flush_result.datagrams.empty()) {
         std::cout << "Retransmitting stream " << stream_id << std::endl;
+    } else {
+        std::cerr << "No STREAM retransmission datagram was queued for stream " << stream_id << std::endl;
+        return false;
     }
     send_datagrams(socket, flush_result.datagrams);
     return true;
@@ -219,8 +223,11 @@ int main() {
                 if (!recovery_result.newly_lost.empty()) {
                     std::cout << "Recovery timer fired for packet number space "
                               << static_cast<int>(recovery_timer->space)
-                              << "; newly lost packets: " << recovery_result.newly_lost.size()
-                              << std::endl;
+                              << "; newly lost packets:";
+                    for (const auto packet_number : recovery_result.newly_lost) {
+                        std::cout << ' ' << packet_number;
+                    }
+                    std::cout << std::endl;
                     if (!retransmit_stream_payload(session, socket, 0)) {
                         return 1;
                     }
@@ -287,7 +294,7 @@ int main() {
             send_datagrams(socket, next_flush.datagrams);
         }
 
-        std::cerr << "Handshake timed out" << std::endl;
+        std::cerr << (application_stream_sent ? "Stream echo timed out" : "Handshake timed out") << std::endl;
         return 1;
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;

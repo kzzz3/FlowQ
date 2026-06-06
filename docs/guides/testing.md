@@ -49,8 +49,8 @@ tests/
 │   ├── quic_udp_session_tests.cpp
 │   └── quic_endpoint_driver_tests.cpp
 ├── interop/                 # Interop harness (opt-in)
-│   ├── scenarios/
-│   └── flowq_endpoint_driver.cpp
+│   ├── test_interop.py
+│   └── ngtcp2_interop.cpp
 ├── fuzz/                    # Fuzz targets
 │   ├── fuzz_packet_header.cpp
 │   ├── fuzz_frame_decode.cpp

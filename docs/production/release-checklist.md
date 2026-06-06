@@ -10,7 +10,7 @@ Strict gate:
 
 ## Build and Test
 
-- [x] Windows MSVC/vcpkg: 514/516 tests passing
+- [x] Windows MSVC/vcpkg OpenSSL interop: 523/523 tests passing
 - [x] Linux GCC/vcpkg: 510/511 tests passing (1 release_readiness not run)
 - [x] Install + package-consumer builds and runs
 - [x] No compiler warnings (`/W4 /WX` on MSVC)

@@ -108,7 +108,7 @@ class RecordingProtocol(QuicConnectionProtocol):
             and type(self).dropped_short_header_datagrams == 0
         ):
             type(self).dropped_short_header_datagrams += 1
-            print("[aioquic] intentionally dropped first short-header datagram")
+            print(f"[aioquic] intentionally dropped first short-header datagram ({len(data)} bytes)")
             return
         super().datagram_received(data, addr)
 

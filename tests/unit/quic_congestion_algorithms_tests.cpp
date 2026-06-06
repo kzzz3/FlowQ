@@ -33,8 +33,102 @@ TEST_CASE("created NewReno controller tracks packet accounting and congestion ev
     CHECK(controller->congestion_window() >= flowq::quic::default_minimum_window());
 }
 
-TEST_CASE("congestion_algorithm public API only advertises NewReno") {
+TEST_CASE("congestion_algorithm public API advertises supported production algorithms") {
     CHECK(static_cast<int>(flowq::quic::congestion_algorithm::new_reno) == 0);
+    CHECK(flowq::quic::create_congestion_controller(flowq::quic::congestion_algorithm::new_reno) != nullptr);
+    CHECK(flowq::quic::create_congestion_controller(flowq::quic::congestion_algorithm::bbr) != nullptr);
+    CHECK(flowq::quic::create_congestion_controller(flowq::quic::congestion_algorithm::cubic) != nullptr);
+}
+
+TEST_CASE("BBR and CUBIC controllers ignore non-ack-eliciting sends") {
+    flowq::quic::bbr_congestion_controller bbr;
+    flowq::quic::cubic_congestion_controller cubic;
+
+    bbr.on_packet_sent(1200, false);
+    cubic.on_packet_sent(1200, false);
+
+    CHECK(bbr.bytes_in_flight() == 0);
+    CHECK(cubic.bytes_in_flight() == 0);
+    CHECK(bbr.can_send());
+    CHECK(cubic.can_send());
+}
+
+TEST_CASE("BBR and CUBIC controllers saturate over-accounted acknowledgments and losses") {
+    flowq::quic::bbr_congestion_controller bbr_ack;
+    bbr_ack.on_packet_sent(800, true);
+    bbr_ack.on_packet_acknowledged(1200);
+    CHECK(bbr_ack.bytes_in_flight() == 0);
+
+    flowq::quic::bbr_congestion_controller bbr_loss;
+    bbr_loss.on_packet_sent(800, true);
+    bbr_loss.on_packet_lost(1200);
+    CHECK(bbr_loss.bytes_in_flight() == 0);
+
+    flowq::quic::cubic_congestion_controller cubic_ack;
+    cubic_ack.on_packet_sent(800, true);
+    cubic_ack.on_packet_acknowledged(1200);
+    CHECK(cubic_ack.bytes_in_flight() == 0);
+
+    flowq::quic::cubic_congestion_controller cubic_loss;
+    cubic_loss.on_packet_sent(800, true);
+    cubic_loss.on_packet_lost(1200);
+    CHECK(cubic_loss.bytes_in_flight() == 0);
+}
+
+TEST_CASE("BBR and CUBIC controllers ignore zero-byte acknowledgments") {
+    flowq::quic::bbr_congestion_controller bbr;
+    bbr.on_packet_sent(800, true);
+    bbr.on_packet_acknowledged(0);
+    CHECK(bbr.bytes_in_flight() == 800);
+
+    flowq::quic::cubic_congestion_controller cubic;
+    cubic.on_packet_sent(12000, true);
+    cubic.on_packet_lost(12000);
+    cubic.on_congestion_event();
+    REQUIRE(cubic.state() == flowq::quic::congestion_phase::recovery);
+    const auto recovery_window = cubic.congestion_window();
+
+    cubic.on_packet_acknowledged(0);
+
+    CHECK(cubic.bytes_in_flight() == 0);
+    CHECK(cubic.state() == flowq::quic::congestion_phase::recovery);
+    CHECK(cubic.congestion_window() == recovery_window);
+}
+
+TEST_CASE("BBR and CUBIC controllers ignore zero-byte losses") {
+    flowq::quic::bbr_congestion_controller bbr;
+    const auto bbr_window = bbr.congestion_window();
+
+    bbr.on_packet_lost(0);
+
+    CHECK(bbr.bytes_in_flight() == 0);
+    CHECK(bbr.state() == flowq::quic::congestion_phase::slow_start);
+    CHECK(bbr.congestion_window() == bbr_window);
+
+    flowq::quic::cubic_congestion_controller cubic;
+    const auto cubic_window = cubic.congestion_window();
+
+    cubic.on_packet_lost(0);
+
+    CHECK(cubic.bytes_in_flight() == 0);
+    CHECK(cubic.state() == flowq::quic::congestion_phase::slow_start);
+    CHECK(cubic.congestion_window() == cubic_window);
+}
+
+TEST_CASE("BBR and CUBIC controllers apply one congestion response per loss event") {
+    flowq::quic::bbr_congestion_controller bbr;
+    bbr.on_packet_sent(12000, true);
+    bbr.on_packet_lost(12000);
+    bbr.on_congestion_event();
+    CHECK(bbr.congestion_window() == 6000);
+    CHECK(bbr.state() == flowq::quic::congestion_phase::recovery);
+
+    flowq::quic::cubic_congestion_controller cubic;
+    cubic.on_packet_sent(12000, true);
+    cubic.on_packet_lost(12000);
+    cubic.on_congestion_event();
+    CHECK(cubic.congestion_window() == static_cast<std::uint64_t>(12000 * 0.7));
+    CHECK(cubic.state() == flowq::quic::congestion_phase::recovery);
 }
 
 // ============================================================================
@@ -58,6 +152,7 @@ TEST_CASE("CUBIC slow start exits at ssthresh") {
     // Trigger loss to set a lower ssthresh
     controller.on_packet_sent(12000, true);
     controller.on_packet_lost(12000);
+    controller.on_congestion_event();
     // After loss: cwnd = 8400, ssthresh = 8400, phase = recovery
     CHECK(controller.congestion_window() == static_cast<std::uint64_t>(12000 * 0.7));
     CHECK(controller.state() == flowq::quic::congestion_phase::recovery);
@@ -74,9 +169,10 @@ TEST_CASE("CUBIC congestion avoidance uses cubic function") {
     // Trigger loss to enter congestion_avoidance with known window
     controller.on_packet_sent(12000, true);
     controller.on_packet_lost(12000);
+    controller.on_congestion_event();
     // cwnd = 8400, phase = recovery
 
-    // ACK exits recovery → congestion_avoidance
+    // ACK exits recovery and enters congestion_avoidance
     controller.on_packet_sent(8400, true);
     controller.on_packet_acknowledged(8400);
     CHECK(controller.state() == flowq::quic::congestion_phase::congestion_avoidance);
@@ -100,9 +196,10 @@ TEST_CASE("CUBIC loss reduces window by beta") {
     const auto initial_cwnd = controller.congestion_window();
     const auto expected_after_loss = static_cast<std::uint64_t>(initial_cwnd * 0.7);
 
-    // Simulate loss only (no on_congestion_event — on_packet_lost handles it)
+    // Packet loss updates bytes-in-flight; the congestion event updates cwnd.
     controller.on_packet_sent(1000, true);
     controller.on_packet_lost(1000);
+    controller.on_congestion_event();
 
     // cwnd should be initial * beta (0.7)
     CHECK(controller.congestion_window() == expected_after_loss);
@@ -116,6 +213,7 @@ TEST_CASE("CUBIC loss never drops below minimum window") {
         auto cwnd = controller.congestion_window();
         controller.on_packet_sent(cwnd, true);
         controller.on_packet_lost(cwnd);
+        controller.on_congestion_event();
     }
 
     CHECK(controller.congestion_window() >= flowq::quic::default_minimum_window());
@@ -129,6 +227,7 @@ TEST_CASE("CUBIC fast convergence reduces last_max_cwnd on repeated loss") {
     //   last_max_cwnd = cwnd = 12000, then cwnd = 12000 * 0.7 = 8400
     controller.on_packet_sent(12000, true);
     controller.on_packet_lost(12000);
+    controller.on_congestion_event();
     
     CHECK(controller.last_max_cwnd() == 12000);
     CHECK(controller.congestion_window() == 8400);
@@ -137,6 +236,7 @@ TEST_CASE("CUBIC fast convergence reduces last_max_cwnd on repeated loss") {
     // Fast convergence: last_max = cwnd * (1 + beta) / 2
     controller.on_packet_sent(8400, true);
     controller.on_packet_lost(8400);
+    controller.on_congestion_event();
 
     auto expected_fc = static_cast<std::uint64_t>(8400 * (1.0 + 0.7) / 2.0);
     CHECK(controller.last_max_cwnd() == expected_fc);
@@ -151,11 +251,13 @@ TEST_CASE("CUBIC fast convergence does not trigger when cwnd >= last_max") {
     // First loss: sets last_max_cwnd = 12000, cwnd = 8400
     controller.on_packet_sent(12000, true);
     controller.on_packet_lost(12000);
+    controller.on_congestion_event();
     CHECK(controller.last_max_cwnd() == 12000);
 
     // Second loss while cwnd (8400) < last_max (12000): fast convergence triggers
     controller.on_packet_sent(8400, true);
     controller.on_packet_lost(8400);
+    controller.on_congestion_event();
     
     // Fast convergence should have reduced last_max
     CHECK(controller.last_max_cwnd() < 12000);
@@ -168,6 +270,7 @@ TEST_CASE("CUBIC fast convergence does not trigger when cwnd >= last_max") {
         // No fast convergence: last_max = cwnd
         controller.on_packet_sent(cwnd_now, true);
         controller.on_packet_lost(cwnd_now);
+        controller.on_congestion_event();
         CHECK(controller.last_max_cwnd() == cwnd_now);
     }
 }

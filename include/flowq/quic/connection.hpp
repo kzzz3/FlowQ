@@ -278,16 +278,22 @@ public:
             return result;
         }
 
+        auto congestion_event_recorded = false;
         const auto largest = largest_acknowledged(space);
         if (largest.has_value()) {
             auto detected = detect_time_threshold_losses(recovery_packets_, recovery_rtt_, space, *largest, now);
             result.newly_lost = std::move(detected.newly_lost);
+            std::uint64_t lost_bytes = 0;
             for (const auto packet_number : result.newly_lost) {
                 sent_tracker(space).mark_lost(packet_number);
-                congestion_->on_packet_lost(config_.pipeline.max_datagram_size);
+                if (const auto packet_bytes = recovery_packet_bytes(space, packet_number); packet_bytes.value_or(0) > 0) {
+                    congestion_->on_packet_lost(*packet_bytes);
+                    lost_bytes += *packet_bytes;
+                }
             }
-            if (!result.newly_lost.empty()) {
+            if (lost_bytes > 0) {
                 congestion_->on_congestion_event();
+                congestion_event_recorded = true;
                 if (pacing_enabled_) {
                     pacing_.set_congestion_window(congestion_->congestion_window());
                 }
@@ -295,19 +301,26 @@ public:
             apply_stream_loss_mapping(space, result.newly_lost);
         }
 
-        if (auto timer = recovery_timer_for(space)) {
-            if (timer->mode == loss_timer_mode::pto && now >= timer->deadline && result.newly_lost.empty()) {
-                result.newly_lost = mark_oldest_ack_eliciting_packet_lost(space);
-                if (!result.newly_lost.empty()) {
-                    congestion_->on_packet_lost(config_.pipeline.max_datagram_size);
+        if (auto pto = pto_deadline_for(space); pto.has_value() && now >= *pto) {
+            auto pto_lost = mark_oldest_ack_eliciting_packet_lost(space);
+            if (!pto_lost.empty()) {
+                const auto lost_bytes = recovery_packets_bytes(space, pto_lost);
+                if (lost_bytes > 0) {
+                    congestion_->on_packet_lost(lost_bytes);
+                }
+                if (lost_bytes > 0 && !congestion_event_recorded) {
                     congestion_->on_congestion_event();
+                    congestion_event_recorded = true;
                     if (pacing_enabled_) {
                         pacing_.set_congestion_window(congestion_->congestion_window());
                     }
-                    apply_stream_loss_mapping(space, result.newly_lost);
                 }
+                apply_stream_loss_mapping(space, pto_lost);
+                result.newly_lost.insert(result.newly_lost.end(), pto_lost.begin(), pto_lost.end());
             }
-            result.next_deadline = timer->deadline;
+        }
+        if (auto next_timer = recovery_timer_for(space)) {
+            result.next_deadline = next_timer->deadline;
         }
         return result;
     }
@@ -434,7 +447,13 @@ public:
         set_next_packet_number(space, packet_number_value);
 
         sent_tracker(space).on_packet_sent(assembled.number.value, false);
-        recovery_packets_.push_back(recovery_packet{space, assembled.number.value, sent_at, false, sent_packet_state::outstanding});
+        recovery_packets_.push_back(recovery_packet{
+            space,
+            assembled.number.value,
+            sent_at,
+            static_cast<std::uint64_t>(assembled.datagram.size()),
+            false,
+            sent_packet_state::outstanding});
         record_peer_bytes_sent(assembled.datagram.size());
         actions_.emplace_back(outbound_datagram{std::move(assembled.datagram), config_.peer});
     }
@@ -1352,7 +1371,13 @@ private:
 
         ++state.next_packet_number;
         sent_tracker(space).on_packet_sent(assembled.number.value, ack_eliciting);
-        recovery_packets_.push_back(recovery_packet{space, assembled.number.value, sent_at, ack_eliciting, sent_packet_state::outstanding});
+        recovery_packets_.push_back(recovery_packet{
+            space,
+            assembled.number.value,
+            sent_at,
+            static_cast<std::uint64_t>(assembled.datagram.size()),
+            ack_eliciting,
+            sent_packet_state::outstanding});
         record_sent_stream_ranges(space, assembled.number.value, selected.frames);
         congestion_->on_packet_sent(assembled.datagram.size(), ack_eliciting);
         // Update pacing after sending
@@ -1373,17 +1398,29 @@ private:
                 if (const auto sample = rtt_sample_from_ack(space, *ack, result.newly_acknowledged, received_at); sample.has_value()) {
                     update_rtt(*sample);
                 }
+                if (!result.newly_acknowledged.empty()) {
+                    const auto acknowledged_bytes = recovery_packets_bytes(space, result.newly_acknowledged);
+                    if (acknowledged_bytes > 0) {
+                        congestion_->on_packet_acknowledged(acknowledged_bytes);
+                    }
+                    if (acknowledged_bytes > 0 && pacing_enabled_) {
+                        pacing_.set_congestion_window(congestion_->congestion_window());
+                    }
+                }
+                std::uint64_t lost_bytes = 0;
+                if (!result.newly_lost.empty()) {
+                    for (const auto packet_number : result.newly_lost) {
+                        if (const auto packet_bytes = recovery_packet_bytes(space, packet_number); packet_bytes.value_or(0) > 0) {
+                            congestion_->on_packet_lost(*packet_bytes);
+                            lost_bytes += *packet_bytes;
+                        }
+                    }
+                }
                 mark_recovery_packets(space, result.newly_acknowledged, sent_packet_state::acknowledged);
                 mark_recovery_packets(space, result.newly_lost, sent_packet_state::lost);
                 apply_stream_ack_mapping(space, result.newly_acknowledged);
                 apply_stream_loss_mapping(space, result.newly_lost);
-                if (!result.newly_acknowledged.empty()) {
-                    congestion_->on_packet_acknowledged(config_.pipeline.max_datagram_size);
-                    if (pacing_enabled_) {
-                        pacing_.set_congestion_window(congestion_->congestion_window());
-                    }
-                }
-                if (!result.newly_lost.empty()) {
+                if (lost_bytes > 0) {
                     congestion_->on_congestion_event();
                     if (pacing_enabled_) {
                         pacing_.set_congestion_window(congestion_->congestion_window());
@@ -1472,6 +1509,25 @@ private:
             }
         }
         return {};
+    }
+
+    [[nodiscard]] std::optional<std::chrono::steady_clock::time_point> pto_deadline_for(packet_number_space space) const {
+        if (packet_space_discarded(space) || !pto_allowed(space, recovery_pto_config_)) {
+            return std::nullopt;
+        }
+        std::optional<std::chrono::steady_clock::time_point> last_ack_eliciting_sent_at;
+        for (const auto& packet : recovery_packets_) {
+            if (packet.space != space || packet.state != sent_packet_state::outstanding || !packet.ack_eliciting) {
+                continue;
+            }
+            if (!last_ack_eliciting_sent_at.has_value() || packet.sent_at > *last_ack_eliciting_sent_at) {
+                last_ack_eliciting_sent_at = packet.sent_at;
+            }
+        }
+        if (!last_ack_eliciting_sent_at.has_value()) {
+            return std::nullopt;
+        }
+        return pto_deadline(*last_ack_eliciting_sent_at, recovery_rtt_, space, recovery_pto_config_);
     }
 
     [[nodiscard]] std::optional<connection_recovery_timer> recovery_timer_for(packet_number_space space) const {
@@ -1576,6 +1632,23 @@ private:
                 packet.state = state;
             }
         }
+    }
+
+    [[nodiscard]] std::optional<std::uint64_t> recovery_packet_bytes(packet_number_space space, std::uint64_t packet_number) const noexcept {
+        for (const auto& packet : recovery_packets_) {
+            if (packet.space == space && packet.packet_number == packet_number) {
+                return packet.ack_eliciting ? packet.bytes : 0;
+            }
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::uint64_t recovery_packets_bytes(packet_number_space space, const std::vector<std::uint64_t>& packet_numbers) const noexcept {
+        std::uint64_t bytes{};
+        for (const auto packet_number : packet_numbers) {
+            bytes += recovery_packet_bytes(space, packet_number).value_or(0);
+        }
+        return bytes;
     }
 
     void apply_flow_control_frames(const std::vector<frame>& frames) {

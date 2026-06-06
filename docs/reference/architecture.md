@@ -129,7 +129,7 @@ Dependencies managed via `vcpkg.json` manifest:
 | FLOWQ_BUILD_TESTS | ON | Build tests |
 | FLOWQ_BUILD_EXPERIMENTAL_EXAMPLES | OFF | Build experimental examples excluded from the install package |
 | FLOWQ_BUILD_FUZZ | OFF | Build fuzz targets |
-| FLOWQ_BUILD_INTEROP | OFF | Build interop harness |
+| FLOWQ_BUILD_INTEROP | OFF | Build opt-in interop tools |
 | FLOWQ_ENABLE_OPENSSL_QUIC_TLS | OFF | Enable OpenSSL QUIC TLS backend |
 | FLOWQ_ENABLE_OPENSSL_CRYPTO | OFF | Enable OpenSSL-backed packet-protection primitives |
 
@@ -145,7 +145,7 @@ Test module interactions with in-memory loopback.
 
 ### Interop Tests
 
-Opt-in tests target external QUIC implementations. Production-candidate wording requires recorded peer names, versions, scenarios, and results.
+Opt-in interop tools target external QUIC implementations. Production-candidate wording requires recorded peer names, versions, scenarios, and results.
 
 ### Fuzz Tests
 

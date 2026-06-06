@@ -14,7 +14,19 @@
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "FLOWQ_BUILD_TESTS": "ON",
-        "FLOWQ_BUILD_EXAMPLES": "ON",
+        "FLOWQ_ENABLE_OPENSSL_CRYPTO": "ON"
+      }
+    },
+    {
+      "name": "windows-msvc-vcpkg-interop-openssl",
+      "displayName": "Windows MSVC interop with OpenSSL QUIC TLS",
+      "generator": "Visual Studio 18 2026",
+      "binaryDir": "${sourceDir}/build/windows-msvc-vcpkg-interop-openssl",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "FLOWQ_BUILD_TESTS": "ON",
+        "FLOWQ_BUILD_INTEROP": "ON",
+        "FLOWQ_ENABLE_OPENSSL_QUIC_TLS": "ON",
         "FLOWQ_ENABLE_OPENSSL_CRYPTO": "ON"
       }
     },
@@ -29,7 +41,6 @@
         "CMAKE_CXX_STANDARD": "20",
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "FLOWQ_BUILD_TESTS": "ON",
-        "FLOWQ_BUILD_EXAMPLES": "ON",
         "FLOWQ_ENABLE_OPENSSL_CRYPTO": "ON"
       }
     }
@@ -40,6 +51,10 @@
       "configurePreset": "windows-msvc-vcpkg"
     },
     {
+      "name": "windows-msvc-vcpkg-interop-openssl",
+      "configurePreset": "windows-msvc-vcpkg-interop-openssl"
+    },
+    {
       "name": "linux-gcc-vcpkg",
       "configurePreset": "linux-gcc-vcpkg"
     }
@@ -48,6 +63,17 @@
     {
       "name": "windows-msvc-vcpkg",
       "configurePreset": "windows-msvc-vcpkg",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "timeout": 60
+      }
+    },
+    {
+      "name": "windows-msvc-vcpkg-interop-openssl",
+      "configurePreset": "windows-msvc-vcpkg-interop-openssl",
       "configuration": "Debug",
       "output": {
         "outputOnFailure": true

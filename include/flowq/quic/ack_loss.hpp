@@ -177,6 +177,7 @@ struct recovery_packet {
     packet_number_space space{};
     std::uint64_t packet_number{};
     std::chrono::steady_clock::time_point sent_at{};
+    std::uint64_t bytes{};
     bool ack_eliciting{};
     sent_packet_state state{sent_packet_state::outstanding};
 };

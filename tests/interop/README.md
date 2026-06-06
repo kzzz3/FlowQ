@@ -1,51 +1,42 @@
-# FlowQ Interop Harness
+# FlowQ Interop Tools
 
-This directory contains an opt-in interop harness for testing FlowQ against mature QUIC implementations.
+This directory contains the opt-in interop tools for testing FlowQ against mature QUIC implementations.
 
 ## Supported Peer Implementations
 
-- ngtcp2
-- quiche (Cloudflare)
-- MsQuic (Microsoft)
-- picoquic
-- lsquic
+- aioquic full-flow server peer
+- ngtcp2 Initial packet generation smoke target
 
 ## Usage
 
-The interop harness is opt-in and disabled by default. Enable it with:
+The C++ interop tools are opt-in and disabled by default. Enable them with:
 
 ```bash
-cmake -S . -B build -DFLOWQ_BUILD_INTEROP=ON
+cmake --preset windows-msvc-vcpkg-interop-openssl
 ```
 
-## Scenarios
+## aioquic Scenarios
 
-- `basic_handshake.json`: TLS handshake completion and connection establishment
-- `stream_echo.json`: Bidirectional stream data exchange
-- `loss_recovery.json`: Packet loss recovery and retransmission
+- `bidirectional_stream`: TLS handshake completion and bidirectional stream echo
+- `loss_recovery`: One dropped short-header datagram, retransmission, and stream echo
 
 ## Requirements
 
-- Peer QUIC binary must be available in PATH or specified via `FLOWQ_INTEROP_PEER_BIN`
-- A selected scenario is provided with `FLOWQ_INTEROP_SCENARIO`
-- FlowQ must be configured with a provider-backed TLS adapter for handshake and stream scenarios
-- External peer runs should record the peer name, version, scenario, result, and harness output
-- External wrapper scripts have no skip path; missing peer binaries, missing scenario configuration, harness errors, and non-zero executor exits fail the production gate.
+- `conda` must provide the `expr` environment with `aioquic` installed.
+- `flowq_quic_client` must be built with OpenSSL QUIC TLS and OpenSSL crypto enabled.
+- `FLOWQ_CLIENT` and `FLOWQ_INTEROP_SCENARIO` are set by `scripts/run-aioquic-interop.ps1`.
+- Missing binaries, missing conda/aioquic dependencies, unsupported scenarios, and non-zero scenario exits fail the production gate.
 
 ## Running
 
-```bash
-ctest --test-dir build -C Debug -R interop --output-on-failure
-```
-
-PowerShell wrapper:
+aioquic full-flow runner:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-interop.ps1 -Peer <peer-binary> -Scenario basic_handshake -BuildDir build\windows-msvc-vcpkg-interop
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-aioquic-interop.ps1 -CondaEnv expr -Scenario all
 ```
 
-Bash wrapper:
+ngtcp2 Initial packet smoke:
 
-```bash
-./scripts/run-interop.sh --peer <peer-binary> --scenario basic_handshake --build-dir build/windows-msvc-vcpkg-interop
+```powershell
+.\build\windows-msvc-vcpkg-interop-openssl\Debug\flowq_ngtcp2_interop.exe --ca build\certs\cert.pem
 ```

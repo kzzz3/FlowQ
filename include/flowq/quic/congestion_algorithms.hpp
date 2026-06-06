@@ -97,12 +97,21 @@ public:
     bbr_congestion_controller() = default;
 
     void on_packet_sent(std::uint64_t bytes, bool ack_eliciting) noexcept override {
-        bytes_in_flight_ += bytes;
-        total_sent_ += bytes;
+        if (ack_eliciting) {
+            bytes_in_flight_ += bytes;
+            total_sent_ += bytes;
+        }
     }
 
     void on_packet_acknowledged(std::uint64_t bytes) noexcept override {
-        bytes_in_flight_ -= bytes;
+        if (bytes == 0) {
+            return;
+        }
+        if (bytes_in_flight_ >= bytes) {
+            bytes_in_flight_ -= bytes;
+        } else {
+            bytes_in_flight_ = 0;
+        }
         total_acked_ += bytes;
         
         // Update delivery rate estimation
@@ -117,16 +126,21 @@ public:
     }
 
     void on_packet_lost(std::uint64_t bytes) noexcept override {
-        bytes_in_flight_ -= bytes;
+        if (bytes == 0) {
+            return;
+        }
+        if (bytes_in_flight_ >= bytes) {
+            bytes_in_flight_ -= bytes;
+        } else {
+            bytes_in_flight_ = 0;
+        }
         total_lost_ += bytes;
         
-        // On loss, reduce sending rate
-        cwnd_ = std::max(cwnd_ / 2, min_cwnd_);
-        phase_ = congestion_phase::recovery;
     }
 
     void on_congestion_event() noexcept override {
         cwnd_ = std::max(cwnd_ / 2, min_cwnd_);
+        phase_ = congestion_phase::recovery;
     }
 
     [[nodiscard]] std::uint64_t congestion_window() const noexcept override {
@@ -181,11 +195,20 @@ public:
     cubic_congestion_controller() = default;
 
     void on_packet_sent(std::uint64_t bytes, bool ack_eliciting) noexcept override {
-        bytes_in_flight_ += bytes;
+        if (ack_eliciting) {
+            bytes_in_flight_ += bytes;
+        }
     }
 
     void on_packet_acknowledged(std::uint64_t bytes) noexcept override {
-        bytes_in_flight_ -= bytes;
+        if (bytes == 0) {
+            return;
+        }
+        if (bytes_in_flight_ >= bytes) {
+            bytes_in_flight_ -= bytes;
+        } else {
+            bytes_in_flight_ = 0;
+        }
         
         if (phase_ == congestion_phase::recovery) {
             // CUBIC exits recovery on first ACK and enters congestion avoidance
@@ -230,8 +253,18 @@ public:
     }
 
     void on_packet_lost(std::uint64_t bytes) noexcept override {
-        bytes_in_flight_ -= bytes;
+        if (bytes == 0) {
+            return;
+        }
+        if (bytes_in_flight_ >= bytes) {
+            bytes_in_flight_ -= bytes;
+        } else {
+            bytes_in_flight_ = 0;
+        }
         
+    }
+
+    void on_congestion_event() noexcept override {
         // Fast convergence (RFC 8312 Section 4.6):
         // If cwnd < last_max_cwnd_, reduce last_max_cwnd_ further to converge
         // faster to the fair share when competing flows cause repeated losses.
@@ -245,21 +278,7 @@ public:
         cwnd_ = std::max(cwnd_, min_cwnd_);
         ssthresh_ = cwnd_;
         phase_ = congestion_phase::recovery;
-        
         epoch_start_ = std::chrono::steady_clock::now();
-    }
-
-    void on_congestion_event() noexcept override {
-        // Fast convergence on congestion event
-        if (cwnd_ < last_max_cwnd_) {
-            last_max_cwnd_ = cwnd_ * (1.0 + beta_) / 2.0;
-        } else {
-            last_max_cwnd_ = cwnd_;
-        }
-        
-        cwnd_ = static_cast<std::uint64_t>(cwnd_ * beta_);
-        cwnd_ = std::max(cwnd_, min_cwnd_);
-        ssthresh_ = cwnd_;
     }
 
     /// Update RTT estimate for TCP friendliness calculations.

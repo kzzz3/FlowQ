@@ -12,7 +12,7 @@ include(CMakePackageConfigHelpers)
 option(FLOWQ_BUILD_TESTS "Build FlowQ tests" ON)
 option(FLOWQ_BUILD_EXPERIMENTAL_EXAMPLES "Build experimental examples excluded from the install package" OFF)
 option(FLOWQ_BUILD_FUZZ "Build FlowQ fuzz targets (requires libFuzzer)" OFF)
-option(FLOWQ_BUILD_INTEROP "Build FlowQ interop harness" OFF)
+option(FLOWQ_BUILD_INTEROP "Build FlowQ opt-in interop tools" OFF)
 option(FLOWQ_ENABLE_STRICT_WARNINGS "Build FlowQ project targets with warnings as errors" OFF)
 
 function(flowq_enable_project_warnings target)
@@ -160,19 +160,6 @@ if(FLOWQ_BUILD_FUZZ)
 endif()
 
 if(FLOWQ_BUILD_INTEROP)
-    find_package(Catch2 3 CONFIG REQUIRED)
-
-    add_executable(flowq_interop_tests tests/interop/flowq_endpoint_driver.cpp)
-    target_link_libraries(flowq_interop_tests PRIVATE FlowQ::flowq Catch2::Catch2WithMain)
-    target_include_directories(flowq_interop_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
-    flowq_enable_project_warnings(flowq_interop_tests)
-    target_compile_definitions(flowq_interop_tests PRIVATE
-        INTEROP_SCENARIOS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/interop/scenarios"
-    )
-
-    include(Catch)
-    catch_discover_tests(flowq_interop_tests)
-
     add_executable(flowq_quic_client tools/quic_client.cpp)
     target_link_libraries(flowq_quic_client PRIVATE FlowQ::flowq)
     flowq_enable_project_warnings(flowq_quic_client)

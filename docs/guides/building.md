@@ -78,7 +78,7 @@ ctest --test-dir build/openssl -C Debug --timeout 10
 | `FLOWQ_BUILD_TESTS` | ON | Build test suite |
 | `FLOWQ_BUILD_EXPERIMENTAL_EXAMPLES` | OFF | Build experimental examples excluded from the install package |
 | `FLOWQ_BUILD_FUZZ` | OFF | Build fuzz targets (requires libFuzzer) |
-| `FLOWQ_BUILD_INTEROP` | OFF | Build interop harness |
+| `FLOWQ_BUILD_INTEROP` | OFF | Build opt-in interop tools |
 | `FLOWQ_ENABLE_STRICT_WARNINGS` | OFF | Treat project compiler warnings as errors |
 | `FLOWQ_ENABLE_OPENSSL_QUIC_TLS` | OFF | Enable OpenSSL QUIC TLS backend |
 | `FLOWQ_ENABLE_OPENSSL_CRYPTO` | OFF | Enable OpenSSL-backed packet-protection primitives |

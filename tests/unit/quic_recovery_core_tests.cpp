@@ -56,10 +56,10 @@ TEST_CASE("time threshold loss marks old ack eliciting packets") {
     estimator.update(flowq::quic::rtt_sample{80ms, 0ms, 25ms, true});
 
     std::vector<flowq::quic::recovery_packet> packets{
-        {flowq::quic::packet_number_space::application, 1, at(0ms), true, flowq::quic::sent_packet_state::outstanding},
-        {flowq::quic::packet_number_space::application, 2, at(50ms), true, flowq::quic::sent_packet_state::outstanding},
-        {flowq::quic::packet_number_space::application, 3, at(70ms), false, flowq::quic::sent_packet_state::outstanding},
-        {flowq::quic::packet_number_space::application, 4, at(80ms), true, flowq::quic::sent_packet_state::acknowledged}
+        {flowq::quic::packet_number_space::application, 1, at(0ms), 1200, true, flowq::quic::sent_packet_state::outstanding},
+        {flowq::quic::packet_number_space::application, 2, at(50ms), 1200, true, flowq::quic::sent_packet_state::outstanding},
+        {flowq::quic::packet_number_space::application, 3, at(70ms), 1200, false, flowq::quic::sent_packet_state::outstanding},
+        {flowq::quic::packet_number_space::application, 4, at(80ms), 1200, true, flowq::quic::sent_packet_state::acknowledged}
     };
 
     auto result = flowq::quic::detect_time_threshold_losses(packets, estimator, flowq::quic::packet_number_space::application, 4, at(100ms));
@@ -77,8 +77,8 @@ TEST_CASE("time threshold loss stays within packet number space") {
     estimator.update(flowq::quic::rtt_sample{80ms, 0ms, 25ms, true});
 
     std::vector<flowq::quic::recovery_packet> packets{
-        {flowq::quic::packet_number_space::initial, 1, at(0ms), true, flowq::quic::sent_packet_state::outstanding},
-        {flowq::quic::packet_number_space::application, 1, at(0ms), true, flowq::quic::sent_packet_state::outstanding}
+        {flowq::quic::packet_number_space::initial, 1, at(0ms), 1200, true, flowq::quic::sent_packet_state::outstanding},
+        {flowq::quic::packet_number_space::application, 1, at(0ms), 1200, true, flowq::quic::sent_packet_state::outstanding}
     };
 
     auto result = flowq::quic::detect_time_threshold_losses(packets, estimator, flowq::quic::packet_number_space::application, 4, at(100ms));
@@ -112,7 +112,7 @@ TEST_CASE("loss timer scheduler prefers loss time before PTO") {
     estimator.update(flowq::quic::rtt_sample{80ms, 0ms, 25ms, true});
 
     std::vector<flowq::quic::recovery_packet> packets{
-        {flowq::quic::packet_number_space::application, 1, at(50ms), true, flowq::quic::sent_packet_state::outstanding}
+        {flowq::quic::packet_number_space::application, 1, at(50ms), 1200, true, flowq::quic::sent_packet_state::outstanding}
     };
 
     flowq::quic::pto_config config{25ms, 333ms, 0, true};
@@ -128,7 +128,7 @@ TEST_CASE("loss timer scheduler returns no timer without outstanding ack eliciti
     estimator.update(flowq::quic::rtt_sample{80ms, 0ms, 25ms, true});
 
     std::vector<flowq::quic::recovery_packet> packets{
-        {flowq::quic::packet_number_space::application, 1, at(50ms), false, flowq::quic::sent_packet_state::outstanding}
+        {flowq::quic::packet_number_space::application, 1, at(50ms), 1200, false, flowq::quic::sent_packet_state::outstanding}
     };
 
     flowq::quic::pto_config config{25ms, 333ms, 0, true};
@@ -141,7 +141,7 @@ TEST_CASE("loss timer scheduler returns no timer without outstanding ack eliciti
 TEST_CASE("loss timer scheduler anchors PTO to last ack eliciting send time") {
     flowq::quic::rtt_estimator estimator{};
     std::vector<flowq::quic::recovery_packet> packets{
-        {flowq::quic::packet_number_space::handshake, 1, at(0ms), true, flowq::quic::sent_packet_state::outstanding}
+        {flowq::quic::packet_number_space::handshake, 1, at(0ms), 1200, true, flowq::quic::sent_packet_state::outstanding}
     };
 
     flowq::quic::pto_config config{0ms, 333ms, 0, false};
@@ -157,7 +157,7 @@ TEST_CASE("loss timer scheduler anchors PTO to last ack eliciting send time") {
 TEST_CASE("loss timer scheduler does not arm application PTO before handshake confirmation") {
     flowq::quic::rtt_estimator estimator{};
     std::vector<flowq::quic::recovery_packet> packets{
-        {flowq::quic::packet_number_space::application, 1, at(50ms), true, flowq::quic::sent_packet_state::outstanding}
+        {flowq::quic::packet_number_space::application, 1, at(50ms), 1200, true, flowq::quic::sent_packet_state::outstanding}
     };
 
     flowq::quic::pto_config config{25ms, 333ms, 0, false};
