@@ -54,6 +54,7 @@ tests/
 │   ├── test_cmake_interop_configuration.py
 │   ├── test_quic_client_configuration.py
 │   ├── test_interop_evidence_validator.py
+│   ├── test_interop_evidence_importer.py
 │   └── ngtcp2_initial_smoke.cpp
 ├── fuzz/                    # Fuzz targets
 │   ├── fuzz_packet_header.cpp
@@ -93,10 +94,16 @@ python scripts\validate-interop-evidence.py --results-dir docs\interop\results -
 
 The strict production-candidate gate uses `--min-full-flow-peers 2`; it remains blocked until a second external peer records the required full-flow scenarios.
 
-CTest also covers the checked-in evidence validator, the FlowQ interop client's runtime configuration contract, the vcpkg-backed interop preset contract, and, on Windows, the aioquic PowerShell runner fail-closed behavior:
+Completed external peer reports can be imported without rerunning peers:
 
 ```powershell
-ctest --preset windows-msvc-vcpkg-interop-openssl -R "flowq\.(interop_evidence_validator|quic_client_configuration|cmake_interop_configuration|aioquic_runner_script)" --output-on-failure
+python scripts\import-interop-evidence.py path\to\external-peer-report.json --results-dir docs\interop\results
+```
+
+CTest also covers checked-in evidence validation/import, the FlowQ interop client's runtime configuration contract, the vcpkg-backed interop preset contract, and, on Windows, the aioquic PowerShell runner fail-closed behavior:
+
+```powershell
+ctest --preset windows-msvc-vcpkg-interop-openssl -R "flowq\.(interop_evidence_validator|interop_evidence_importer|quic_client_configuration|cmake_interop_configuration|aioquic_runner_script)" --output-on-failure
 ```
 
 ### Fuzz Tests

@@ -12,7 +12,7 @@ The strict gate requires 2+ machine-validated full-flow external peers plus the 
 
 ## Build and Test
 
-- [x] Windows MSVC/vcpkg OpenSSL interop: 527/527 tests passing
+- [x] Windows MSVC/vcpkg OpenSSL interop: 528/528 tests passing
 - [x] Linux GCC/vcpkg: 510/511 tests passing (1 release_readiness not run)
 - [x] Install + package-consumer builds and runs
 - [x] No compiler warnings (`/W4 /WX` on MSVC)
