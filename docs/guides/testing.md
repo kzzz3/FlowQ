@@ -116,7 +116,7 @@ The strict production gate also validates security evidence files:
 python scripts\validate-security-evidence.py --source-root .
 ```
 
-The validator requires `docs/security/reviews/human-security-review.md` and `docs/security/audits/external-security-audit.md` with reviewer or auditor, date, scope, commit, result, and findings fields. Placeholder values such as `TBD` fail closed.
+The validator requires `docs/security/reviews/human-security-review.md` and `docs/security/audits/external-security-audit.md` with reviewer or auditor, date, scope, commit, result, and findings fields. Date values must use `YYYY-MM-DD`, commit values must be 7-40 character hex SHAs, and placeholder values such as `TBD` fail closed.
 
 CTest covers this validator through:
 

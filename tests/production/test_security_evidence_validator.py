@@ -112,6 +112,34 @@ class SecurityEvidenceValidatorTests(unittest.TestCase):
         self.assertIn("placeholder", result.stdout)
         self.assertIn("Reviewer", result.stdout)
 
+    def test_rejects_non_auditable_date_and_commit_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_root = Path(temp_dir)
+            write_required_evidence(source_root)
+            audit = source_root / "docs" / "security" / "audits" / "external-security-audit.md"
+            audit.write_text(
+                "\n".join(
+                    [
+                        "# External Security Audit",
+                        "",
+                        "Auditor: Acme Security LLC",
+                        "Date: next week",
+                        "Scope: FlowQ QUIC transport production readiness.",
+                        "Commit: release-candidate",
+                        "Result: PASS",
+                        "Findings: No open critical or high findings.",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_validator(source_root)
+
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("Date", result.stdout)
+        self.assertIn("Commit", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

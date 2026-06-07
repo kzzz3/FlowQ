@@ -7,6 +7,7 @@ without judging the security content itself.
 """
 
 import argparse
+import datetime as dt
 import re
 import sys
 from pathlib import Path
@@ -27,6 +28,7 @@ PLACEHOLDER_RE = re.compile(
     r"\b(TBD|TODO|FIXME|placeholder|example|sample|dummy|mock|lorem)\b",
     re.IGNORECASE,
 )
+COMMIT_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
 
 def parse_args():
@@ -73,6 +75,19 @@ def validate_document(source_root, relative_path, required_fields):
     if result is not None and result.upper() not in {"PASS", "PASS WITH FINDINGS"}:
         issues.append(
             f"{relative_path.as_posix()} Result must be PASS or PASS WITH FINDINGS"
+        )
+
+    date = field_value(content, "Date")
+    if date is not None:
+        try:
+            dt.date.fromisoformat(date)
+        except ValueError:
+            issues.append(f"{relative_path.as_posix()} Date must use YYYY-MM-DD")
+
+    commit = field_value(content, "Commit")
+    if commit is not None and not COMMIT_RE.fullmatch(commit):
+        issues.append(
+            f"{relative_path.as_posix()} Commit must be a 7-40 character hex SHA"
         )
 
     return issues
