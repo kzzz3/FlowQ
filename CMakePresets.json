@@ -24,6 +24,7 @@
       "binaryDir": "${sourceDir}/build/windows-msvc-vcpkg-interop-openssl",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_MANIFEST_FEATURES": "openssl-crypto;openssl-quic-tls;interop",
         "FLOWQ_BUILD_TESTS": "ON",
         "FLOWQ_BUILD_INTEROP": "ON",
         "FLOWQ_ENABLE_OPENSSL_QUIC_TLS": "ON",

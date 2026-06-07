@@ -71,6 +71,10 @@ cmake --build build/openssl --config Debug
 ctest --test-dir build/openssl -C Debug --timeout 10
 ```
 
+### Interop Preset
+
+The `windows-msvc-vcpkg-interop-openssl` preset enables `FLOWQ_BUILD_INTEROP=ON`, OpenSSL crypto/TLS support, and the vcpkg manifest features `openssl-crypto;openssl-quic-tls;interop`. The `interop` feature installs ngtcp2 so the optional `flowq_ngtcp2_initial_smoke` target is available when the local vcpkg triplet can build it.
+
 ## Build Options
 
 | Option | Default | Description |

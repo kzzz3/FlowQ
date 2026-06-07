@@ -15,7 +15,7 @@ In scope:
 - Endpoint stateless reset generation for retired locally issued connection IDs, including unknown/active-CID fail-closed behavior and reset datagrams that stay smaller than the triggering datagram.
 - Public session, UDP/ASIO, endpoint-driver, timer scheduler, diagnostics, CMake package export, package-consumer, fuzz, and opt-in interop tool surfaces.
 - aioquic external-peer evidence for handshake, bidirectional stream echo, and loss recovery.
-- Optional ngtcp2 Initial packet generation smoke tooling when ngtcp2 is available locally.
+- Optional ngtcp2 Initial packet generation smoke tooling through the vcpkg-backed interop preset.
 
 Out of scope for the current production-candidate boundary:
 
@@ -66,7 +66,7 @@ Python aioquic interop from the `expr` conda environment:
 .\scripts\run-aioquic-interop.ps1 -CondaEnv expr -Scenario all
 ```
 
-The aioquic runner fails closed when the FlowQ client binary, conda environment, aioquic package, selected scenario, or expected echo configuration is unavailable. Windows CTest covers these runner failure paths through `flowq.aioquic_runner_script`. The FlowQ interop client accepts runtime peer host, peer port, stream payload, and expected echo settings; the runner passes and records those values so future peer runners do not inherit aioquic-specific constants. It supports `bidirectional_stream` and `loss_recovery`; handshake completion is asserted in both scenarios.
+The aioquic runner fails closed when the FlowQ client binary, conda environment, aioquic package, selected scenario, or expected echo configuration is unavailable. Windows CTest covers these runner failure paths through `flowq.aioquic_runner_script`. The FlowQ interop client accepts runtime peer host, peer port, stream payload, and expected echo settings; the runner passes and records those values so future peer runners do not inherit aioquic-specific constants. The interop preset is covered by `flowq.cmake_interop_configuration` so vcpkg-backed interop builds keep external peer dependencies enabled. It supports `bidirectional_stream` and `loss_recovery`; handshake completion is asserted in both scenarios.
 
 Checked-in interop evidence gate:
 

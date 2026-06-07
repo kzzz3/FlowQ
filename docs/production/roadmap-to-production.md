@@ -7,12 +7,12 @@ The authoritative gate status is maintained in [readiness-gate.md](readiness-gat
 | Area | Status |
 |------|--------|
 | Version | 1.0.0 evidence set |
-| Windows tests | 526/526 passing |
+| Windows tests | 527/527 passing |
 | Linux tests | 510/511 passing |
 | ASan/UBSan | 0 errors |
 | Full-flow interop | aioquic 1.3.0 |
 | Interop evidence gate | 1+ full-flow peer in normal gate, 2+ in strict gate |
-| Structural interop smoke | Optional ngtcp2 Initial packet generation target |
+| Structural interop smoke | vcpkg-backed optional ngtcp2 Initial packet generation target |
 | Cipher suites | AES-128/256-GCM, ChaCha20-Poly1305 |
 | Congestion control | NewReno, BBR, CUBIC + pacing |
 

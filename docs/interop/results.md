@@ -60,3 +60,5 @@ python scripts\validate-interop-evidence.py --results-dir docs\interop\results -
 # Optional ngtcp2 Initial packet generation smoke
 .\build\windows-msvc-vcpkg-interop-openssl\Debug\flowq_ngtcp2_initial_smoke.exe --ca build\certs\cert.pem
 ```
+
+The interop preset enables the vcpkg `interop` manifest feature, which supplies ngtcp2 for the optional smoke target. The smoke target is structural only and does not count as second full-flow peer evidence.

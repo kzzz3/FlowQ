@@ -5,7 +5,7 @@ This directory contains the opt-in interop tools for testing FlowQ against matur
 ## Supported Peer Implementations
 
 - aioquic full-flow server peer
-- optional ngtcp2 Initial packet generation smoke target
+- optional ngtcp2 Initial packet generation smoke target through the vcpkg interop manifest feature
 
 ## Usage
 
