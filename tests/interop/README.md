@@ -36,7 +36,7 @@ Already-completed external peer runs can be imported without rerunning the peer:
 python scripts\import-interop-evidence.py path\to\external-peer-report.json --results-dir docs\interop\results
 ```
 
-The importer reuses the validator, rejects smoke-only or failed reports, and stores the report with a canonical peer/timestamp/commit filename.
+The importer reuses the validator, rejects smoke-only or failed reports, requires timezone-aware ISO-8601 timestamps and 7-40 character hex FlowQ commits, and stores the report with a canonical peer/timestamp/commit filename.
 
 ## Requirements
 
@@ -45,7 +45,7 @@ The importer reuses the validator, rejects smoke-only or failed reports, and sto
 - `FLOWQ_CLIENT`, `FLOWQ_INTEROP_SCENARIO`, and `FLOWQ_QUIC_EXPECT_ECHO` are set by `scripts/run-aioquic-interop.ps1`.
 - `flowq_quic_client` reads peer and stream configuration from `FLOWQ_QUIC_PEER_HOST`, `FLOWQ_QUIC_PEER_PORT`, `FLOWQ_QUIC_STREAM_PAYLOAD`, and the required `FLOWQ_QUIC_EXPECT_ECHO` value.
 - Missing binaries, missing conda/aioquic dependencies, unsupported scenarios, and non-zero scenario exits fail the production gate.
-- Missing peer/version metadata, missing `flowq_commit`, failed required scenarios, and mismatched JSON summaries fail the release-readiness gate.
+- Missing peer/version metadata, invalid `timestamp` or `flowq_commit`, failed required scenarios, and mismatched JSON summaries fail the release-readiness gate.
 - Aioquic reports include `metadata.client_config` so peer host, peer port, stream payload, and expected echo settings are auditable with the evidence.
 
 ## Running

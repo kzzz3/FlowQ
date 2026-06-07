@@ -94,7 +94,7 @@ The aioquic full-flow runner records JSON evidence under `docs/interop/results`.
 python scripts\validate-interop-evidence.py --results-dir docs\interop\results --min-full-flow-peers 1
 ```
 
-The strict production-candidate gate uses `--min-full-flow-peers 2`; it remains blocked until a second external peer records the required full-flow scenarios.
+The strict production-candidate gate uses `--min-full-flow-peers 2`; it remains blocked until a second external peer records the required full-flow scenarios. Interop evidence metadata must include a timezone-aware ISO-8601 `timestamp` and a 7-40 character hex `flowq_commit`.
 
 Completed external peer reports can be imported without rerunning peers:
 

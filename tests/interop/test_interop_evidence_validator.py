@@ -145,6 +145,26 @@ class InteropEvidenceValidatorTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, result.stdout)
         self.assertIn("missing metadata.flowq_commit", result.stdout)
 
+    def test_rejects_non_auditable_metadata_formats(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            results_dir = Path(temp_dir)
+            report_path = write_report(
+                results_dir,
+                "aioquic.json",
+                "aioquic",
+                [passed_scenario("bidirectional_stream"), passed_scenario("loss_recovery")],
+            )
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+            payload["metadata"]["timestamp"] = "today"
+            payload["metadata"]["flowq_commit"] = "release-candidate"
+            report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            result = run_validator(results_dir, "--min-full-flow-peers", "1")
+
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("metadata.timestamp", result.stdout)
+        self.assertIn("metadata.flowq_commit", result.stdout)
+
     def test_rejects_mismatched_summary_counts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             results_dir = Path(temp_dir)

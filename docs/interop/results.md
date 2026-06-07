@@ -46,7 +46,7 @@ python scripts\import-interop-evidence.py path\to\external-peer-report.json --re
 python scripts\validate-interop-evidence.py --results-dir docs\interop\results --min-full-flow-peers 2
 ```
 
-The importer validates the report before copying it, requires the full-flow `bidirectional_stream` and `loss_recovery` scenarios, and writes a canonical `<peer>-<timestamp>-<commit>.json` result file. Existing files are not replaced unless `--force` is passed.
+The importer validates the report before copying it, requires the full-flow `bidirectional_stream` and `loss_recovery` scenarios, requires a timezone-aware ISO-8601 `metadata.timestamp` and 7-40 character hex `metadata.flowq_commit`, and writes a canonical `<peer>-<timestamp>-<commit>.json` result file. Existing files are not replaced unless `--force` is passed.
 
 ## Supported Peers
 

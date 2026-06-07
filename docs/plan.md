@@ -29,7 +29,7 @@ Out of scope for the current production-candidate boundary:
 1. Keep installed headers limited to the production QUIC transport API.
 2. Keep test-only plaintext protection out of installed public headers.
 3. Keep the aioquic interop runner fail-closed; missing client binaries, missing conda/aioquic dependencies, unsupported scenarios, non-zero scenario exits, and missing expected echo configuration fail the gate.
-4. Keep checked-in interop JSON evidence machine-validatable with peer/version metadata, `flowq_commit`, matching summaries, and required full-flow scenarios.
+4. Keep checked-in interop JSON evidence machine-validatable with peer/version metadata, timezone-aware ISO-8601 timestamps, 7-40 character hex `flowq_commit`, matching summaries, and required full-flow scenarios.
 5. Keep experimental examples outside the default build and install package.
 6. Keep documentation synchronized with current code and evidence only.
 

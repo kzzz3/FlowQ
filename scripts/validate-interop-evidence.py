@@ -4,17 +4,29 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Optional
 
 
 DEFAULT_REQUIRED_SCENARIOS = ("bidirectional_stream", "loss_recovery")
+FLOWQ_COMMIT_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
 
 def scenario_passed(scenario: dict) -> bool:
     return scenario.get("status") == "passed" and scenario.get("exit_code") == 0
+
+
+def has_timezone_aware_iso_timestamp(value: str) -> bool:
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = dt.datetime.fromisoformat(normalized)
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None and parsed.utcoffset() is not None
 
 
 def validate_report(path: Path, required_scenarios: tuple[str, ...]) -> tuple[Optional[str], bool, list[str]]:
@@ -88,6 +100,11 @@ def validate_report(path: Path, required_scenarios: tuple[str, ...]) -> tuple[Op
             value = metadata.get(field)
             if not isinstance(value, str) or not value.strip():
                 issues.append(f"{path}: missing metadata.{field}")
+                continue
+            if field == "timestamp" and not has_timezone_aware_iso_timestamp(value):
+                issues.append(f"{path}: metadata.timestamp must be an ISO-8601 timestamp with timezone")
+            if field == "flowq_commit" and not FLOWQ_COMMIT_RE.fullmatch(value):
+                issues.append(f"{path}: metadata.flowq_commit must be a 7-40 character hex SHA")
 
     full_flow = peer_name is not None and not issues
     return peer_name, full_flow, issues
