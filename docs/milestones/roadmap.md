@@ -75,4 +75,4 @@ Primary files:
 
 ## Remaining Production Gates
 
-The authoritative status is `docs/production/readiness-gate.md` and `docs/production/release-checklist.md`. Current open gates are a second external full-flow peer, human security review, and external security audit. ngtcp2 Initial packet generation smoke remains optional when the dependency is available locally.
+The authoritative status is `docs/production/readiness-gate.md` and `docs/production/release-checklist.md`. Current open gates are a second external full-flow peer, human security review, and external security audit. ngtcp2 Initial packet generation smoke is available through the vcpkg-backed interop preset and remains outside the full-flow evidence gate.
