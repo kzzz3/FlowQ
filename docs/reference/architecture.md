@@ -156,7 +156,7 @@ Robustness testing with random inputs.
 - aioquic 1.3.0 interop results are recorded for handshake, bidirectional stream echo, and application loss recovery.
 - ngtcp2 Initial packet generation smoke is available through the vcpkg-backed interop preset and is not part of the current recorded full-flow gate evidence.
 - A second external peer with full handshake and stream evidence is not recorded.
-- Human security review is not recorded.
+- Human security review and external security audit evidence files are not recorded.
 - AES-128-GCM, AES-256-GCM, and ChaCha20-Poly1305 packet protection are supported by `openssl_aead_protector`.
 - Live AEAD key update installation is outside current evidence.
 - Stateless reset receive handling and retired-local-CID reset generation have local release evidence. HTTP/3 deployment, WebTransport deployment, and 0-RTT deployment policy have no release evidence.

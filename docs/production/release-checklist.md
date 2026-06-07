@@ -8,7 +8,7 @@ Strict gate:
 .\scripts\check-release-readiness.ps1 -RequireCompleteReleaseChecklist
 ```
 
-The strict gate requires 2+ machine-validated full-flow external peers plus the human review and audit items below.
+The strict gate requires 2+ machine-validated full-flow external peers plus auditable human review and external audit evidence files.
 
 ## Build and Test
 
@@ -39,8 +39,8 @@ The strict gate requires 2+ machine-validated full-flow external peers plus the 
 - [x] Cipher-suite-aware header protection (AES-128/256-ECB, ChaCha20)
 - [x] All protector types erase keys on destruction
 - [x] `traffic_secret()` restricted to `FLOWQ_ENABLE_INSPECTION`
-- [ ] Human security review recorded
-- [ ] External security audit recorded before public secure or production-ready claims
+- [ ] Human security review recorded in `docs/security/reviews/human-security-review.md`
+- [ ] External security audit recorded in `docs/security/audits/external-security-audit.md` before public secure or production-ready claims
 
 ## Interop
 

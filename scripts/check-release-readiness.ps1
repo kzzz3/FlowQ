@@ -111,6 +111,20 @@ if ($RequireCompleteReleaseChecklist) {
     }
 
     $StepNumber += 1
+
+    Write-Host ""
+    Write-Host "$StepNumber. Checking security evidence..." -ForegroundColor Yellow
+    if (-not $pythonCommand) {
+        Write-Host "FAILED: python is required to validate security evidence" -ForegroundColor Red
+        $Failed = $true
+    } else {
+        & $pythonPath .\scripts\validate-security-evidence.py --source-root $RepoRoot
+        if ($LASTEXITCODE -ne 0) {
+            $Failed = $true
+        }
+    }
+
+    $StepNumber += 1
 }
 
 # Check build (unless skipped)

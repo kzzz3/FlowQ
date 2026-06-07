@@ -56,6 +56,8 @@ tests/
 │   ├── test_interop_evidence_validator.py
 │   ├── test_interop_evidence_importer.py
 │   └── ngtcp2_initial_smoke.cpp
+├── production/              # Production gate tooling tests
+│   └── test_security_evidence_validator.py
 ├── fuzz/                    # Fuzz targets
 │   ├── fuzz_packet_header.cpp
 │   ├── fuzz_frame_decode.cpp
@@ -104,6 +106,22 @@ CTest also covers checked-in evidence validation/import, the FlowQ interop clien
 
 ```powershell
 ctest --preset windows-msvc-vcpkg-interop-openssl -R "flowq\.(interop_evidence_validator|interop_evidence_importer|quic_client_configuration|cmake_interop_configuration|aioquic_runner_script)" --output-on-failure
+```
+
+### Production Evidence Tests
+
+The strict production gate also validates security evidence files:
+
+```powershell
+python scripts\validate-security-evidence.py --source-root .
+```
+
+The validator requires `docs/security/reviews/human-security-review.md` and `docs/security/audits/external-security-audit.md` with reviewer or auditor, date, scope, commit, result, and findings fields. Placeholder values such as `TBD` fail closed.
+
+CTest covers this validator through:
+
+```powershell
+ctest --preset windows-msvc-vcpkg-interop-openssl -R "flowq\.security_evidence_validator" --output-on-failure
 ```
 
 ### Fuzz Tests

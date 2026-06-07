@@ -22,9 +22,10 @@ This document records the current evidence required before FlowQ can claim produ
 - Install + package-consumer build path
 - Clean install prefix validation
 - Release-readiness scripts (`scripts/check-release-readiness.ps1`, `scripts/check-release-readiness.sh`) validate docs, checklist, packet-protection boundaries, and checked-in interop JSON evidence
-- Strict production-candidate gate tooling (`-RequireCompleteReleaseChecklist`), currently blocked by open checklist items
+- Strict production-candidate gate tooling (`-RequireCompleteReleaseChecklist`), currently blocked by open checklist items and missing security evidence files
 - Checklist validator (`scripts/validate-checklist.ps1`)
 - Interop evidence validator (`scripts/validate-interop-evidence.py`): current gate requires 1+ full-flow peer; strict gate requires 2+ full-flow peers
+- Security evidence validator (`scripts/validate-security-evidence.py`): strict gate requires auditable human review and external audit files
 - CTest coverage for checked-in interop evidence validation/import, FlowQ interop client runtime configuration, vcpkg-backed interop preset configuration, and Windows aioquic runner fail-closed behavior
 
 ### Packet Protection
@@ -81,6 +82,7 @@ This document records the current evidence required before FlowQ can claim produ
 - `noexcept` move operations on core types
 - Thread-safety contracts documented
 - Code quality gates: no TODO/FIXME, no type suppressions, no empty catch, no weak RNG
+- Strict-gate security evidence must be recorded in `docs/security/reviews/human-security-review.md` and `docs/security/audits/external-security-audit.md`; both files require reviewer/auditor, date, scope, commit, result, and findings fields and reject placeholder values
 
 ## Production-Candidate Scope
 

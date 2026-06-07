@@ -130,6 +130,16 @@ if [[ $REQUIRE_COMPLETE_RELEASE_CHECKLIST -eq 1 ]]; then
         FAILED=1
     fi
     STEP_NUMBER=$((STEP_NUMBER + 1))
+
+    echo ""
+    echo -e "${YELLOW}${STEP_NUMBER}. Checking security evidence...${NC}"
+    if [[ -z "${PYTHON_BIN:-}" ]]; then
+        echo -e "${RED}FAILED: python is required to validate security evidence${NC}"
+        FAILED=1
+    elif ! "$PYTHON_BIN" ./scripts/validate-security-evidence.py --source-root "$REPO_ROOT"; then
+        FAILED=1
+    fi
+    STEP_NUMBER=$((STEP_NUMBER + 1))
 fi
 
 echo ""

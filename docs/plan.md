@@ -58,7 +58,7 @@ Strict production-candidate gate:
 ./scripts/check-release-readiness.sh --require-complete-release-checklist
 ```
 
-The strict gate is expected to fail until a second external full-flow peer, human security review, and external security audit evidence are recorded and checked in `docs/production/release-checklist.md`.
+The strict gate is expected to fail until a second external full-flow peer is recorded, `docs/security/reviews/human-security-review.md` and `docs/security/audits/external-security-audit.md` pass `scripts/validate-security-evidence.py`, and the corresponding checklist items are checked.
 
 Python aioquic interop from the `expr` conda environment:
 
