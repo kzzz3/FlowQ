@@ -160,5 +160,5 @@ Robustness testing with random inputs.
 - AES-128-GCM, AES-256-GCM, and ChaCha20-Poly1305 packet protection are supported by `openssl_aead_protector`.
 - Live AEAD key update installation is outside current evidence.
 - Stateless reset receive handling and retired-local-CID reset generation have local release evidence. HTTP/3 deployment, WebTransport deployment, and 0-RTT deployment policy have no release evidence.
-- HTTP/3, QPACK, and 0-RTT headers are not installed by the production package; the install validation gate fails if they reappear in `build/install-flowq/include`.
+- HTTP/3, QPACK, and 0-RTT headers are not installed by the production package; build install validation and release-readiness static validation fail if they reappear in the installed API boundary.
 - Experimental examples are not part of the default build; they require `FLOWQ_BUILD_EXPERIMENTAL_EXAMPLES=ON`.

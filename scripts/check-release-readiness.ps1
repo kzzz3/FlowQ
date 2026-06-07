@@ -41,6 +41,24 @@ if ($LASTEXITCODE -ne 0) {
 $StepNumber = 3
 
 Write-Host ""
+Write-Host "$StepNumber. Checking install boundary..." -ForegroundColor Yellow
+$pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+if (-not $pythonCommand) {
+    Write-Host "FAILED: python is required to validate install boundary" -ForegroundColor Red
+    $Failed = $true
+} else {
+    $pythonPath = $pythonCommand.Path
+    if (-not $pythonPath) {
+        $pythonPath = $pythonCommand.Source
+    }
+    & $pythonPath .\scripts\validate-install-boundary.py --source-root $RepoRoot
+    if ($LASTEXITCODE -ne 0) {
+        $Failed = $true
+    }
+}
+$StepNumber += 1
+
+Write-Host ""
 Write-Host "$StepNumber. Checking public packet protection API..." -ForegroundColor Yellow
 $publicBypassHits = @(
     Select-String `
@@ -78,15 +96,10 @@ $interopPeerMinimum = 1
 if ($RequireCompleteReleaseChecklist) {
     $interopPeerMinimum = 2
 }
-$pythonCommand = Get-Command python -ErrorAction SilentlyContinue
 if (-not $pythonCommand) {
     Write-Host "FAILED: python is required to validate interop evidence" -ForegroundColor Red
     $Failed = $true
 } else {
-    $pythonPath = $pythonCommand.Path
-    if (-not $pythonPath) {
-        $pythonPath = $pythonCommand.Source
-    }
     & $pythonPath .\scripts\validate-interop-evidence.py `
         --results-dir .\docs\interop\results `
         --min-full-flow-peers $interopPeerMinimum

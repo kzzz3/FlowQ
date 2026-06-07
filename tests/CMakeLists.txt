@@ -93,6 +93,13 @@ if(Python3_Interpreter_FOUND)
     set_tests_properties(flowq.security_evidence_validator PROPERTIES LABELS "production")
 
     add_test(
+        NAME flowq.install_boundary_validator
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/production/test_install_boundary_validator.py
+    )
+    set_tests_properties(flowq.install_boundary_validator PROPERTIES LABELS "production")
+
+    add_test(
         NAME flowq.quic_client_configuration
         COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/interop/test_quic_client_configuration.py

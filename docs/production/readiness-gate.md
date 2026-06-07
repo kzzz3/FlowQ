@@ -21,7 +21,7 @@ This document records the current evidence required before FlowQ can claim produ
 - ASan/UBSan: 510/511 tests passing, 0 errors (`ctest --preset linux-asan-ubsan --timeout 60`)
 - Install + package-consumer build path
 - Clean install prefix validation
-- Release-readiness scripts (`scripts/check-release-readiness.ps1`, `scripts/check-release-readiness.sh`) validate docs, checklist, packet-protection boundaries, and checked-in interop JSON evidence
+- Release-readiness scripts (`scripts/check-release-readiness.ps1`, `scripts/check-release-readiness.sh`) validate docs, checklist, install API boundaries, packet-protection boundaries, and checked-in interop JSON evidence
 - Strict production-candidate gate tooling (`-RequireCompleteReleaseChecklist`), currently blocked by open checklist items and missing security evidence files
 - Checklist validator (`scripts/validate-checklist.ps1`)
 - Interop evidence validator (`scripts/validate-interop-evidence.py`): current gate requires 1+ full-flow peer; strict gate requires 2+ full-flow peers
@@ -110,6 +110,7 @@ Out of scope:
 - [x] aioquic 1.3.0 loss recovery PASS
 - [x] Interop results recorded in `docs/interop/results.md`
 - [x] Interop JSON evidence validated in release-readiness gate
+- [x] Install API boundary validated in release-readiness gate
 - [x] TLS backend and cipher suite versions recorded
 - [x] Cipher-suite-aware header protection
 - [x] Key material zeroing across all protectors

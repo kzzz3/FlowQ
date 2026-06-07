@@ -175,4 +175,4 @@ REQUIRE_THAT(result, Catch::Matchers::Predicate<...>([](auto& val) {
 Tests run automatically on GitHub Actions:
 - **ci.yml**: Windows MSVC/vcpkg build, test, install, package-consumer
 - **robustness.yml**: Linux sanitizer/fuzz testing (Ubuntu)
-- Release-readiness scripts validate documentation, checklist state, packet-protection boundaries, and checked-in interop evidence.
+- Release-readiness scripts validate documentation, checklist state, install API boundaries, packet-protection boundaries, and checked-in interop evidence.

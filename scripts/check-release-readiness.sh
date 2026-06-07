@@ -72,6 +72,25 @@ if ! ./scripts/validate-checklist.sh; then
 fi
 STEP_NUMBER=$((STEP_NUMBER + 1))
 
+if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN=python3
+elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN=python
+else
+    echo -e "${RED}FAILED: python is required for release readiness checks${NC}"
+    FAILED=1
+fi
+
+echo ""
+echo -e "${YELLOW}${STEP_NUMBER}. Checking install boundary...${NC}"
+if [[ -z "${PYTHON_BIN:-}" ]]; then
+    echo -e "${RED}FAILED: python is required to validate install boundary${NC}"
+    FAILED=1
+elif ! "$PYTHON_BIN" ./scripts/validate-install-boundary.py --source-root "$REPO_ROOT"; then
+    FAILED=1
+fi
+STEP_NUMBER=$((STEP_NUMBER + 1))
+
 echo ""
 echo -e "${YELLOW}${STEP_NUMBER}. Checking public packet protection API...${NC}"
 PUBLIC_BYPASS_HITS="$(
@@ -101,14 +120,6 @@ echo -e "${YELLOW}${STEP_NUMBER}. Checking interop evidence...${NC}"
 INTEROP_PEER_MINIMUM=1
 if [[ $REQUIRE_COMPLETE_RELEASE_CHECKLIST -eq 1 ]]; then
     INTEROP_PEER_MINIMUM=2
-fi
-if command -v python3 >/dev/null 2>&1; then
-    PYTHON_BIN=python3
-elif command -v python >/dev/null 2>&1; then
-    PYTHON_BIN=python
-else
-    echo -e "${RED}FAILED: python is required to validate interop evidence${NC}"
-    FAILED=1
 fi
 if [[ -n "${PYTHON_BIN:-}" ]]; then
     if ! "$PYTHON_BIN" ./scripts/validate-interop-evidence.py \
