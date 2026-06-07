@@ -82,7 +82,7 @@ This document records the current evidence required before FlowQ can claim produ
 - `noexcept` move operations on core types
 - Thread-safety contracts documented
 - Code quality gates: no TODO/FIXME, no type suppressions, no empty catch, no weak RNG
-- Strict-gate security evidence must be recorded in `docs/security/reviews/human-security-review.md` and `docs/security/audits/external-security-audit.md`; both files require reviewer/auditor, `YYYY-MM-DD` date, 7-40 character hex commit SHA, scope, result, and findings fields and reject placeholder values
+- Strict-gate security evidence must be recorded in `docs/security/reviews/human-security-review.md` and `docs/security/audits/external-security-audit.md`; both files require reviewer/auditor, non-future `YYYY-MM-DD` date, 7-40 character hex commit SHA, scope, result, and findings fields and reject placeholder values
 
 ## Production-Candidate Scope
 

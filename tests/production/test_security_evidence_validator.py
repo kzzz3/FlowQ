@@ -140,6 +140,33 @@ class SecurityEvidenceValidatorTests(unittest.TestCase):
         self.assertIn("Date", result.stdout)
         self.assertIn("Commit", result.stdout)
 
+    def test_rejects_future_security_evidence_dates(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_root = Path(temp_dir)
+            write_required_evidence(source_root)
+            review = source_root / "docs" / "security" / "reviews" / "human-security-review.md"
+            review.write_text(
+                "\n".join(
+                    [
+                        "# Human Security Review",
+                        "",
+                        "Reviewer: Jane Chen",
+                        "Date: 9999-12-31",
+                        "Scope: FlowQ QUIC transport production readiness.",
+                        "Commit: abcdef0",
+                        "Result: PASS",
+                        "Findings: No open critical or high findings.",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_validator(source_root)
+
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("Date must not be in the future", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

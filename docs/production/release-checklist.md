@@ -8,7 +8,7 @@ Strict gate:
 .\scripts\check-release-readiness.ps1 -RequireCompleteReleaseChecklist
 ```
 
-The strict gate requires 2+ machine-validated full-flow external peers plus auditable human review and external audit evidence files. Security evidence dates must use `YYYY-MM-DD`, and commit values must be 7-40 character hex SHAs.
+The strict gate requires 2+ machine-validated full-flow external peers plus auditable human review and external audit evidence files. Security evidence dates must use `YYYY-MM-DD`, must not be in the future, and commit values must be 7-40 character hex SHAs.
 
 ## Build and Test
 

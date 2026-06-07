@@ -80,9 +80,14 @@ def validate_document(source_root, relative_path, required_fields):
     date = field_value(content, "Date")
     if date is not None:
         try:
-            dt.date.fromisoformat(date)
+            parsed_date = dt.date.fromisoformat(date)
         except ValueError:
             issues.append(f"{relative_path.as_posix()} Date must use YYYY-MM-DD")
+        else:
+            if parsed_date > dt.date.today():
+                issues.append(
+                    f"{relative_path.as_posix()} Date must not be in the future"
+                )
 
     commit = field_value(content, "Commit")
     if commit is not None and not COMMIT_RE.fullmatch(commit):
