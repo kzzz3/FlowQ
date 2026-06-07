@@ -30,6 +30,14 @@ python scripts\validate-interop-evidence.py --results-dir docs\interop\results -
 
 The strict production-candidate gate raises the peer minimum to 2 and remains blocked until a second full-flow external peer is recorded.
 
+Already-completed external peer runs can be imported without rerunning the peer:
+
+```powershell
+python scripts\import-interop-evidence.py path\to\external-peer-report.json --results-dir docs\interop\results
+```
+
+The importer reuses the validator, rejects smoke-only or failed reports, and stores the report with a canonical peer/timestamp/commit filename.
+
 ## Requirements
 
 - `conda` must provide the `expr` environment with `aioquic` installed.

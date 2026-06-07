@@ -37,6 +37,17 @@ python scripts\validate-interop-evidence.py --results-dir docs\interop\results -
 
 The strict production-candidate gate uses `--min-full-flow-peers 2` and is expected to fail until a second external peer records the required full-flow scenarios.
 
+## Importing Completed External Runs
+
+If a peer run was completed outside this checkout, do not rerun it just to satisfy the gate. Import the already-recorded JSON report:
+
+```powershell
+python scripts\import-interop-evidence.py path\to\external-peer-report.json --results-dir docs\interop\results
+python scripts\validate-interop-evidence.py --results-dir docs\interop\results --min-full-flow-peers 2
+```
+
+The importer validates the report before copying it, requires the full-flow `bidirectional_stream` and `loss_recovery` scenarios, and writes a canonical `<peer>-<timestamp>-<commit>.json` result file. Existing files are not replaced unless `--force` is passed.
+
 ## Supported Peers
 
 | Peer | Language | Install | Status |
