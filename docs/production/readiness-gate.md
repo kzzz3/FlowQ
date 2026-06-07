@@ -5,7 +5,7 @@ This document records the current evidence required before FlowQ can claim produ
 ## Current Status
 
 - **Level**: Production-readiness gate
-- **Date**: 2026-06-06
+- **Date**: 2026-06-07
 - **Status**: Release-readiness evidence is machine-gated; production-candidate and production-ready claims remain blocked
 
 **Evidence summary**: Windows MSVC/vcpkg OpenSSL interop preset with 527/527 tests passing, Linux GCC/vcpkg build with 510/511 tests passing, ASan/UBSan verification with 0 errors, OpenSSL 3.6.1 QUIC TLS, AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, key material zeroing, AEAD key rotation, pacing controller, BBR/CUBIC congestion control, and machine-validated aioquic 1.3.0 full-flow interop (handshake, stream echo, loss recovery).

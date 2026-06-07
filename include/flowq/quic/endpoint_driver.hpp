@@ -14,7 +14,7 @@ struct endpoint_driver_config {
     stateless_reset_packet_config stateless_reset{};
 };
 
-/// Production-shaped endpoint driver with explicit lifecycle, CID routing, and connection limits.
+/// Endpoint driver with explicit lifecycle, CID routing, and connection limits.
 /// Provides a deterministic server-side connection management boundary.
 /// @note This class is NOT thread-safe. All methods must be called from the same thread.
 class endpoint_driver {
