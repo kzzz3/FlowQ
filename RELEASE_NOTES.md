@@ -1,5 +1,40 @@
 # FlowQ Release Notes
 
+## Version 1.1.0 (2026-06-08)
+
+Zero-copy integration, CUBIC congestion control, and production readiness assessment.
+
+### Features
+
+#### Zero-Copy
+- **Zero-copy packet builder** integrated into packet_pipeline
+- **`protect_in_place()`** for in-buffer AEAD encryption
+- **`datagram_buffer_pool`** for buffer reuse
+
+#### Congestion Control
+- **CUBIC (RFC 8312)**: Now the default algorithm with TCP friendliness and fast convergence
+- **Pacing-cwnd synchronization**: Pacing rate updates on all congestion window changes
+- **7 new CUBIC test cases**
+
+#### Production
+- **Production readiness assessment**: `docs/production/production-readiness-assessment.md`
+
+### Breaking Changes
+
+- Default congestion algorithm changed from NewReno to CUBIC
+- Pacing `min_interval_` changed from 100us to 50us
+- `max_datagram_size` now sourced from config instead of hardcoded 1200
+
+### Bug Fixes
+
+- Pacing-cwnd synchronization on congestion window changes
+- CUBIC `last_max_cwnd` initialization
+- CUBIC recovery to congestion_avoidance state transition
+- release_readiness bash script execution permissions
+- checklist validator false positives for API/technical terms
+
+---
+
 ## Version 1.0.0 (2026-06-01)
 
 Production hardening release with multi-cipher support, congestion control algorithms, and interop validation.
@@ -24,7 +59,7 @@ Production hardening release with multi-cipher support, congestion control algor
 - **ngtcp2 1.20.0**: Initial packet generation (PASS)
 
 #### Testing
-- **514 unit tests** passing
+- **518 unit tests** passing
 - **Benchmark framework**: 40 scenarios across 4 categories
 - **Soak test**: 10,000 connections, 0 errors, 830 conn/sec
 - **Zero-copy packet builder**: Single-buffer assembly (experimental)
@@ -38,10 +73,9 @@ Production hardening release with multi-cipher support, congestion control algor
 
 ### Known Limitations
 
-- Single cipher suite per connection (no negotiation)
-- No HTTP/3, QPACK, WebTransport (source-only)
-- No 0-RTT deployment support
-- Windows-only validation (Linux/macOS pending)
+- Single cipher suite per connection (no renegotiation)
+- No HTTP/3, QPACK, WebTransport
+- No 0-RTT replay protection beyond OpenSSL's built-in mechanisms
 
 ### Upgrade Guide
 

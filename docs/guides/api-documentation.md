@@ -77,8 +77,3 @@ powershell -File scripts/validate-docs.ps1
     std::span<const std::byte> data);
 ```
 
-## CI 集成
-
-文档生成已集成到 CI 流程：
-- PR 检查会验证文档覆盖率
-- 合并到 main 分支会自动更新文档站点

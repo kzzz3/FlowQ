@@ -27,6 +27,9 @@ Thumbs.db
 # ====================
 .sisyphus/
 .opencode/
+.codegraph/
+.omo/
+.understand-anything/
 
 # ====================
 # CMake generated files

@@ -1,6 +1,6 @@
 # Getting Started with FlowQ
 
-FlowQ is a C++20 QUIC transport library under production hardening. This guide covers the local build and test workflow.
+FlowQ is a C++23 QUIC transport library. This guide covers the local build and test workflow.
 
 ## Prerequisites
 

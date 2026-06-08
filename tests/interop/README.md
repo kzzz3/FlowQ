@@ -4,11 +4,8 @@ This directory contains an opt-in interop harness for testing FlowQ against matu
 
 ## Supported Peer Implementations
 
-- ngtcp2
-- quiche (Cloudflare)
-- MsQuic (Microsoft)
-- picoquic
-- lsquic
+- aioquic (Python)
+- ngtcp2 (C)
 
 ## Usage
 

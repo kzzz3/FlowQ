@@ -2,27 +2,27 @@
 
 ## Design Overview
 
-FlowQ is a C++20 QUIC transport library under production hardening. The current architecture combines deterministic protocol primitives, connection-loop behavior, packet-protection seams, OpenSSL-gated AES-128-GCM packet protection, endpoint routing with stateless reset handling, diagnostics, release-gate tooling, and recorded aioquic handshake, stream, and loss-recovery interop evidence. Production-candidate status is gated on the remaining release evidence and human review.
+FlowQ is a C++23 QUIC transport library. The architecture combines deterministic protocol primitives, connection-loop behavior, packet-protection seams, OpenSSL-gated AES-128-GCM packet protection, endpoint routing with stateless reset handling, diagnostics, and recorded aioquic + ngtcp2 interop evidence.
 
 ## Architecture Layers
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Public API Layer                          │
-│  session.hpp, udp_session.hpp, endpoint_driver.hpp          │
-├─────────────────────────────────────────────────────────────┤
-│                  Connection Layer                            │
-│  connection.hpp, session.hpp, timer schedulers              │
-├─────────────────────────────────────────────────────────────┤
-│                  Protocol Layer                              │
-│  packet_pipeline.hpp, ack_loss.hpp, congestion.hpp          │
-├─────────────────────────────────────────────────────────────┤
-│                  Codec Layer                                 │
-│  frame.hpp, packet_header.hpp, varint.hpp                   │
-├─────────────────────────────────────────────────────────────┤
-│                  Value Layer                                 │
-│  buffer.hpp, error.hpp, endpoint.hpp                        │
-└─────────────────────────────────────────────────────────────┘
++-----------------------------------------------------------+
+|                    Public API Layer                          |
+|  session.hpp, udp_session.hpp, endpoint_driver.hpp          |
++-----------------------------------------------------------+
+|                  Connection Layer                            |
+|  connection.hpp, session.hpp, timer schedulers              |
++-----------------------------------------------------------+
+|                  Protocol Layer                              |
+|  packet_pipeline.hpp, ack_loss.hpp, congestion.hpp          |
++-----------------------------------------------------------+
+|                  Codec Layer                                 |
+|  frame.hpp, packet_header.hpp, varint.hpp                   |
++-----------------------------------------------------------+
+|                  Value Layer                                 |
+|  buffer.hpp, error.hpp, endpoint.hpp                        |
++-----------------------------------------------------------+
 ```
 
 ## Core Components
@@ -44,7 +44,7 @@ FlowQ is a C++20 QUIC transport library under production hardening. The current 
 ### Connection Management
 
 - **connection.hpp**: Deterministic connection loop with packet space management
-- **session.hpp**: Public session façade over connection loop
+- **session.hpp**: Public session facade over connection loop
 - **endpoint_driver.hpp / connection_routing.hpp**: Endpoint lifecycle, CID routing, version negotiation, Retry token helpers, and stateless reset packet construction for retired locally issued CIDs.
 - **stream.hpp**: Stream receive/send state with flow control
 - **recovery_scheduler.hpp**: ASIO sender for deterministic recovery timers
@@ -145,18 +145,8 @@ Test module interactions with in-memory loopback.
 
 ### Interop Tests
 
-Opt-in tests target external QUIC implementations. Production-candidate wording requires recorded peer names, versions, scenarios, and results.
+Opt-in tests target external QUIC implementations. Peer names, versions, scenarios, and results are recorded in `docs/interop/results.md`.
 
 ### Fuzz Tests
 
 Robustness testing with random inputs.
-
-## Production-Candidate Boundary
-
-- aioquic 1.3.0 interop results are recorded for handshake, bidirectional stream echo, and application loss recovery.
-- Human security review is not recorded.
-- ChaCha20-Poly1305 and AES-256-GCM packet protection are rejected by `openssl_aead_protector`.
-- Live AEAD key update installation is outside current evidence.
-- Stateless reset receive handling and retired-local-CID reset generation have local release evidence. HTTP/3 deployment, WebTransport deployment, and 0-RTT deployment policy have no release evidence.
-- HTTP/3, QPACK, and 0-RTT headers are not installed by the production package; the install validation gate fails if they reappear in `build/install-flowq/include`.
-- Experimental examples are not part of the default build; they require `FLOWQ_BUILD_EXPERIMENTAL_EXAMPLES=ON`.

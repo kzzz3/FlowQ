@@ -34,16 +34,6 @@ The complete Linux package gate is:
 ./scripts/validate-build.sh --preset linux-gcc-vcpkg
 ```
 
-### Strict Warnings
-
-```bash
-cmake --preset linux-gcc-vcpkg-strict
-cmake --build --preset linux-gcc-vcpkg-strict
-ctest --preset linux-gcc-vcpkg-strict --timeout 10 --output-on-failure
-```
-
-On Windows, configure `windows-msvc-vcpkg` with `FLOWQ_ENABLE_STRICT_WARNINGS=ON` to enable `/W4 /WX /permissive- /EHsc` for project targets.
-
 ### Sanitizers
 
 ASan/UBSan validation is a Linux gate:
@@ -106,7 +96,7 @@ Managed via vcpkg manifest (`vcpkg.json`):
 
 - **asio**: Standalone Asio for async I/O
 - **catch2**: Testing framework
-- **stdexec**: Sender/receiver execution (future use)
+- **stdexec**: Sender/receiver execution
 - **openssl**: Optional, for crypto and TLS backends
 
 ## Troubleshooting

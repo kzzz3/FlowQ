@@ -986,6 +986,42 @@ TEST_CASE("connection loop ACK only packets do not arm recovery timers") {
     CHECK_FALSE(server.next_recovery_timer().has_value());
 }
 
+TEST_CASE("connection loop ignores acknowledged ACK only packet bytes in congestion accounting") {
+    flowq::quic::test::plaintext_packet_protector_set protector{};
+    auto client = make_application_loop(
+        cid({0x01}),
+        cid({0x02}),
+        flowq::endpoint{"server", 4433, "hq-interop"},
+        protector,
+        3,
+        25ms);
+    auto server = make_application_loop(
+        cid({0x02}),
+        cid({0x01}),
+        flowq::endpoint{"client", 1111, "hq-interop"},
+        protector,
+        3,
+        25ms,
+        flowq::quic::congestion_algorithm::cubic);
+
+    client.queue_application({flowq::quic::frame{flowq::quic::ping_frame{}}});
+    client.flush(at(0ms));
+    auto ping = require_single_outbound(client.drain_actions());
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(ping.payload), ping.peer}, at(1ms));
+    (void)server.drain_actions();
+
+    server.acknowledge(flowq::quic::packet_number_space::application, at(2ms));
+    auto ack_only = require_single_outbound(server.drain_actions());
+    CHECK(server.congestion().bytes_in_flight() == 0);
+
+    client.on_datagram(flowq::quic::inbound_datagram{std::move(ack_only.payload), ack_only.peer}, at(3ms));
+    client.acknowledge(flowq::quic::packet_number_space::application, at(4ms));
+    auto ack_of_ack_only = require_single_outbound(client.drain_actions());
+    server.on_datagram(flowq::quic::inbound_datagram{std::move(ack_of_ack_only.payload), ack_of_ack_only.peer}, at(5ms));
+
+    CHECK(server.congestion().bytes_in_flight() == 0);
+}
+
 TEST_CASE("connection loop recovery timer expiry reports time threshold losses") {
     flowq::quic::test::plaintext_packet_protector_set protector{};
     auto client = make_loop(cid({0x01}), cid({0x02}), flowq::endpoint{"server", 4433, "hq-interop"}, protector);

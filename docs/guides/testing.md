@@ -125,8 +125,3 @@ REQUIRE_THAT(result, Catch::Matchers::Predicate<...>([](auto& val) {
 }));
 ```
 
-## CI/CD
-
-Tests run automatically on GitHub Actions:
-- **ci.yml**: Windows MSVC/vcpkg build, test, install, package-consumer
-- **robustness.yml**: Linux sanitizer/fuzz testing (Ubuntu)

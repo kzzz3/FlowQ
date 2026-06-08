@@ -1,6 +1,6 @@
 # FlowQ Interop Results
 
-## Latest Results (2026-06-01)
+## Results
 
 ### Summary
 
@@ -29,8 +29,8 @@
 
 | Peer | Language | Install | Status |
 |------|----------|---------|--------|
-| aioquic | Python | `pip install aioquic` | ✅ Verified |
-| ngtcp2 | C | vcpkg | ✅ Verified |
+| aioquic | Python | `pip install aioquic` | Verified |
+| ngtcp2 | C | vcpkg | Verified |
 
 ## Running Interop Tests
 
@@ -45,10 +45,3 @@ conda run -n expr python tests/interop/test_interop.py
 # ngtcp2 interop
 .\build\windows-msvc-vcpkg-interop-openssl\Debug\flowq_ngtcp2_interop.exe --ca build\certs\cert.pem
 ```
-
-## Historical Results
-
-| Date | Peers | Passed | Failed |
-|------|-------|--------|--------|
-| 2026-06-01 | aioquic + ngtcp2 | 5/5 | 0 |
-| 2026-05-31 | aioquic + ngtcp2 | 5/5 | 0 |

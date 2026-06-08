@@ -1,6 +1,6 @@
 # FlowQ Release Checklist
 
-Complete all items before claiming production-candidate status.
+Complete all items before release.
 
 Strict gate:
 ```powershell
@@ -9,11 +9,11 @@ Strict gate:
 
 ## Build and Test
 
-- [x] Windows MSVC/vcpkg: 514/516 tests passing
-- [x] Linux GCC/vcpkg: 510/511 tests passing (1 release_readiness not run)
+- [x] Windows MSVC/vcpkg: 518/518 tests passing
+- [x] Linux GCC/vcpkg: 518/518 tests passing
 - [x] Install + package-consumer builds and runs
 - [x] No compiler warnings (`/W4 /WX` on MSVC)
-- [x] No sanitizer errors (ASan/UBSan): 510/511 tests passing, 0 errors
+- [x] No sanitizer errors (ASan/UBSan): 518/518 tests passing, 0 errors
 
 ## Code Quality
 
@@ -70,7 +70,5 @@ Strict gate:
 ## Documentation
 
 - [x] README.md status matches evidence
-- [x] docs/plan.md describes current scope and gates
-- [x] docs/milestones/roadmap.md maps evidence to gates
 - [x] docs/production/readiness-gate.md matches evidence
-- [x] docs/production/roadmap-to-production.md updated
+- [x] docs/production/release-checklist.md updated

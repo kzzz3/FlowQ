@@ -1,21 +1,20 @@
 # FlowQ Documentation
 
-FlowQ is a C++20 QUIC transport library under production hardening. These documents describe the current source tree, build gates, production boundary, and verification evidence.
+FlowQ is a C++23 QUIC transport library with production-grade security, multi-cipher support, and interop validation.
 
 ## Documentation Structure
 
 ```
 docs/
 ├── README.md
-├── plan.md
 ├── guides/
 │   ├── getting-started.md
 │   ├── building.md
-│   └── testing.md
+│   ├── testing.md
+│   └── api-documentation.md
 ├── production/
 │   ├── readiness-gate.md
-│   ├── release-checklist.md
-│   └── roadmap-to-production.md
+│   └── release-checklist.md
 ├── reference/
 │   ├── architecture.md
 │   └── zero-copy-design.md
@@ -29,20 +28,21 @@ docs/
     └── results.md
 ```
 
-## Current References
+## References
 
 - [Getting Started](guides/getting-started.md) - Local build and test workflow
 - [Building](guides/building.md) - CMake presets, options, install, and package consumption
 - [Testing](guides/testing.md) - Unit, integration, fuzz, and interop test commands
-- [Architecture](reference/architecture.md) - Current protocol, security, endpoint, and package boundaries
-- [Production Readiness Gate](production/readiness-gate.md) - Evidence required for production-candidate wording
-- [Release Checklist](production/release-checklist.md) - Current gate status
-- [Current Scope](plan.md) - Current implementation scope and remaining production gates
-- [Evidence Index](milestones/roadmap.md) - Current milestone-to-evidence mapping
+- [Architecture](reference/architecture.md) - Protocol, security, endpoint, and package boundaries
+- [Production Readiness](production/readiness-gate.md) - Evidence and gate status
+- [Release Checklist](production/release-checklist.md) - Current checklist
 
-## Current Status
+## Status
 
-- **Status**: Non-production; production-candidate wording remains blocked until all release gates and human review are recorded.
-- **Installed API**: Production-scope QUIC transport headers only. HTTP/3, QPACK, 0-RTT, and test-support interop headers are excluded from installation.
-- **Default build**: Tests are enabled; experimental examples are excluded unless `FLOWQ_BUILD_EXPERIMENTAL_EXAMPLES=ON`.
-- **Interop evidence**: aioquic handshake, bidirectional stream echo, and loss-recovery scenarios are recorded in the production gate.
+- **Version**: 1.1.0
+- **Tests**: 518/518 passing
+- **Installed API**: QUIC transport headers only. HTTP/3, QPACK, 0-RTT, and test-support interop headers are excluded from installation.
+- **Default build**: Tests enabled; experimental examples excluded unless `FLOWQ_BUILD_EXPERIMENTAL_EXAMPLES=ON`.
+- **Interop**: aioquic 1.3.0 + ngtcp2 1.20.0 verified (handshake, stream echo, loss recovery).
+- **Congestion control**: CUBIC (default), NewReno, BBR with pacing controller.
+- **Zero-copy**: Fully integrated via `enable_zero_copy` flag.

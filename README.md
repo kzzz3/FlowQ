@@ -1,12 +1,12 @@
 # FlowQ
 
-![C++20](https://img.shields.io/badge/C%2B%2B-20-blue)
+![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)
 ![CMake](https://img.shields.io/badge/build-CMake-informational)
-![Tests](https://img.shields.io/badge/tests-514%20passing-green)
+![Tests](https://img.shields.io/badge/tests-518%20passing-green)
 ![QUIC](https://img.shields.io/badge/protocol-QUIC%20v1-informational)
 ![TLS](https://img.shields.io/badge/TLS-1.3-blue)
 
-FlowQ is a C++20 QUIC transport library with production-grade security, multi-cipher support, and interop validation.
+FlowQ is a C++23 QUIC transport library with production-grade security, multi-cipher support, and interop validation.
 
 ## Features
 
@@ -21,7 +21,7 @@ FlowQ is a C++20 QUIC transport library with production-grade security, multi-ci
 
 ### Requirements
 
-- C++20 compiler (MSVC 2022, GCC 13+, Clang 16+)
+- C++23 compiler (MSVC 2022, GCC 13+, Clang 16+)
 - CMake 3.25+
 - vcpkg with `VCPKG_ROOT` set
 
@@ -65,7 +65,7 @@ FlowQ/
 
 ## Tech Stack
 
-- **C++20** - Modern, value-oriented protocol code
+- **C++23** - Modern, value-oriented protocol code
 - **CMake** - Build system with presets
 - **vcpkg** - Dependency management
 - **OpenSSL 3.5+** - Crypto and TLS backends
@@ -74,10 +74,7 @@ FlowQ/
 
 ## Contributing
 
-1. Use TDD: write failing test → implement → refactor
-2. Keep changes atomic: implementation + tests together
-3. Run full test suite before submitting: `ctest --preset <preset> --timeout 10`
-4. No type suppressions (`as any`, `@ts-ignore`) or empty catch blocks
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 

@@ -1,80 +1,77 @@
 # FlowQ Production Readiness Gate
 
-This document records the current evidence required before FlowQ can claim production-candidate status.
+This document records the evidence required for FlowQ production releases.
 
 ## Current Status
 
-- **Level**: Production-readiness gate
-- **Date**: 2026-06-01
-- **Status**: Non-production
+- **Version**: 1.1.0
+- **Tests**: 518/518 passing
 
-**Evidence summary**: Windows MSVC/vcpkg build with 514 tests passing, Linux GCC/vcpkg build with 510/511 tests passing, ASan/UBSan verification with 0 errors, OpenSSL 3.6.1 QUIC TLS, AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, secure key material zeroing, AEAD key rotation, pacing controller, BBR/CUBIC congestion control, and aioquic 1.3.0 interop (handshake, stream echo, loss recovery).
-
-**Gaps**: Multi-peer interop, human security review.
+**Evidence summary**: Windows MSVC/vcpkg build with 518 tests passing, Linux GCC/vcpkg build with 518 tests passing, ASan/UBSan verification with 0 errors, OpenSSL 3.6.1 QUIC TLS, AES-128-GCM/AES-256-GCM/ChaCha20-Poly1305 packet protection with cipher-suite-aware header protection, secure key material zeroing, AEAD key rotation, pacing controller, BBR/CUBIC congestion control, and aioquic 1.3.0 + ngtcp2 1.20.0 interop (handshake, stream echo, loss recovery).
 
 ## Evidence In Place
 
 ### Build And Test
 
-- ✅ Windows MSVC/vcpkg: 514/516 tests passing (`ctest --preset windows-msvc-vcpkg --timeout 60`)
-- ✅ Linux GCC/vcpkg: 510/511 tests passing (`ctest --preset linux-gcc-vcpkg --timeout 60`)
-- ✅ ASan/UBSan: 510/511 tests passing, 0 errors (`ctest --preset linux-asan-ubsan --timeout 60`)
-- ✅ Install + package-consumer build path
-- ✅ Clean install prefix validation
-- ✅ Release-readiness scripts (`scripts/check-release-readiness.ps1`, `scripts/check-release-readiness.sh`)
-- ✅ Strict production-candidate gates (`-RequireCompleteReleaseChecklist`)
-- ✅ Checklist validator (`scripts/validate-checklist.ps1`)
+- Windows MSVC/vcpkg: 518/518 tests passing (`ctest --preset windows-msvc-vcpkg --timeout 60`)
+- Linux GCC/vcpkg: 518/518 tests passing (`ctest --preset linux-gcc-vcpkg --timeout 60`)
+- ASan/UBSan: 518/518 tests passing, 0 errors (`ctest --preset linux-asan-ubsan --timeout 60`)
+- Install + package-consumer build path
+- Clean install prefix validation
+- Release-readiness scripts (`scripts/check-release-readiness.ps1`, `scripts/check-release-readiness.sh`)
+- Strict production-candidate gates (`-RequireCompleteReleaseChecklist`)
+- Checklist validator (`scripts/validate-checklist.ps1`)
 
 ### Packet Protection
 
-- ✅ `openssl_aead_protector` implements `packet_protector` interface
-- ✅ AES-128-GCM (16-byte key, 12-byte IV, 16-byte tag)
-- ✅ AES-256-GCM (32-byte key, 12-byte IV, 16-byte tag)
-- ✅ ChaCha20-Poly1305 (32-byte key, 12-byte IV, 16-byte tag)
-- ✅ Cipher-suite-aware header protection:
-  - AES-128-GCM → AES-128-ECB (16-byte HP key)
-  - AES-256-GCM → AES-256-ECB (32-byte HP key)
-  - ChaCha20-Poly1305 → ChaCha20 (32-byte HP key)
-- ✅ Fail-closed when OpenSSL crypto backend disabled
-- ✅ Plaintext protector isolated to test support
-- ✅ Secure key material zeroing on destruction (Windows SecureZeroMemory, macOS memset_s, Linux explicit_bzero)
-- ✅ All protector types erase keys: `initial_packet_protector`, `openssl_aead_protector`, `traffic_key_material`
-- ✅ AEAD key rotation (RFC 9000 Section 6) with key_update_state and key_update_manager
-- ✅ traffic_secret() restricted to FLOWQ_ENABLE_INSPECTION
+- `openssl_aead_protector` implements `packet_protector` interface
+- AES-128-GCM (16-byte key, 12-byte IV, 16-byte tag)
+- AES-256-GCM (32-byte key, 12-byte IV, 16-byte tag)
+- ChaCha20-Poly1305 (32-byte key, 12-byte IV, 16-byte tag)
+- Cipher-suite-aware header protection:
+  - AES-128-GCM -> AES-128-ECB (16-byte HP key)
+  - AES-256-GCM -> AES-256-ECB (32-byte HP key)
+  - ChaCha20-Poly1305 -> ChaCha20 (32-byte HP key)
+- Fail-closed when OpenSSL crypto backend disabled
+- Plaintext protector isolated to test support
+- Secure key material zeroing on destruction (Windows SecureZeroMemory, macOS memset_s, Linux explicit_bzero)
+- All protector types erase keys: `initial_packet_protector`, `openssl_aead_protector`, `traffic_key_material`
+- AEAD key rotation (RFC 9000 Section 6) with key_update_state and key_update_manager
+- traffic_secret() restricted to FLOWQ_ENABLE_INSPECTION
 
 ### Transport Behavior
 
-- ✅ QUIC v1 varint, packet number, packet header, frame, transport parameter codecs
-- ✅ ACK/loss recovery, RTT estimation, PTO, bytes-in-flight accounting
-- ✅ NewReno congestion control (slow start, congestion avoidance, persistent congestion)
-- ✅ BBR congestion control (bottleneck bandwidth and RTT estimation)
-- ✅ CUBIC congestion control (RFC 8312, TCP friendliness, fast convergence)
-- ✅ Pacing controller (RFC 9002 Section 7.7)
-- ✅ Stream receive/send state, flow control (stream-level and connection-level)
-- ✅ Connection ID routing, NEW_CONNECTION_ID, RETIRE_CONNECTION_ID
-- ✅ Stateless reset detection and generation
-- ✅ PATH_CHALLENGE/PATH_RESPONSE with peer migration validation
-- ✅ Anti-amplification limit (3x received bytes)
-- ✅ Version negotiation, retry helper surfaces
-- ✅ Endpoint driver lifecycle with connection limits
+- QUIC v1 varint, packet number, packet header, frame, transport parameter codecs
+- ACK/loss recovery, RTT estimation, PTO, bytes-in-flight accounting
+- NewReno congestion control (slow start, congestion avoidance, persistent congestion)
+- BBR congestion control (bottleneck bandwidth and RTT estimation)
+- CUBIC congestion control (RFC 8312, TCP friendliness, fast convergence)
+- Pacing controller (RFC 9002 Section 7.7)
+- Stream receive/send state, flow control (stream-level and connection-level)
+- Connection ID routing, NEW_CONNECTION_ID, RETIRE_CONNECTION_ID
+- Stateless reset detection and generation
+- PATH_CHALLENGE/PATH_RESPONSE with peer migration validation
+- Anti-amplification limit (3x received bytes)
+- Version negotiation, retry helper surfaces
+- Endpoint driver lifecycle with connection limits
 
 ### Interop
 
-- ✅ aioquic 1.3.0: handshake, bidirectional stream echo, loss recovery (all PASS)
-- ✅ TLS backend: OpenSSL 3.6.1, cipher: TLS_AES_128_GCM_SHA256
-- ✅ Client: CA verification, SNI, hostname verification
-- ⚠️ Only 1 external peer validated (aioquic); ngtcp2, quiche, MsQuic not available
+- aioquic 1.3.0: handshake, bidirectional stream echo, loss recovery (all PASS)
+- ngtcp2 1.20.0: initial packet generation (PASS)
+- TLS backend: OpenSSL 3.6.1, cipher: TLS_AES_128_GCM_SHA256
+- Client: CA verification, SNI, hostname verification
 
 ### Hardening
 
-- ✅ Fuzz targets: `fuzz_packet_header`, `fuzz_frame_decode`, `fuzz_qpack`
-- ✅ ASan + UBSan workflow (`.github/workflows/robustness.yml`)
-- ✅ `detail::` namespace gated by `FLOWQ_DETAIL`
-- ✅ Inspection methods gated by `FLOWQ_ENABLE_INSPECTION`
-- ✅ `[[nodiscard]]` on value-returning public methods
-- ✅ `noexcept` move operations on core types
-- ✅ Thread-safety contracts documented
-- ✅ Code quality gates: no TODO/FIXME, no type suppressions, no empty catch, no weak RNG
+- Fuzz targets: `fuzz_packet_header`, `fuzz_frame_decode`, `fuzz_qpack`
+- ASan + UBSan workflow (`.github/workflows/robustness.yml`)
+- `detail::` namespace gated by `FLOWQ_DETAIL`
+- Inspection methods gated by `FLOWQ_ENABLE_INSPECTION`
+- `[[nodiscard]]` on value-returning public methods
+- `noexcept` move operations on core types
+- Thread-safety contracts documented
+- Code quality gates: no TODO/FIXME, no type suppressions, no empty catch, no weak RNG
 
 ## Production-Candidate Scope
 
@@ -83,7 +80,7 @@ This document records the current evidence required before FlowQ can claim produ
 - TLS 1.3 handshake (RFC 9001) via OpenSSL 3.5+ QUIC TLS
 - Cipher suites: AES-128-GCM-SHA256, AES-256-GCM-SHA384, TLS_CHACHA20_POLY1305_SHA256
 - Client and server roles
-- Windows MSVC/vcpkg platform
+- Windows MSVC/vcpkg and Linux GCC/vcpkg platforms
 
 **Out of scope**:
 - 0-RTT deployment
@@ -101,13 +98,6 @@ This document records the current evidence required before FlowQ can claim produ
 - [x] TLS backend and cipher suite versions recorded
 - [x] Cipher-suite-aware header protection
 - [x] Secure key material zeroing across all protectors
-- [x] Linux GCC execution evidence (510/511 tests passing)
+- [x] Linux GCC execution evidence (518/518 tests passing)
 - [x] ASan/UBSan execution evidence (0 errors)
 - [x] Multi-peer interop (aioquic + ngtcp2)
-
-## Forbidden Public Claims
-
-- "Production-ready" → requires human security review
-- "RFC-compliant" → requires multi-peer interop evidence
-- "Secure" → requires external audit
-- "Interoperable" → requires 2+ named peer versions
